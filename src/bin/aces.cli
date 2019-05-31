@@ -1,0 +1,36 @@
+name: required-by-clap
+args:
+    - MAIN_PATH:
+        help: Path to the main CES specification
+        required: false
+        default_value: data/arrow.ces
+        index: 1
+    - verbose:
+        help: Prints more information
+        long: verbose
+        short: v
+        multiple: true
+subcommands:
+    - validate:
+        about: Reads all CES files from a given glob path and checks them for errors
+        args:
+            - GLOB_PATH:
+                help: Glob pattern or path to directory
+                required: false
+                default_value: data
+                index: 1
+            - abort:
+                help: Aborts after first error
+                long: abort
+            - recursive:
+                help: Visits subdirectories
+                long: recursive
+                short: r
+            - syntax:
+                help: Reports syntax errors only
+                long: syntax
+            - verbose:
+                help: Informs about each file being processed
+                long: verbose
+                short: v
+                multiple: true
