@@ -4,7 +4,7 @@
 
 name = "aces"
 version = "0.0.1"
-description = "Algebra of Cause Effect Structures"
+description = "Algebra of Cause-Effect Structures"
 authors = ["k7f"]
 edition = "2018"
 license = "MIT"
