@@ -5,6 +5,7 @@ mod nodes;
 mod ces;
 mod spec;
 mod error;
+pub mod cli;
 
 pub use nodes::NodeSpace;
 pub use ces::CES;

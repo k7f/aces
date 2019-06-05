@@ -10,8 +10,11 @@ args:
         long: verbose
         short: v
         multiple: true
+
 subcommands:
+
     - validate:
+        name: required-by-clap
         about: Reads all CES files from a given glob path and checks them for errors
         args:
             - GLOB_PATH:

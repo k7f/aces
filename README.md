@@ -13,17 +13,19 @@ Syntax checking of `.ces` files...
 
 ## Prerequisites
 
-`aces` should build wherever `rustc` and `cargo` runs, and run on any
+In principle, `aces` should build wherever `rustc` and `cargo` runs.
+Its executables should run on any
 [platform](https://forge.rust-lang.org/platform-support.html)
-supporting Rust `std` library.  Mind, though, that this project is
-very much WIP.  All development is currently done using nightly
-channel of Rust 1.37.
+supporting Rust `std` library.
+
+Be aware, though, that the project is very much WIP.  Currently, the
+main toolchain used in development is nightly channel of Rust 1.37.
 
 ## Installation
 
 Having [Rust](https://www.rust-lang.org/downloads.html) installed,
-ensure its version is at least 1.37 (check with `cargo version`, run
-`rustup update` if needed).  Then
+ensure its version is at least 1.37 (check with `cargo version` and
+run `rustup update` if needed).  Then
 
 ```bash
 $ cargo install aces
