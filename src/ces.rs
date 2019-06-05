@@ -1,14 +1,14 @@
 use std::{io::Read, fs::File, path::Path, sync::{Mutex, Arc}, error::Error};
-use crate::{NodeSpace, spec::CESSpec};
+use crate::{NodeSpace, spec::{CESSpec, spec_from_str}};
 
 #[derive(Debug)]
 pub struct CES {
-    spec: CESSpec,
+    spec: Box<dyn CESSpec>,
 }
 
 impl CES {
-    pub fn from_str(spec: &str, nodes: Arc<Mutex<NodeSpace>>) -> Result<Self, Box<dyn Error>> {
-        let spec = CESSpec::from_str(spec, nodes)?;
+    pub fn from_str(spec_str: &str, nodes: Arc<Mutex<NodeSpace>>) -> Result<Self, Box<dyn Error>> {
+        let spec = spec_from_str(spec_str, nodes)?;
 
         Ok(Self { spec })
     }

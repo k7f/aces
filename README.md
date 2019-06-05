@@ -24,8 +24,8 @@ main toolchain used in development is nightly channel of Rust 1.37.
 ## Installation
 
 Having [Rust](https://www.rust-lang.org/downloads.html) installed,
-ensure its version is at least 1.37 (check with `cargo version` and
-run `rustup update` if needed).  Then
+ensure its version is at least 1.37: check with `cargo version` and
+run `rustup update` if needed.  Then
 
 ```bash
 $ cargo install aces

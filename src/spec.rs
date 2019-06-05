@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::{Mutex, Arc}, error::Error};
+use std::{collections::BTreeMap, sync::{Mutex, Arc}, fmt::Debug, error::Error};
 use yaml_rust::{Yaml, YamlLoader};
 use crate::{NodeSpace, error::AcesError};
 
@@ -190,32 +190,53 @@ impl SpecForYaml {
             Err(Box::new(AcesError::SpecNotADict))
         }
     }
-}
 
-#[derive(Debug)]
-enum SpecRep {
-    Y(SpecForYaml),
-}
-
-#[derive(Debug)]
-pub(crate) struct CESSpec {
-    rep: SpecRep,
-}
-
-impl CESSpec {
-    pub(crate) fn from_str(spec: &str, nodes: Arc<Mutex<NodeSpace>>) -> Result<Self, Box<dyn Error>> {
-        // FIXME infer the format of spec string: yaml, sexpr, ...
-
+    fn from_str(spec: &str, nodes: Arc<Mutex<NodeSpace>>) -> Result<Self, Box<dyn Error>> {
         let docs = YamlLoader::load_from_str(spec.into())?;
+
         if docs.is_empty() {
             Err(Box::new(AcesError::SpecEmpty))
-        } else if docs.len() == 1 {
-            let spec = SpecForYaml::from_yaml(&docs[0], nodes)?;
-            let rep = SpecRep::Y(spec);
 
-            Ok(CESSpec { rep })
+        } else if docs.len() == 1 {
+            let spec = Self::from_yaml(&docs[0], nodes)?;
+
+            Ok(spec)
         } else {
             Err(Box::new(AcesError::SpecMultiple))
         }
     }
+
+}
+
+pub(crate) trait CESSpec: Debug {
+    fn get_name(&self) -> &str;
+    fn get_causes(&self, node_name: &str) -> Option<&Vec<Vec<usize>>>;
+    fn get_effects(&self, node_name: &str) -> Option<&Vec<Vec<usize>>>;
+}
+
+impl CESSpec for SpecForYaml {
+    fn get_name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    fn get_causes(&self, node_name: &str) -> Option<&Vec<Vec<usize>>> {
+        self.nodes.lock().unwrap()
+            .get_id(node_name)
+            .and_then(|ref id| self.causes.get(id))
+    }
+
+    fn get_effects(&self, node_name: &str) -> Option<&Vec<Vec<usize>>> {
+        self.nodes.lock().unwrap()
+            .get_id(node_name)
+            .and_then(|ref id| self.effects.get(id))
+    }
+}
+
+pub(crate) fn spec_from_str(
+    spec: &str,
+    nodes: Arc<Mutex<NodeSpace>>
+) -> Result<Box<dyn CESSpec>, Box<dyn Error>>
+{
+    // FIXME infer the format of spec string: yaml, sexpr, ...
+    Ok(Box::new(SpecForYaml::from_str(spec, nodes)?))
 }

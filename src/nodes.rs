@@ -5,12 +5,16 @@ use crate::error::AcesError;
 #[derive(Default, Debug)]
 pub struct NodeSpace {
     names: Vec<String>,
-    ids:   BTreeMap<String, usize>,  // FIXME borrow
+    ids:   BTreeMap<String, usize>,  // FIXME borrow names
 }
 
 impl NodeSpace {
     pub fn new() -> Self {
         Default::default()
+    }
+
+    pub fn get_id(&self, name: &str) -> Option<usize> {
+        self.ids.get(name).copied()
     }
 
     fn do_take_id(&mut self, name: &str, single_word_only: bool) -> Result<usize, Box<dyn Error>> {

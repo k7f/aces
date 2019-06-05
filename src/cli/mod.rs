@@ -13,7 +13,7 @@ pub struct App<'a> {
 }
 
 impl<'a> App<'a> {
-    pub fn from_clap(clap_app: clap::App<'a, 'a>) -> Self {
+    pub fn from_clap<'b>(clap_app: clap::App<'a, 'b>) -> Self {
         let cli_args = clap_app
             .name(env!("CARGO_PKG_NAME"))
             .version(env!("CARGO_PKG_VERSION"))
