@@ -1,67 +1,13 @@
 use std::fmt;
 
 #[derive(Debug)]
-pub enum Atom {
-    Source(Source),
-    Sink(Sink),
-    Link(Link),
-    Bottom,
-}
-
-impl Atom {
-    fn set_id(&mut self, id: usize) {
-        use Atom::*;
-        let ref mut prev_id = match self {
-            Source(a) => a.atom_id,
-            Sink(a) => a.atom_id,
-            Link(a) => a.atom_id,
-            Bottom => panic!("Attempt to set ID of the bottom atom"),
-        };
-
-        assert_eq!(*prev_id, 0, "Attempt to reset ID of atom {}", self);
-
-        *prev_id = id
-    }
-
-    pub fn get_id(&self) -> usize {
-        use Atom::*;
-        let id = match self {
-            Source(a) => a.atom_id,
-            Sink(a) => a.atom_id,
-            Link(a) => a.atom_id,
-            Bottom => panic!("Attempt to get ID of the bottom atom"),
-        };
-
-        assert_ne!(id, 0, "Attempt to use uninitialized atom {}", self);
-
-        id
-    }
-}
-
-impl fmt::Display for Atom {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Atom::*;
-        match self {
-            Source(a) => a.fmt(f),
-            Sink(a) => a.fmt(f),
-            Link(a) => a.fmt(f),
-            Bottom => panic!("Attempt to display the bottom atom"),
-        }
-    }
-}
-
-#[derive(Default, Debug)]
 pub struct AtomSpace {
     atoms: Vec<Atom>,
 }
 
 impl AtomSpace {
     pub fn new() -> Self {
-        let mut result: Self = Default::default();
-
-        result.atoms.push(Atom::Bottom);
-
-        result
+        Self { atoms: vec![Atom::Bottom] }
     }
 
     pub fn take_atom(&mut self, mut atom: Atom) -> usize {
@@ -123,6 +69,56 @@ impl AtomSpace {
         match self.get_atom_mut(id) {
             Some(Atom::Link(a)) => Some(a),
             _ => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum Atom {
+    Source(Source),
+    Sink(Sink),
+    Link(Link),
+    Bottom,
+}
+
+impl Atom {
+    fn set_id(&mut self, id: usize) {
+        use Atom::*;
+        let ref mut prev_id = match self {
+            Source(a) => a.atom_id,
+            Sink(a) => a.atom_id,
+            Link(a) => a.atom_id,
+            Bottom => panic!("Attempt to set ID of the bottom atom"),
+        };
+
+        assert_eq!(*prev_id, 0, "Attempt to reset ID of atom {}", self);
+
+        *prev_id = id
+    }
+
+    pub fn get_id(&self) -> usize {
+        use Atom::*;
+        let id = match self {
+            Source(a) => a.atom_id,
+            Sink(a) => a.atom_id,
+            Link(a) => a.atom_id,
+            Bottom => panic!("Attempt to get ID of the bottom atom"),
+        };
+
+        assert_ne!(id, 0, "Attempt to use uninitialized atom {}", self);
+
+        id
+    }
+}
+
+impl fmt::Display for Atom {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Atom::*;
+        match self {
+            Source(a) => a.fmt(f),
+            Sink(a) => a.fmt(f),
+            Link(a) => a.fmt(f),
+            Bottom => panic!("Attempt to display the bottom atom"),
         }
     }
 }

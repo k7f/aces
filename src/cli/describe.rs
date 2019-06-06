@@ -1,5 +1,5 @@
 use std::{sync::{Mutex, Arc}, error::Error};
-use crate::{NodeSpace, CES};
+use crate::{Context, CES};
 use super::{App, Command};
 
 pub struct Describe;
@@ -11,11 +11,11 @@ impl Command for Describe {
 
         let verbosity = app.occurrences_of("verbose");
 
-        let nodes = Arc::new(Mutex::new(NodeSpace::new()));
-        let ces = CES::from_file(main_path, Arc::clone(&nodes))?;
+        let ctx = Arc::new(Mutex::new(Context::new()));
+        let ces = CES::from_file(Arc::clone(&ctx), main_path)?;
 
         if verbosity >= 1 {
-            println!("{:?}", nodes.lock().unwrap());
+            println!("{:?}", ctx.lock().unwrap());
         }
         println!("{:?}", ces);
 

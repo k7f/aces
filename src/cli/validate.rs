@@ -1,5 +1,5 @@
 use std::{sync::{Mutex, Arc}, error::Error};
-use crate::{NodeSpace, CES};
+use crate::{Context, CES};
 use super::{App, Command};
 
 pub struct Validate;
@@ -18,7 +18,7 @@ impl Command for Validate {
         let ref glob_path = format!("{}/*.ces", glob_path);
 
         let mut num_bad_files = 0;
-        let nodes = Arc::new(Mutex::new(NodeSpace::new()));
+        let ctx = Arc::new(Mutex::new(Context::new()));
 
         if recursive {
             // FIXME
@@ -32,7 +32,7 @@ impl Command for Validate {
                             if verbosity >= 1 {
                                 println!("> {}", path.display());
                             }
-                            let result = CES::from_file(path, Arc::clone(&nodes));
+                            let result = CES::from_file(Arc::clone(&ctx), path);
                             match result {
                                 Ok(ces) => {
                                     if verbosity >= 2 {
@@ -77,7 +77,7 @@ impl Command for Validate {
                 }
 
                 if verbosity >= 3 {
-                    println!("{:?}", nodes.lock().unwrap());
+                    println!("{:?}", ctx.lock().unwrap());
                 }
 
                 Ok(())

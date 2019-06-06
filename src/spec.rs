@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, sync::{Mutex, Arc}, fmt::Debug, error::Error};
 use yaml_rust::{Yaml, YamlLoader};
-use crate::{NodeSpace, error::AcesError};
+use crate::{Context, error::AcesError};
 
 trait UpdatableVec<V> {
     fn vec_update(&mut self, value: &V);
@@ -42,7 +42,7 @@ impl UpdatableMap<usize, PolyForYaml> for BTreeMap<usize, PolyForYaml> {
 
 #[derive(Debug)]
 struct SpecForYaml {
-    nodes:   Arc<Mutex<NodeSpace>>,
+    context: Arc<Mutex<Context>>,
     name:    String,
     meta:    BTreeMap<String, Yaml>,
     causes:  BTreeMap<usize, PolyForYaml>,
@@ -58,7 +58,7 @@ impl SpecForYaml {
         match poly_yaml {
             Yaml::String(other_name) => {
                 let (other_id, with_colink) =
-                    self.nodes.lock().unwrap().parse_link_spec(other_name.trim(), !as_source, true)?;
+                    self.context.lock().unwrap().nodes.parse_link_spec(other_name.trim(), !as_source, true)?;
 
                 poly_spec.vec_update(&vec![other_id]);
 
@@ -77,7 +77,7 @@ impl SpecForYaml {
                     match value {
                         Yaml::String(other_name) => {
                             let (other_id, with_colink) =
-                                self.nodes.lock().unwrap().parse_link_spec(other_name.trim(), !as_source, true)?;
+                                self.context.lock().unwrap().nodes.parse_link_spec(other_name.trim(), !as_source, true)?;
 
                             poly_spec.vec_update(&vec![other_id]);
 
@@ -96,7 +96,7 @@ impl SpecForYaml {
                             for value in table {
                                 if let Some(other_name) = value.as_str() {
                                     let (other_id, with_colink) =
-                                        self.nodes.lock().unwrap().parse_link_spec(other_name.trim(), !as_source, false)?;
+                                        self.context.lock().unwrap().nodes.parse_link_spec(other_name.trim(), !as_source, false)?;
 
                                     mono_spec.vec_update(&other_id);
 
@@ -143,7 +143,7 @@ impl SpecForYaml {
     fn add_entry(&mut self, key: &Yaml, value: &Yaml) -> Result<(), Box<dyn Error>> {
         if let Some(key) = key.as_str() {
             let key = key.trim();
-            let port = self.nodes.lock().unwrap().parse_port_spec(key);
+            let port = self.context.lock().unwrap().nodes.parse_port_spec(key);
 
             if let Some((node_ids, as_source)) = port {
 
@@ -172,9 +172,9 @@ impl SpecForYaml {
         }
     }
 
-    fn from_yaml(yaml: &Yaml, nodes: Arc<Mutex<NodeSpace>>) -> Result<Self, Box<dyn Error>> {
+    fn from_yaml(ctx: Arc<Mutex<Context>>, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
         let mut spec = Self {
-            nodes,
+            context: ctx,
             name:    Default::default(),
             meta:    Default::default(),
             causes:  Default::default(),
@@ -191,14 +191,14 @@ impl SpecForYaml {
         }
     }
 
-    fn from_str(spec: &str, nodes: Arc<Mutex<NodeSpace>>) -> Result<Self, Box<dyn Error>> {
+    fn from_str(ctx: Arc<Mutex<Context>>, spec: &str) -> Result<Self, Box<dyn Error>> {
         let docs = YamlLoader::load_from_str(spec.into())?;
 
         if docs.is_empty() {
             Err(Box::new(AcesError::SpecEmpty))
 
         } else if docs.len() == 1 {
-            let spec = Self::from_yaml(&docs[0], nodes)?;
+            let spec = Self::from_yaml(ctx, &docs[0])?;
 
             Ok(spec)
         } else {
@@ -220,23 +220,23 @@ impl CESSpec for SpecForYaml {
     }
 
     fn get_causes(&self, node_name: &str) -> Option<&Vec<Vec<usize>>> {
-        self.nodes.lock().unwrap()
-            .get_id(node_name)
+        self.context.lock().unwrap()
+            .nodes.get_id(node_name)
             .and_then(|ref id| self.causes.get(id))
     }
 
     fn get_effects(&self, node_name: &str) -> Option<&Vec<Vec<usize>>> {
-        self.nodes.lock().unwrap()
-            .get_id(node_name)
+        self.context.lock().unwrap()
+            .nodes.get_id(node_name)
             .and_then(|ref id| self.effects.get(id))
     }
 }
 
 pub(crate) fn spec_from_str(
+    ctx:  Arc<Mutex<Context>>,
     spec: &str,
-    nodes: Arc<Mutex<NodeSpace>>
 ) -> Result<Box<dyn CESSpec>, Box<dyn Error>>
 {
     // FIXME infer the format of spec string: yaml, sexpr, ...
-    Ok(Box::new(SpecForYaml::from_str(spec, nodes)?))
+    Ok(Box::new(SpecForYaml::from_str(ctx, spec)?))
 }
