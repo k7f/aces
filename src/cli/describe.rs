@@ -1,5 +1,5 @@
 use std::{sync::{Mutex, Arc}, error::Error};
-use crate::{Context, CES};
+use crate::{Context, CES, error::AcesError};
 use super::{App, Command};
 
 pub struct Describe;
@@ -15,10 +15,20 @@ impl Command for Describe {
         let ces = CES::from_file(Arc::clone(&ctx), main_path)?;
 
         if verbosity >= 1 {
-            println!("{:?}", ctx.lock().unwrap());
+            if verbosity >= 2 {
+                println!("{:?}", ctx.lock().unwrap());
+            } else {
+                println!("{:?}", ctx.lock().unwrap().nodes);
+            }
         }
+
+        // FIXME display not debug
         println!("{:?}", ces);
 
-        Ok(())
+        if !ces.is_coherent() {
+            Err(Box::new(AcesError::CESIsIncoherent(ces.get_name().to_owned())))
+        } else {
+            Ok(())
+        }
     }
 }

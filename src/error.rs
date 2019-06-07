@@ -1,6 +1,6 @@
 use std::{fmt, error::Error};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub(crate) enum AcesError {
     SpecEmpty,
     SpecMultiple,
@@ -15,11 +15,21 @@ pub(crate) enum AcesError {
     SpecLinkInvalid,
     SpecLinkReversed,
     SpecLinkList,
+
+    NodeMissingForSource,
+    NodeMissingForSink,
+
+    CESIsIncoherent(String),
 }
 
 impl fmt::Display for AcesError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.description())
+        use AcesError::*;
+
+        match self {
+            CESIsIncoherent(name) => write!(f, "Structure '{}' is incoherent", &name),
+            _ => write!(f, "{}", self.description()),
+        }
     }
 }
 
@@ -41,6 +51,11 @@ impl Error for AcesError {
             SpecLinkInvalid => "Invalid link in polynomial specification",
             SpecLinkReversed => "Reversed link in polynomial specification",
             SpecLinkList => "Link list is invalid in polynomial specification",
+
+            NodeMissingForSource => "Missing node for source",
+            NodeMissingForSink => "Missing node for sink",
+
+            CESIsIncoherent(_) => "Incoherent CES",
         }
     }
 }

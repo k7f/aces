@@ -1,5 +1,5 @@
 use std::{sync::{Mutex, Arc}, error::Error};
-use crate::{Context, CES};
+use crate::{Context, CES, error::AcesError};
 use super::{App, Command};
 
 pub struct Validate;
@@ -38,10 +38,29 @@ impl Command for Validate {
                                     if verbosity >= 2 {
                                         println!("+++ {:?}", ces);
                                     }
+
+                                    if !syntax_only {
+                                        if !ces.is_coherent() {
+                                            if do_abort {
+                                                println!("... Aborting on structural error.");
+                                            }
+
+                                            eprintln!("!!! Structural error in file '{}'...", path.display());
+
+                                            let err = AcesError::CESIsIncoherent(ces.get_name().to_owned());
+
+                                            if do_abort {
+                                                return Err(Box::new(err))
+                                            } else {
+                                                eprintln!("[Error] {}.", err);
+                                                num_bad_files += 1;
+                                            }
+                                        }
+                                    }
                                 }
                                 Err(err) => {
                                     if do_abort {
-                                        println!("... Aborting on error.");
+                                        println!("... Aborting on syntax error.");
                                     }
 
                                     eprintln!("!!! Syntax error in file '{}'...", path.display());
@@ -53,10 +72,6 @@ impl Command for Validate {
                                         num_bad_files += 1;
                                     }
                                 }
-                            }
-
-                            if !syntax_only {
-                                // FIXME
                             }
                         }
                         Err(err) => {
@@ -77,7 +92,11 @@ impl Command for Validate {
                 }
 
                 if verbosity >= 3 {
-                    println!("{:?}", ctx.lock().unwrap());
+                    if verbosity >= 4 {
+                        println!("{:?}", ctx.lock().unwrap());
+                    } else {
+                        println!("{:?}", ctx.lock().unwrap().nodes);
+                    }
                 }
 
                 Ok(())

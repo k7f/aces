@@ -208,10 +208,15 @@ impl SpecForYaml {
 
 }
 
+// FIXME define specific iterators for return types below
 pub(crate) trait CESSpec: Debug {
     fn get_name(&self) -> &str;
-    fn get_causes(&self, node_name: &str) -> Option<&Vec<Vec<usize>>>;
-    fn get_effects(&self, node_name: &str) -> Option<&Vec<Vec<usize>>>;
+    fn get_causes_by_name(&self, node_name: &str) -> Option<&Vec<Vec<usize>>>;
+    fn get_effects_by_name(&self, node_name: &str) -> Option<&Vec<Vec<usize>>>;
+    fn get_causes_by_id(&self, node_id: usize) -> Option<&Vec<Vec<usize>>>;
+    fn get_effects_by_id(&self, node_id: usize) -> Option<&Vec<Vec<usize>>>;
+    fn get_source_ids(&self) -> Vec<usize>;
+    fn get_sink_ids(&self) -> Vec<usize>;
 }
 
 impl CESSpec for SpecForYaml {
@@ -219,16 +224,32 @@ impl CESSpec for SpecForYaml {
         self.name.as_str()
     }
 
-    fn get_causes(&self, node_name: &str) -> Option<&Vec<Vec<usize>>> {
+    fn get_causes_by_name(&self, node_name: &str) -> Option<&Vec<Vec<usize>>> {
         self.context.lock().unwrap()
             .nodes.get_id(node_name)
             .and_then(|ref id| self.causes.get(id))
     }
 
-    fn get_effects(&self, node_name: &str) -> Option<&Vec<Vec<usize>>> {
+    fn get_effects_by_name(&self, node_name: &str) -> Option<&Vec<Vec<usize>>> {
         self.context.lock().unwrap()
             .nodes.get_id(node_name)
             .and_then(|ref id| self.effects.get(id))
+    }
+
+    fn get_causes_by_id(&self, node_id: usize) -> Option<&Vec<Vec<usize>>> {
+        self.causes.get(&node_id)
+    }
+
+    fn get_effects_by_id(&self, node_id: usize) -> Option<&Vec<Vec<usize>>> {
+        self.effects.get(&node_id)
+    }
+
+    fn get_source_ids(&self) -> Vec<usize> {
+        self.effects.keys().copied().collect()
+    }
+
+    fn get_sink_ids(&self) -> Vec<usize> {
+        self.causes.keys().copied().collect()
     }
 }
 

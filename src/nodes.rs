@@ -3,17 +3,21 @@ use regex::Regex;
 use crate::error::AcesError;
 
 #[derive(Default, Debug)]
-pub struct NodeSpace {
+pub(crate) struct NodeSpace {
     names: Vec<String>,
     ids:   BTreeMap<String, usize>,  // FIXME borrow names
 }
 
 impl NodeSpace {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Default::default()
     }
 
-    pub fn get_id(&self, name: &str) -> Option<usize> {
+    pub(crate) fn get_name(&self, id: usize) -> Option<&str> {
+        self.names.get(id).map(|s| s.as_str())
+    }
+
+    pub(crate) fn get_id(&self, name: &str) -> Option<usize> {
         self.ids.get(name).copied()
     }
 
@@ -34,7 +38,7 @@ impl NodeSpace {
         }
     }
 
-    pub fn take_id(&mut self, name: &str) -> usize {
+    pub(crate) fn take_id(&mut self, name: &str) -> usize {
         self.do_take_id(name, false).unwrap_or_else(|_| {
             unreachable!()
         })

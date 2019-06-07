@@ -1,4 +1,4 @@
-name: Semantic error (link incoherence)
+name: Structural error (link incoherence)
 
 a effects: x
 b effects: y
