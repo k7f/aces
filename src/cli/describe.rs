@@ -1,5 +1,5 @@
 use std::{sync::{Mutex, Arc}, error::Error};
-use crate::{Context, CES, error::AcesError};
+use crate::{Context, CES, sat::{self, IntoAtomID}, error::AcesError};
 use super::{App, Command};
 
 pub struct Describe;
@@ -30,6 +30,46 @@ impl Command for Describe {
         } else {
             let formula = ces.get_formula(ctx.clone());
             println!("\nCNF: {:?}", formula);
+
+            let mut solver = sat::Solver::new();
+            solver.add_formula(&formula);
+            match solver.solve() {
+                Ok(true) => {
+                    if let Some(model) = solver.model() {
+                        println!("\nModel: {:?}", model);
+
+                        let mut solution = (Vec::new(), Vec::new());
+                        let ctx = ctx.lock().unwrap();
+                        for lit in model {
+                            let (atom_id, is_true) = lit.into_atom_id();
+                            if ctx.get_link(atom_id).is_none() {
+                                if let Some(atom) = ctx.get_atom(atom_id) {
+                                    if is_true {
+                                        solution.0.push(atom);
+                                    } else {
+                                        solution.1.push(atom);
+                                    }
+                                }
+                            }
+                        }
+
+                        print!("Solution: {{");
+                        for atom in solution.0 {
+                            print!(" {}", atom);
+                        }
+                        print!(" }} => {{");
+                        for atom in solution.1 {
+                            print!(" {}", atom);
+                        }
+                        println!(" }}");
+                    }
+                }
+                Ok(false) => {
+                    println!("\nFound no solutions...");
+                }
+                _ => {}  // FIXME
+            }
+
             Ok(())
         }
     }

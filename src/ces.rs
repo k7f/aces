@@ -21,7 +21,7 @@ type SourceID = usize;
 type SinkID = usize;
 type LinkID = usize;
 
-type Monomial = Vec<usize>;
+type Monomial = Vec<LinkID>;
 type Polynomial = Vec<Monomial>;
 
 #[derive(Debug)]
@@ -193,7 +193,7 @@ impl CES {
                             let antiport_lit = sat::Lit::from_atom_id(antiport_id, true);
                             let clause = &[port_lit, antiport_lit];
 
-                            println!("add clause: {:?}", clause);
+                            println!("add antiport clause {:?}", clause);
                             formula.add_clause(clause);
 
                             break
@@ -206,13 +206,9 @@ impl CES {
         }
 
         for (&port_id, poly) in self.effects.iter() {
-            let ctx = ctx.lock().unwrap();
+            let port_lit = sat::Lit::from_atom_id(port_id, true);
 
-            if let Some(port) = ctx.get_source(port_id) {
-                let port_lit = sat::Lit::from_atom_id(port_id, true);
-
-                formula.add_polynomial(port_lit, poly);
-            }
+            formula.add_polynomial(port_lit, poly);
         }
 
         formula
