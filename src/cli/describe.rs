@@ -28,6 +28,8 @@ impl Command for Describe {
         if !ces.is_coherent() {
             Err(Box::new(AcesError::CESIsIncoherent(ces.get_name().to_owned())))
         } else {
+            let formula = ces.get_formula(ctx.clone());
+            println!("\nCNF: {:?}", formula);
             Ok(())
         }
     }

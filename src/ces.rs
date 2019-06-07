@@ -13,6 +13,7 @@ use crate::{
     Sink,
     Link,
     spec::{CESSpec, spec_from_str},
+    sat::{self, ExtendFormula, FromAtomID, AddPolynomial},
     error::AcesError,
 };
 
@@ -172,5 +173,48 @@ impl CES {
 
     pub fn is_coherent(&self) -> bool {
         self.is_coherent
+    }
+
+    pub fn get_formula(&self, ctx: Arc<Mutex<Context>>) -> sat::CnfFormula {
+        let mut formula = sat::CnfFormula::new();
+
+        for (&port_id, poly) in self.causes.iter() {
+            let ctx = ctx.lock().unwrap();
+
+            if let Some(port) = ctx.get_sink(port_id) {
+
+                let port_lit = sat::Lit::from_atom_id(port_id, true);
+                let node_id = port.get_node_id();
+
+                // FIXME use a caching method get_antiport()
+                for &antiport_id in self.effects.keys() {
+                    if let Some(antiport) = ctx.get_source(antiport_id) {
+                        if antiport.get_node_id() == node_id {
+                            let antiport_lit = sat::Lit::from_atom_id(antiport_id, true);
+                            let clause = &[port_lit, antiport_lit];
+
+                            println!("add clause: {:?}", clause);
+                            formula.add_clause(clause);
+
+                            break
+                        }
+                    }
+                }
+
+                formula.add_polynomial(port_lit, poly);
+            }
+        }
+
+        for (&port_id, poly) in self.effects.iter() {
+            let ctx = ctx.lock().unwrap();
+
+            if let Some(port) = ctx.get_source(port_id) {
+                let port_lit = sat::Lit::from_atom_id(port_id, true);
+
+                formula.add_polynomial(port_lit, poly);
+            }
+        }
+
+        formula
     }
 }

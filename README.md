@@ -9,8 +9,7 @@ Structures](https://link.springer.com/book/10.1007/978-3-030-20461-7).
 
 ## Features
 
-Checking syntax of `.ces` files, building CE-structures, checking link
-coherence...
+Building CE-structures from `.ces` files, checking link coherence...
 
 ## Prerequisites
 

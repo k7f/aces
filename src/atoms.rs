@@ -1,4 +1,5 @@
 use std::{cmp, fmt};
+use crate::sat::{self, FromAtomID};
 
 #[derive(Debug)]
 pub(crate) struct AtomSpace {
@@ -129,6 +130,10 @@ impl Atom {
 
         id
     }
+
+    pub fn as_sat_literal(&self, negated: bool) -> sat::Lit {
+        sat::Lit::from_atom_id(self.get_id(), negated)
+    }
 }
 
 impl cmp::PartialEq for Atom {
@@ -179,9 +184,9 @@ impl Source {
         self.node_id
     }
 
-    // pub fn as_literal(&self, negated: bool) -> sat::Lit {
-    //     sat::Lit::from_var(sat::Var::from_dimacs(self.atom_id), negated)
-    // }
+    pub fn as_sat_literal(&self, negated: bool) -> sat::Lit {
+        sat::Lit::from_atom_id(self.atom_id, negated)
+    }
 }
 
 impl cmp::PartialEq for Source {
@@ -220,6 +225,10 @@ impl Sink {
 
     pub fn get_node_id(&self) -> usize {
         self.node_id
+    }
+
+    pub fn as_sat_literal(&self, negated: bool) -> sat::Lit {
+        sat::Lit::from_atom_id(self.atom_id, negated)
     }
 }
 
@@ -295,6 +304,10 @@ impl Link {
 
     pub fn get_sink_node_id(&self) -> usize {
         self.sink_node_id
+    }
+
+    pub fn as_sat_literal(&self, negated: bool) -> sat::Lit {
+        sat::Lit::from_atom_id(self.atom_id, negated)
     }
 }
 
