@@ -11,8 +11,8 @@ impl Command for Describe {
 
         let verbosity = app.occurrences_of("verbose");
 
-        let ctx = Arc::new(Mutex::new(Context::new()));
-        let ces = CES::from_file(Arc::clone(&ctx), main_path)?;
+        let ref ctx = Arc::new(Mutex::new(Context::new()));
+        let ces = CES::from_file(ctx, main_path)?;
 
         if verbosity >= 1 {
             if verbosity >= 2 {
@@ -28,7 +28,7 @@ impl Command for Describe {
         if !ces.is_coherent() {
             Err(Box::new(AcesError::CESIsIncoherent(ces.get_name().to_owned())))
         } else {
-            let formula = ces.get_formula(ctx.clone());
+            let formula = ces.get_formula(ctx);
             println!("\nCNF: {:?}", formula);
 
             let mut solver = sat::Solver::new();
@@ -38,30 +38,40 @@ impl Command for Describe {
                     if let Some(model) = solver.model() {
                         println!("\nModel: {:?}", model);
 
+                        print!("Solution: ");
+
+                        //solution = model.as_solution(ctx);
+
                         let mut solution = (Vec::new(), Vec::new());
                         let ctx = ctx.lock().unwrap();
                         for lit in model {
-                            let (atom_id, is_true) = lit.into_atom_id();
-                            if ctx.get_link(atom_id).is_none() {
-                                if let Some(atom) = ctx.get_atom(atom_id) {
-                                    if is_true {
-                                        solution.0.push(atom);
-                                    } else {
-                                        solution.1.push(atom);
-                                    }
+                            if lit.is_positive() {
+                                let (atom_id, _) = lit.into_atom_id();
+                                if let Some(source) = ctx.get_source(atom_id) {
+                                    solution.0.push(source);
+                                } else if let Some(sink) = ctx.get_sink(atom_id) {
+                                    solution.1.push(sink);
                                 }
                             }
                         }
 
-                        print!("Solution: {{");
-                        for atom in solution.0 {
-                            print!(" {}", atom);
+                        if solution.0.is_empty() {
+                            print!("{{}} => {{");
+                        } else {
+                            print!("{{");
+                            for atom in solution.0 {
+                                print!(" {}", atom);
+                            }
+                            print!(" }} => {{");
                         }
-                        print!(" }} => {{");
-                        for atom in solution.1 {
-                            print!(" {}", atom);
+                        if solution.1.is_empty() {
+                            println!("}}");
+                        } else {
+                            for atom in solution.1 {
+                                print!(" {}", atom);
+                            }
+                            println!(" }}");
                         }
-                        println!(" }}");
                     }
                 }
                 Ok(false) => {

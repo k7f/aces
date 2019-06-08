@@ -42,7 +42,6 @@ impl UpdatableMap<usize, PolyForYaml> for BTreeMap<usize, PolyForYaml> {
 
 #[derive(Debug)]
 struct SpecForYaml {
-    context: Arc<Mutex<Context>>,
     name:    String,
     meta:    BTreeMap<String, Yaml>,
     causes:  BTreeMap<usize, PolyForYaml>,
@@ -50,7 +49,14 @@ struct SpecForYaml {
 }
 
 impl SpecForYaml {
-    fn add_ports(&mut self, node_ids: &[usize], as_source: bool, poly_yaml: &Yaml) -> Result<(), Box<dyn Error>> {
+    fn add_ports(
+        &mut self,
+        ctx: &Arc<Mutex<Context>>,
+        node_ids: &[usize],
+        as_source: bool,
+        poly_yaml: &Yaml
+    ) -> Result<(), Box<dyn Error>>
+    {
         assert!(!node_ids.is_empty());
 
         let mut poly_spec = PolyForYaml::new();
@@ -58,7 +64,7 @@ impl SpecForYaml {
         match poly_yaml {
             Yaml::String(other_name) => {
                 let (other_id, with_colink) =
-                    self.context.lock().unwrap().nodes.parse_link_spec(other_name.trim(), !as_source, true)?;
+                    ctx.lock().unwrap().nodes.parse_link_spec(other_name.trim(), !as_source, true)?;
 
                 poly_spec.vec_update(&vec![other_id]);
 
@@ -77,7 +83,7 @@ impl SpecForYaml {
                     match value {
                         Yaml::String(other_name) => {
                             let (other_id, with_colink) =
-                                self.context.lock().unwrap().nodes.parse_link_spec(other_name.trim(), !as_source, true)?;
+                                ctx.lock().unwrap().nodes.parse_link_spec(other_name.trim(), !as_source, true)?;
 
                             poly_spec.vec_update(&vec![other_id]);
 
@@ -96,7 +102,7 @@ impl SpecForYaml {
                             for value in table {
                                 if let Some(other_name) = value.as_str() {
                                     let (other_id, with_colink) =
-                                        self.context.lock().unwrap().nodes.parse_link_spec(other_name.trim(), !as_source, false)?;
+                                        ctx.lock().unwrap().nodes.parse_link_spec(other_name.trim(), !as_source, false)?;
 
                                     mono_spec.vec_update(&other_id);
 
@@ -140,14 +146,14 @@ impl SpecForYaml {
         Ok(())
     }
 
-    fn add_entry(&mut self, key: &Yaml, value: &Yaml) -> Result<(), Box<dyn Error>> {
+    fn add_entry(&mut self, ctx: &Arc<Mutex<Context>>, key: &Yaml, value: &Yaml) -> Result<(), Box<dyn Error>> {
         if let Some(key) = key.as_str() {
             let key = key.trim();
-            let port = self.context.lock().unwrap().nodes.parse_port_spec(key);
+            let port = ctx.lock().unwrap().nodes.parse_port_spec(key);
 
             if let Some((node_ids, as_source)) = port {
 
-                self.add_ports(&node_ids, as_source, value)
+                self.add_ports(ctx, &node_ids, as_source, value)
 
             } else if key == "name" {
                 if let Some(name) = value.as_str() {
@@ -172,9 +178,8 @@ impl SpecForYaml {
         }
     }
 
-    fn from_yaml(ctx: Arc<Mutex<Context>>, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
+    fn from_yaml(ctx: &Arc<Mutex<Context>>, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
         let mut spec = Self {
-            context: ctx,
             name:    Default::default(),
             meta:    Default::default(),
             causes:  Default::default(),
@@ -183,7 +188,7 @@ impl SpecForYaml {
 
         if let Yaml::Hash(ref dict) = yaml {
             for (key, value) in dict {
-                spec.add_entry(key, value)?;
+                spec.add_entry(ctx, key, value)?;
             }
             Ok(spec)
         } else {
@@ -191,7 +196,7 @@ impl SpecForYaml {
         }
     }
 
-    fn from_str(ctx: Arc<Mutex<Context>>, spec: &str) -> Result<Self, Box<dyn Error>> {
+    fn from_str(ctx: &Arc<Mutex<Context>>, spec: &str) -> Result<Self, Box<dyn Error>> {
         let docs = YamlLoader::load_from_str(spec.into())?;
 
         if docs.is_empty() {
@@ -211,8 +216,6 @@ impl SpecForYaml {
 // FIXME define specific iterators for return types below
 pub(crate) trait CESSpec: Debug {
     fn get_name(&self) -> &str;
-    fn get_causes_by_name(&self, node_name: &str) -> Option<&Vec<Vec<usize>>>;
-    fn get_effects_by_name(&self, node_name: &str) -> Option<&Vec<Vec<usize>>>;
     fn get_causes_by_id(&self, node_id: usize) -> Option<&Vec<Vec<usize>>>;
     fn get_effects_by_id(&self, node_id: usize) -> Option<&Vec<Vec<usize>>>;
     fn get_source_ids(&self) -> Vec<usize>;
@@ -222,18 +225,6 @@ pub(crate) trait CESSpec: Debug {
 impl CESSpec for SpecForYaml {
     fn get_name(&self) -> &str {
         self.name.as_str()
-    }
-
-    fn get_causes_by_name(&self, node_name: &str) -> Option<&Vec<Vec<usize>>> {
-        self.context.lock().unwrap()
-            .nodes.get_id(node_name)
-            .and_then(|ref id| self.causes.get(id))
-    }
-
-    fn get_effects_by_name(&self, node_name: &str) -> Option<&Vec<Vec<usize>>> {
-        self.context.lock().unwrap()
-            .nodes.get_id(node_name)
-            .and_then(|ref id| self.effects.get(id))
     }
 
     fn get_causes_by_id(&self, node_id: usize) -> Option<&Vec<Vec<usize>>> {
@@ -254,7 +245,7 @@ impl CESSpec for SpecForYaml {
 }
 
 pub(crate) fn spec_from_str(
-    ctx:  Arc<Mutex<Context>>,
+    ctx:  &Arc<Mutex<Context>>,
     spec: &str,
 ) -> Result<Box<dyn CESSpec>, Box<dyn Error>>
 {

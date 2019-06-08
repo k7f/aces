@@ -26,6 +26,7 @@ type Polynomial = Vec<Monomial>;
 
 #[derive(Debug)]
 pub struct CES {
+    context:     Arc<Mutex<Context>>,
     spec:        Box<dyn CESSpec>,
     causes:      BTreeMap<SourceID, Polynomial>,
     effects:     BTreeMap<SinkID, Polynomial>,
@@ -34,9 +35,11 @@ pub struct CES {
 }
 
 impl CES {
-    pub fn from_str(ctx: Arc<Mutex<Context>>, spec_str: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn from_str(ctx: &Arc<Mutex<Context>>, spec_str: &str) -> Result<Self, Box<dyn Error>> {
 
-        let spec = spec_from_str(ctx.clone(), spec_str)?;
+        let context = Arc::clone(ctx);
+
+        let spec = spec_from_str(ctx, spec_str)?;
 
         let mut causes: BTreeMap<_, _> = Default::default();
         let mut effects: BTreeMap<_, _> = Default::default();
@@ -156,10 +159,10 @@ impl CES {
             }
         }
 
-        Ok(Self { spec, causes, effects, links, is_coherent })
+        Ok(Self { context, spec, causes, effects, links, is_coherent })
     }
 
-    pub fn from_file<P: AsRef<Path>>(ctx: Arc<Mutex<Context>>, path: P) -> Result<Self, Box<dyn Error>> {
+    pub fn from_file<P: AsRef<Path>>(ctx: &Arc<Mutex<Context>>, path: P) -> Result<Self, Box<dyn Error>> {
         let mut fp = File::open(path)?;
         let mut spec = String::new();
         fp.read_to_string(&mut spec)?;
@@ -175,7 +178,7 @@ impl CES {
         self.is_coherent
     }
 
-    pub fn get_formula(&self, ctx: Arc<Mutex<Context>>) -> sat::CnfFormula {
+    pub fn get_formula(&self, ctx: &Arc<Mutex<Context>>) -> sat::CnfFormula {
         let mut formula = sat::CnfFormula::new();
 
         for (&port_id, poly) in self.causes.iter() {
