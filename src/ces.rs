@@ -52,7 +52,7 @@ impl CES {
 
             if let Some(spec_poly) = spec.get_effects_by_id(node_id) {
 
-                let node_name = ctx.nodes.get_name(node_id)
+                let node_name = ctx.get_node_name(node_id)
                     .ok_or(AcesError::NodeMissingForSource)?
                     .to_owned();
 
@@ -66,7 +66,7 @@ impl CES {
 
                     for &conode_id in spec_mono {
 
-                        let conode_name = ctx.nodes.get_name(conode_id)
+                        let conode_name = ctx.get_node_name(conode_id)
                             .ok_or(AcesError::NodeMissingForSink)?
                             .to_owned();
 
@@ -99,7 +99,7 @@ impl CES {
 
             if let Some(spec_poly) = spec.get_causes_by_id(node_id) {
 
-                let node_name = ctx.nodes.get_name(node_id)
+                let node_name = ctx.get_node_name(node_id)
                     .ok_or(AcesError::NodeMissingForSink)?
                     .to_owned();
 
@@ -113,7 +113,7 @@ impl CES {
 
                     for &conode_id in spec_mono {
 
-                        let conode_name = ctx.nodes.get_name(conode_id)
+                        let conode_name = ctx.get_node_name(conode_id)
                             .ok_or(AcesError::NodeMissingForSource)?
                             .to_owned();
 

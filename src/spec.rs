@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, sync::{Mutex, Arc}, fmt::Debug, error::Error};
+use regex::Regex;
 use yaml_rust::{Yaml, YamlLoader};
-use crate::{Context, error::AcesError};
+use crate::{Context, context::NameSpace, error::AcesError};
 
 trait UpdatableVec<V> {
     fn vec_update(&mut self, value: &V);
@@ -40,6 +41,101 @@ impl UpdatableMap<usize, PolyForYaml> for BTreeMap<usize, PolyForYaml> {
     }
 }
 
+fn do_take_id(
+    nodes: &mut NameSpace,
+    name: &str,
+    single_word_only: bool
+) -> Result<usize, Box<dyn Error>>
+{
+    if single_word_only && name.contains(char::is_whitespace) {
+        Err(Box::new(AcesError::SpecShortPolyWithWords))
+    } else {
+        Ok(nodes.take_id(name))
+    }
+}
+
+fn post_process_port_spec(
+    nodes: &mut NameSpace,
+    spec: &str,
+    as_source: bool,
+    single_word_only: bool,
+) -> Result<(Vec<usize>, bool), Box<dyn Error>> {
+    if spec.contains(',') {
+        let result: Result<Vec<usize>, Box<dyn Error>> = spec.split(',')
+            .map(|s| do_take_id(nodes, s.trim(), single_word_only))
+            .collect();
+        let ids = result?;
+
+        Ok((ids, as_source))
+    } else {
+        let id = do_take_id(nodes, spec.trim(), single_word_only)?;
+
+        Ok((vec![id], as_source))
+    }
+}
+
+fn do_parse_port_spec(
+    nodes: &mut NameSpace,
+    spec: &str,
+    single_word_only: bool
+) -> Result<Option<(Vec<usize>, bool)>, Box<dyn Error>>
+{
+    lazy_static! {
+        // Node name (untrimmed, unseparated) is any nonempty string not ending in '>' or '<'.
+        // Removal of leading and trailing whitespace is done in post processing,
+        // as well as comma-separation.
+        static ref SOURCE_RE: Regex = Regex::new(r"^(.*[^><])(>+|\s+effects)$").unwrap();
+        static ref SINK_RE: Regex = Regex::new(r"^(.*[^><])(<+|\s+causes)$").unwrap();
+    }
+    if let Some(cap) = SOURCE_RE.captures(spec) {
+        let result = post_process_port_spec(nodes, &cap[1], true, single_word_only)?;
+
+        Ok(Some(result))
+
+    } else if let Some(cap) = SINK_RE.captures(spec) {
+        let result = post_process_port_spec(nodes, &cap[1], false, single_word_only)?;
+
+        Ok(Some(result))
+    } else {
+        Ok(None)
+    }
+}
+
+fn parse_port_spec(ctx: &Arc<Mutex<Context>>, spec: &str) -> Option<(Vec<usize>, bool)> {
+    let ref mut nodes = ctx.lock().unwrap().nodes;
+
+    do_parse_port_spec(nodes, spec, false).unwrap_or_else(|_| {
+        unreachable!()
+    })
+}
+
+fn parse_link_spec(
+    ctx: &Arc<Mutex<Context>>,
+    spec: &str,
+    valid_as_source: bool,
+    single_word_only: bool,
+) -> Result<(usize, bool), Box<dyn Error>>
+{
+    let ref mut nodes = ctx.lock().unwrap().nodes;
+
+    let result = do_parse_port_spec(nodes, spec, single_word_only)?;
+    if let Some((ids, as_source)) = result {
+        if as_source == valid_as_source {
+            if ids.len() == 1 {
+                Ok((ids[0], true))
+            } else {
+                Err(Box::new(AcesError::SpecLinkList))
+            }
+        } else {
+            Err(Box::new(AcesError::SpecLinkReversed))
+        }
+    } else {
+        let id = do_take_id(nodes, spec, single_word_only)?;
+
+        Ok((id, false))
+    }
+}
+
 #[derive(Debug)]
 struct SpecForYaml {
     name:    String,
@@ -64,7 +160,7 @@ impl SpecForYaml {
         match poly_yaml {
             Yaml::String(other_name) => {
                 let (other_id, with_colink) =
-                    ctx.lock().unwrap().nodes.parse_link_spec(other_name.trim(), !as_source, true)?;
+                    parse_link_spec(ctx, other_name.trim(), !as_source, true)?;
 
                 poly_spec.vec_update(&vec![other_id]);
 
@@ -83,7 +179,7 @@ impl SpecForYaml {
                     match value {
                         Yaml::String(other_name) => {
                             let (other_id, with_colink) =
-                                ctx.lock().unwrap().nodes.parse_link_spec(other_name.trim(), !as_source, true)?;
+                                parse_link_spec(ctx, other_name.trim(), !as_source, true)?;
 
                             poly_spec.vec_update(&vec![other_id]);
 
@@ -102,7 +198,7 @@ impl SpecForYaml {
                             for value in table {
                                 if let Some(other_name) = value.as_str() {
                                     let (other_id, with_colink) =
-                                        ctx.lock().unwrap().nodes.parse_link_spec(other_name.trim(), !as_source, false)?;
+                                        parse_link_spec(ctx, other_name.trim(), !as_source, false)?;
 
                                     mono_spec.vec_update(&other_id);
 
@@ -149,7 +245,7 @@ impl SpecForYaml {
     fn add_entry(&mut self, ctx: &Arc<Mutex<Context>>, key: &Yaml, value: &Yaml) -> Result<(), Box<dyn Error>> {
         if let Some(key) = key.as_str() {
             let key = key.trim();
-            let port = ctx.lock().unwrap().nodes.parse_port_spec(key);
+            let port = parse_port_spec(ctx, key);
 
             if let Some((node_ids, as_source)) = port {
 

@@ -6,11 +6,13 @@ pub(crate) struct AtomSpace {
     atoms: Vec<Atom>,
 }
 
-impl AtomSpace {
-    pub(crate) fn new() -> Self {
+impl Default for AtomSpace {
+    fn default() -> Self {
         Self { atoms: vec![Atom::Bottom] }
     }
+}
 
+impl AtomSpace {
     pub(crate) fn take_atom(&mut self, mut atom: Atom) -> usize {
         for old_atom in self.atoms.iter() {
             if old_atom == &atom {

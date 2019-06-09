@@ -1,18 +1,43 @@
-use crate::nodes::NodeSpace;
+use std::collections::BTreeMap;
 use crate::atoms::{AtomSpace, Atom, Source, Sink, Link};
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
+pub(crate) struct NameSpace {
+    names: Vec<String>,
+    ids:   BTreeMap<String, usize>,  // FIXME borrow names
+}
+
+impl NameSpace {
+    pub(crate) fn get_name(&self, id: usize) -> Option<&str> {
+        self.names.get(id).map(|s| s.as_str())
+    }
+
+    pub(crate) fn get_id(&self, name: &str) -> Option<usize> {
+        self.ids.get(name).copied()
+    }
+
+    pub(crate) fn take_id(&mut self, name: &str) -> usize {
+        self.ids.get(name).copied().unwrap_or_else(|| {
+            let id = self.names.len();
+
+            self.names.push(name.to_string());
+            self.ids.insert(name.to_string(), id);
+
+            id
+        })
+    }
+}
+
+#[derive(Default, Debug)]
 pub struct Context {
-    pub(crate) nodes: NodeSpace,
-    pub(crate) atoms: AtomSpace,
+    pub(crate) globals: NameSpace,
+    pub(crate) nodes:   NameSpace,
+    pub(crate) atoms:   AtomSpace,
 }
 
 impl Context {
     pub fn new() -> Self {
-        Self {
-            nodes: NodeSpace::new(),
-            atoms: AtomSpace::new(),
-        }
+        Default::default()
     }
 
     pub fn get_node_name(&self, node_id: usize) -> Option<&str> {
