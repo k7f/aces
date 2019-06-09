@@ -1,6 +1,21 @@
 use std::{cmp, fmt};
 use crate::sat::{self, FromAtomID};
 
+#[derive(PartialEq, Debug)]
+enum Side {
+    Tx,
+    Rx,
+}
+
+impl fmt::Display for Side {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Side::Tx => write!(f, ">"),
+            Side::Rx => write!(f, "<"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct AtomSpace {
     atoms: Vec<Atom>,
@@ -27,12 +42,11 @@ impl AtomSpace {
         id
     }
 
-    pub(crate) fn take_source(&mut self, source: Source) -> usize {
-        self.take_atom(Atom::Source(source))
-    }
-
-    pub(crate) fn take_sink(&mut self, sink: Sink) -> usize {
-        self.take_atom(Atom::Sink(sink))
+    pub(crate) fn take_port(&mut self, port: Port) -> usize {
+        match port.side {
+            Side::Tx => self.take_atom(Atom::Tx(port)),
+            Side::Rx => self.take_atom(Atom::Rx(port)),
+        }
     }
 
     pub(crate) fn take_link(&mut self, link: Link) -> usize {
@@ -51,30 +65,18 @@ impl AtomSpace {
         self.atoms.get_mut(id)
     }
 
-    pub(crate) fn get_source(&self, id: usize) -> Option<&Source> {
+    pub(crate) fn get_port(&self, id: usize) -> Option<&Port> {
         match self.get_atom(id) {
-            Some(Atom::Source(a)) => Some(a),
+            Some(Atom::Tx(a)) => Some(a),
+            Some(Atom::Rx(a)) => Some(a),
             _ => None,
         }
     }
 
-    pub(crate) fn get_source_mut(&mut self, id: usize) -> Option<&mut Source> {
+    pub(crate) fn get_port_mut(&mut self, id: usize) -> Option<&mut Port> {
         match self.get_atom_mut(id) {
-            Some(Atom::Source(a)) => Some(a),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn get_sink(&self, id: usize) -> Option<&Sink> {
-        match self.get_atom(id) {
-            Some(Atom::Sink(a)) => Some(a),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn get_sink_mut(&mut self, id: usize) -> Option<&mut Sink> {
-        match self.get_atom_mut(id) {
-            Some(Atom::Sink(a)) => Some(a),
+            Some(Atom::Tx(a)) => Some(a),
+            Some(Atom::Rx(a)) => Some(a),
             _ => None,
         }
     }
@@ -96,8 +98,8 @@ impl AtomSpace {
 
 #[derive(Debug)]
 pub enum Atom {
-    Source(Source),
-    Sink(Sink),
+    Tx(Port),
+    Rx(Port),
     Link(Link),
     Bottom,
 }
@@ -106,8 +108,8 @@ impl Atom {
     fn set_id(&mut self, id: usize) {
         use Atom::*;
         let prev_id = match self {
-            Source(a) => &mut a.atom_id,
-            Sink(a) => &mut a.atom_id,
+            Tx(a) => &mut a.atom_id,
+            Rx(a) => &mut a.atom_id,
             Link(a) => &mut a.atom_id,
             Bottom => panic!("Attempt to set ID of the bottom atom"),
         };
@@ -122,8 +124,8 @@ impl Atom {
     pub fn get_id(&self) -> usize {
         use Atom::*;
         let id = match self {
-            Source(a) => a.atom_id,
-            Sink(a) => a.atom_id,
+            Tx(a) => a.atom_id,
+            Rx(a) => a.atom_id,
             Link(a) => a.atom_id,
             Bottom => panic!("Attempt to get ID of the bottom atom"),
         };
@@ -142,8 +144,8 @@ impl cmp::PartialEq for Atom {
     fn eq(&self, other: &Self) -> bool {
         use Atom::*;
         match self {
-            Source(a) => if let Source(o) = other { a == o } else { false },
-            Sink(a) => if let Sink(o) = other { a == o } else { false },
+            Tx(a) => if let Tx(o) = other { a == o } else { false },
+            Rx(a) => if let Rx(o) = other { a == o } else { false },
             Link(a) => if let Link(o) = other { a == o } else { false },
             Bottom => false, // irreflexive, hence no `impl cmp::Eq for Atom`
         }
@@ -154,8 +156,8 @@ impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Atom::*;
         match self {
-            Source(a) => a.fmt(f),
-            Sink(a) => a.fmt(f),
+            Tx(a) => a.fmt(f),
+            Rx(a) => a.fmt(f),
             Link(a) => a.fmt(f),
             Bottom => panic!("Attempt to display the bottom atom"),
         }
@@ -163,15 +165,24 @@ impl fmt::Display for Atom {
 }
 
 #[derive(Debug)]
-pub struct Source {
+pub struct Port {
+    side:      Side,
     atom_id:   usize,
     node_name: String,
     node_id:   usize,
 }
 
-impl Source {
-    pub fn new(node_name: String, node_id: usize) -> Self {
-        Self { atom_id: 0, node_name, node_id }
+impl Port {
+    pub fn new_tx(node_name: String, node_id: usize) -> Self {
+        Self { side: Side::Tx, atom_id: 0, node_name, node_id }
+    }
+
+    pub fn new_rx(node_name: String, node_id: usize) -> Self {
+        Self { side: Side::Rx, atom_id: 0, node_name, node_id }
+    }
+
+    pub fn is_tx(&self) -> bool {
+        self.side == Side::Tx
     }
 
     pub fn get_id(&self) -> usize {
@@ -191,92 +202,49 @@ impl Source {
     }
 }
 
-impl cmp::PartialEq for Source {
+impl cmp::PartialEq for Port {
     fn eq(&self, other: &Self) -> bool {
         self.node_id == other.node_id
     }
 }
 
-impl cmp::Eq for Source {}
+impl cmp::Eq for Port {}
 
-impl fmt::Display for Source {
+impl fmt::Display for Port {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{} >]", &self.node_name)
-    }
-}
-
-#[derive(Debug)]
-pub struct Sink {
-    atom_id:   usize,
-    node_name: String,
-    node_id:   usize,
-}
-
-impl Sink {
-    pub fn new(node_name: String, node_id: usize) -> Self {
-        Self { atom_id: 0, node_name, node_id }
-    }
-
-    pub fn get_id(&self) -> usize {
-        self.atom_id
-    }
-
-    pub fn get_node_name(&self) -> &str {
-        self.node_name.as_str()
-    }
-
-    pub fn get_node_id(&self) -> usize {
-        self.node_id
-    }
-
-    pub fn as_sat_literal(&self, negated: bool) -> sat::Lit {
-        sat::Lit::from_atom_id(self.atom_id, negated)
-    }
-}
-
-impl cmp::PartialEq for Sink {
-    fn eq(&self, other: &Self) -> bool {
-        self.node_id == other.node_id
-    }
-}
-
-impl cmp::Eq for Sink {}
-
-impl fmt::Display for Sink {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{} <]", &self.node_name)
+        write!(f, "[{} {}]", &self.node_name, self.side)
     }
 }
 
 #[derive(Debug)]
 pub struct Link {
-    atom_id:          usize,
-    source_atom_id:   usize,
-    source_node_name: String,
-    source_node_id:   usize,
-    sink_atom_id:     usize,
-    sink_node_name:   String,
-    sink_node_id:     usize,
+    atom_id:      usize,
+    tx_atom_id:   usize,
+    tx_node_name: String,
+    tx_node_id:   usize,
+    rx_atom_id:   usize,
+    rx_node_name: String,
+    rx_node_id:   usize,
 }
 
 impl Link {
     pub fn new(
-        source_atom_id:   usize,
-        source_node_name: String,
-        source_node_id:   usize,
-        sink_atom_id:     usize,
-        sink_node_name:   String,
-        sink_node_id:     usize,
+        tx_atom_id:   usize,
+        tx_node_name: String,
+        tx_node_id:   usize,
+        rx_atom_id:   usize,
+        rx_node_name: String,
+        rx_node_id:   usize,
     ) -> Self
     {
         Self {
             atom_id: 0,
-            source_atom_id,
-            source_node_name,
-            source_node_id,
-            sink_atom_id,
-            sink_node_name,
-            sink_node_id,
+            tx_atom_id,
+            tx_node_name,
+            tx_node_id,
+            rx_atom_id,
+            rx_node_name,
+            rx_node_id,
         }
     }
 
@@ -284,28 +252,28 @@ impl Link {
         self.atom_id
     }
 
-    pub fn get_source_atom_id(&self) -> usize {
-        self.source_atom_id
+    pub fn get_tx_atom_id(&self) -> usize {
+        self.tx_atom_id
     }
 
-    pub fn get_source_node_name(&self) -> &str {
-        self.source_node_name.as_str()
+    pub fn get_tx_node_name(&self) -> &str {
+        self.tx_node_name.as_str()
     }
 
-    pub fn get_source_node_id(&self) -> usize {
-        self.source_node_id
+    pub fn get_tx_node_id(&self) -> usize {
+        self.tx_node_id
     }
 
-    pub fn get_sink_atom_id(&self) -> usize {
-        self.sink_atom_id
+    pub fn get_rx_atom_id(&self) -> usize {
+        self.rx_atom_id
     }
 
-    pub fn get_sink_node_name(&self) -> &str {
-        self.sink_node_name.as_str()
+    pub fn get_rx_node_name(&self) -> &str {
+        self.rx_node_name.as_str()
     }
 
-    pub fn get_sink_node_id(&self) -> usize {
-        self.sink_node_id
+    pub fn get_rx_node_id(&self) -> usize {
+        self.rx_node_id
     }
 
     pub fn as_sat_literal(&self, negated: bool) -> sat::Lit {
@@ -315,7 +283,7 @@ impl Link {
 
 impl cmp::PartialEq for Link {
     fn eq(&self, other: &Self) -> bool {
-        self.source_node_id == other.source_node_id && self.sink_node_id == other.sink_node_id
+        self.tx_node_id == other.tx_node_id && self.rx_node_id == other.rx_node_id
     }
 }
 
@@ -323,6 +291,6 @@ impl cmp::Eq for Link {}
 
 impl fmt::Display for Link {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "({} > {})", &self.source_node_name, &self.sink_node_name)
+        write!(f, "({} > {})", &self.tx_node_name, &self.rx_node_name)
     }
 }

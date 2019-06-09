@@ -10,5 +10,5 @@ pub mod sat;
 pub mod cli;
 
 pub use context::Context;
-pub use atoms::{Atom, Source, Sink, Link};
+pub use atoms::{Atom, Port, Link};
 pub use ces::CES;

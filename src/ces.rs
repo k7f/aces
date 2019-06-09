@@ -9,8 +9,7 @@ use std::{
 
 use crate::{
     Context,
-    Source,
-    Sink,
+    Port,
     Link,
     spec::{CESSpec, spec_from_str},
     sat::{self, ExtendFormula, FromAtomID, AddPolynomial},
@@ -56,7 +55,7 @@ impl CES {
                     .ok_or(AcesError::NodeMissingForSource)?
                     .to_owned();
 
-                let atom_id = ctx.atoms.take_source(Source::new(node_name.clone(), node_id));
+                let atom_id = ctx.atoms.take_port(Port::new_tx(node_name.clone(), node_id));
 
                 let mut poly = Polynomial::new();
 
@@ -70,7 +69,7 @@ impl CES {
                             .ok_or(AcesError::NodeMissingForSink)?
                             .to_owned();
 
-                        let coatom_id = ctx.atoms.take_sink(Sink::new(conode_name.clone(), conode_id));
+                        let coatom_id = ctx.atoms.take_port(Port::new_rx(conode_name.clone(), conode_id));
                         let link_id = ctx.atoms.take_link(
                             Link::new(
                                 atom_id,
@@ -103,7 +102,7 @@ impl CES {
                     .ok_or(AcesError::NodeMissingForSink)?
                     .to_owned();
 
-                let atom_id = ctx.atoms.take_sink(Sink::new(node_name.clone(), node_id));
+                let atom_id = ctx.atoms.take_port(Port::new_rx(node_name.clone(), node_id));
 
                 let mut poly = Polynomial::new();
 
@@ -117,7 +116,7 @@ impl CES {
                             .ok_or(AcesError::NodeMissingForSource)?
                             .to_owned();
 
-                        let coatom_id = ctx.atoms.take_source(Source::new(conode_name.clone(), conode_id));
+                        let coatom_id = ctx.atoms.take_port(Port::new_tx(conode_name.clone(), conode_id));
                         let link_id = ctx.atoms.take_link(
                             Link::new(
                                 coatom_id,
@@ -184,14 +183,14 @@ impl CES {
         for (&port_id, poly) in self.causes.iter() {
             let ctx = ctx.lock().unwrap();
 
-            if let Some(port) = ctx.get_sink(port_id) {
+            if let Some(port) = ctx.get_port(port_id) {
 
                 let port_lit = sat::Lit::from_atom_id(port_id, true);
                 let node_id = port.get_node_id();
 
                 // FIXME use a caching method get_antiport()
                 for &antiport_id in self.effects.keys() {
-                    if let Some(antiport) = ctx.get_source(antiport_id) {
+                    if let Some(antiport) = ctx.get_port(antiport_id) {
                         if antiport.get_node_id() == node_id {
                             let antiport_lit = sat::Lit::from_atom_id(antiport_id, true);
                             let clause = &[port_lit, antiport_lit];

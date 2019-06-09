@@ -47,10 +47,12 @@ impl Command for Describe {
                         for lit in model {
                             if lit.is_positive() {
                                 let (atom_id, _) = lit.into_atom_id();
-                                if let Some(source) = ctx.get_source(atom_id) {
-                                    solution.0.push(source);
-                                } else if let Some(sink) = ctx.get_sink(atom_id) {
-                                    solution.1.push(sink);
+                                if let Some(port) = ctx.get_port(atom_id) {
+                                    if port.is_tx() {
+                                        solution.0.push(port);
+                                    } else {
+                                        solution.1.push(port);
+                                    }
                                 }
                             }
                         }
