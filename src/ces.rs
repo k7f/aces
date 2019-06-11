@@ -17,23 +17,23 @@ use crate::{
 
 #[derive(Debug)]
 pub struct CES {
-    context:     Arc<Mutex<Context>>,
-    spec:        Option<Box<dyn CESSpec>>,
-    causes:      BTreeMap<TxID, Polynomial>,
-    effects:     BTreeMap<RxID, Polynomial>,
-    links:       BTreeMap<LinkID, Option<Face>>,
-    is_coherent: bool,
+    context: Arc<Mutex<Context>>,
+    spec:    Option<Box<dyn CESSpec>>,
+    causes:  BTreeMap<TxID, Polynomial>,
+    effects: BTreeMap<RxID, Polynomial>,
+    links:   BTreeMap<LinkID, Option<Face>>,
+    num_broken_links: u32,
 }
 
 impl CES {
     fn new(ctx: &Arc<Mutex<Context>>) -> Self {
         Self {
-            context:     Arc::clone(ctx),
-            spec:        None,
-            causes:      Default::default(),
-            effects:     Default::default(),
-            links:       Default::default(),
-            is_coherent: true,
+            context: Arc::clone(ctx),
+            spec:    Default::default(),
+            causes:  Default::default(),
+            effects: Default::default(),
+            links:   Default::default(),
+            num_broken_links: 0,
         }
     }
 
@@ -91,22 +91,44 @@ impl CES {
 
                 match face {
                     Face::Tx => {
-                        // link occurs in effects (but its occurence in causes is missing)
-                        self.links.insert(link_id, Some(Face::Tx));
+                        if let Some(what_missing) = self.links.get_mut(&link_id) {
+                            match *what_missing {
+                                Some(Face::Tx) => {
+                                    // Link occurs in causes and effects:
+                                    // nothing misses, link not broken.
+                                    *what_missing = None;
+                                    self.num_broken_links -= 1;
+                                }
+                                _ => {
+                                    // Link reoccurrence in effects.
+                                }
+                            }
+                        } else {
+                            // Link occurs in effects, but its occurence
+                            // in causes is missing: link is broken.
+                            self.links.insert(link_id, Some(Face::Rx));
+                            self.num_broken_links += 1;
+                        }
                     }
 
                     Face::Rx => {
                         if let Some(what_missing) = self.links.get_mut(&link_id) {
-                            if *what_missing == Some(Face::Tx) {
-                                // link occurs in causes and effects (nothing misses)
-                                *what_missing = None;
+                            match *what_missing {
+                                Some(Face::Rx) => {
+                                    // Link occurs in causes and effects:
+                                    // nothing misses, link not broken.
+                                    *what_missing = None;
+                                    self.num_broken_links -= 1;
+                                }
+                                _ => {
+                                    // Link reoccurrence in causes.
+                                }
                             }
                         } else {
-                            // link occurs in causes (but its occurence in effects is missing)
-                            self.links.insert(link_id, Some(Face::Rx));
-
-                            // FIXME this works, provided we've already seen all effect polynomials...
-                            self.is_coherent = false;
+                            // Link occurs in causes, but its occurence
+                            // in effects is missing: link is broken.
+                            self.links.insert(link_id, Some(Face::Tx));
+                            self.num_broken_links += 1;
                         }
                     }
                 }
@@ -130,28 +152,12 @@ impl CES {
 
         let spec = spec_from_str(ctx, raw_spec)?;
 
-        println!("SPEC {:?}", ces.spec);
-
         for node_id in spec.get_carrier_ids() {
-            if let Some(ref spec_poly) = spec.get_effects_by_id(node_id) {
-                println!("add effect polynomial for {}", node_id);
-                ces.add_polynomial(node_id, Face::Tx, spec_poly)?;
-            }
-        }
-
-        for node_id in spec.get_carrier_ids() {
-            println!("add cause polynomial for {}", node_id);
             if let Some(ref spec_poly) = spec.get_causes_by_id(node_id) {
                 ces.add_polynomial(node_id, Face::Rx, spec_poly)?;
             }
-        }
-
-        if ces.is_coherent {
-            for what_missing in ces.links.values() {
-                if what_missing.is_some() {
-                    ces.is_coherent = false;
-                    break
-                }
+            if let Some(ref spec_poly) = spec.get_effects_by_id(node_id) {
+                ces.add_polynomial(node_id, Face::Tx, spec_poly)?;
             }
         }
 
@@ -176,7 +182,7 @@ impl CES {
     }
 
     pub fn is_coherent(&self) -> bool {
-        self.is_coherent
+        self.num_broken_links == 0
     }
 
     pub fn get_formula(&self, ctx: &Arc<Mutex<Context>>) -> sat::CnfFormula {
