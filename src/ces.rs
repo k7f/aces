@@ -8,23 +8,17 @@ use std::{
 };
 
 use crate::{
-    Context, Port, Face, Link,
+    Context, Port, Face, Link, Monomial, Polynomial,
     spec::{CESSpec, spec_from_str},
+    atom::{TxID, RxID, LinkID},
     sat::{self, ExtendFormula, FromAtomID, AddPolynomial},
     error::AcesError,
 };
 
-type TxID = usize;
-type RxID = usize;
-type LinkID = usize;
-
-type Monomial = Vec<LinkID>;
-type Polynomial = Vec<Monomial>;
-
 #[derive(Debug)]
 pub struct CES {
     context:     Arc<Mutex<Context>>,
-    spec:        Box<dyn CESSpec>,
+    spec:        Option<Box<dyn CESSpec>>,
     causes:      BTreeMap<TxID, Polynomial>,
     effects:     BTreeMap<RxID, Polynomial>,
     links:       BTreeMap<LinkID, Option<Face>>,
@@ -35,7 +29,7 @@ impl CES {
     fn new(ctx: &Arc<Mutex<Context>>) -> Self {
         Self {
             context:     Arc::clone(ctx),
-            spec:        Box::new(String::new()),
+            spec:        None,
             causes:      Default::default(),
             effects:     Default::default(),
             links:       Default::default(),
@@ -117,9 +111,9 @@ impl CES {
                     }
                 }
 
-                mono.push(link_id);
+                mono.insert(link_id);
             }
-            poly.push(mono);
+            poly.add_monomial(mono);
         }
 
         if face == Face::Tx {
@@ -131,18 +125,22 @@ impl CES {
         Ok(())
     }
 
-    pub fn from_str(ctx: &Arc<Mutex<Context>>, spec_str: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn from_str(ctx: &Arc<Mutex<Context>>, raw_spec: &str) -> Result<Self, Box<dyn Error>> {
         let mut ces = CES::new(ctx);
 
-        let spec = spec_from_str(ctx, spec_str)?;
+        let spec = spec_from_str(ctx, raw_spec)?;
 
-        for node_id in ces.spec.get_carrier_ids() {
+        println!("SPEC {:?}", ces.spec);
+
+        for node_id in spec.get_carrier_ids() {
             if let Some(ref spec_poly) = spec.get_effects_by_id(node_id) {
+                println!("add effect polynomial for {}", node_id);
                 ces.add_polynomial(node_id, Face::Tx, spec_poly)?;
             }
         }
 
-        for node_id in ces.spec.get_carrier_ids() {
+        for node_id in spec.get_carrier_ids() {
+            println!("add cause polynomial for {}", node_id);
             if let Some(ref spec_poly) = spec.get_causes_by_id(node_id) {
                 ces.add_polynomial(node_id, Face::Rx, spec_poly)?;
             }
@@ -157,21 +155,24 @@ impl CES {
             }
         }
 
-        ces.spec = spec;
-
+        ces.spec = Some(spec);
         Ok(ces)
     }
 
     pub fn from_file<P: AsRef<Path>>(ctx: &Arc<Mutex<Context>>, path: P) -> Result<Self, Box<dyn Error>> {
         let mut fp = File::open(path)?;
-        let mut spec = String::new();
-        fp.read_to_string(&mut spec)?;
+        let mut raw_spec = String::new();
+        fp.read_to_string(&mut raw_spec)?;
 
-        Self::from_str(ctx, &spec)
+        Self::from_str(ctx, &raw_spec)
     }
 
-    pub fn get_name(&self) -> &str {
-        self.spec.get_name()
+    pub fn get_name(&self) -> Option<&str> {
+        if let Some(ref spec) = self.spec {
+            spec.get_name()
+        } else {
+            None
+        }
     }
 
     pub fn is_coherent(&self) -> bool {

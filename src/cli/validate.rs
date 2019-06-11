@@ -47,7 +47,8 @@ impl Command for Validate {
 
                                             eprintln!("!!! Structural error in file '{}'...", path.display());
 
-                                            let err = AcesError::CESIsIncoherent(ces.get_name().to_owned());
+                                            let err = AcesError::CESIsIncoherent(
+                                                ces.get_name().unwrap_or("anonymous").to_owned());
 
                                             if do_abort {
                                                 return Err(Box::new(err))

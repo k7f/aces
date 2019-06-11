@@ -1,4 +1,6 @@
-use std::{collections::BTreeSet, convert::TryInto};
+use std::convert::TryInto;
+use crate::Polynomial;
+
 pub use varisat::{Solver, CnfFormula, ExtendFormula, Var, Lit};
 
 pub(crate) trait FromAtomID {
@@ -23,26 +25,17 @@ impl IntoAtomID for Lit {
 }
 
 pub(crate) trait AddPolynomial {
-    fn add_polynomial(&mut self, port_lit: Lit, poly: &Vec<Vec<usize>>);
+    fn add_polynomial(&mut self, port_lit: Lit, poly: &Polynomial);
 }
 
 impl AddPolynomial for CnfFormula {
-    fn add_polynomial(&mut self, port_lit: Lit, poly: &Vec<Vec<usize>>) {
-        // FIXME in-poly, updated during construction
-        let mut all_links = BTreeSet::new();
-        for mono in poly {
-            for &link_id in mono {
-                all_links.insert(link_id);
-            }
-        }
-        
-        for mono in poly {
-            let mono_links: BTreeSet<_> = mono.iter().map(|&id| id).collect();
-            let other_links = all_links.difference(&mono_links);
+    fn add_polynomial(&mut self, port_lit: Lit, poly: &Polynomial) {
+        for (mono_links, other_links) in poly.iter() {
+
             let clause = mono_links.iter()
                 .map(|&id| Lit::from_atom_id(id, false))
                 .chain(
-                    other_links
+                    other_links.iter()
                         .map(|&id| Lit::from_atom_id(id, true)));
             let mut clause: Vec<_> = clause.collect();
             clause.push(port_lit);

@@ -1,8 +1,13 @@
 use std::{cmp, fmt};
 use crate::sat::{self, FromAtomID};
 
+// FIXME replace with wrapping structs
+pub(crate) type TxID = usize;
+pub(crate) type RxID = usize;
+pub(crate) type LinkID = usize;
+
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub(crate) enum Face {
+pub enum Face {
     Tx,
     Rx,
 }

@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use crate::atoms::{AtomSpace, Atom, Port, Link};
+use crate::atom::{AtomSpace, Atom, Port, Link};
 
 #[derive(Default, Debug)]
 pub(crate) struct NameSpace {

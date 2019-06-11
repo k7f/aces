@@ -26,7 +26,8 @@ impl Command for Describe {
         println!("{:?}", ces);
 
         if !ces.is_coherent() {
-            Err(Box::new(AcesError::CESIsIncoherent(ces.get_name().to_owned())))
+            Err(Box::new(AcesError::CESIsIncoherent(
+                ces.get_name().unwrap_or("anonymous").to_owned())))
         } else {
             let formula = ces.get_formula(ctx);
             println!("\nCNF: {:?}", formula);

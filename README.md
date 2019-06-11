@@ -9,7 +9,7 @@ Structures](https://link.springer.com/book/10.1007/978-3-030-20461-7).
 
 ## Features
 
-Building CE-structures from `.ces` files, checking link coherence...
+Building c-e structures from `.ces` files, checking link coherence...
 
 ## Prerequisites
 

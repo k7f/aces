@@ -1,8 +1,9 @@
 #[macro_use]
 extern crate lazy_static;
 
-mod atoms;
 mod context;
+mod atom;
+mod polynomial;
 mod ces;
 mod spec;
 mod error;
@@ -10,7 +11,6 @@ pub mod sat;
 pub mod cli;
 
 pub use context::Context;
-pub use atoms::{Atom, Port, Link};
+pub use atom::{Atom, Port, Face, Link};
+pub use polynomial::{Monomial, Polynomial};
 pub use ces::CES;
-
-pub(crate) use atoms::Face;

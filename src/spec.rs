@@ -138,7 +138,7 @@ fn parse_link_spec(
 
 #[derive(Default, Debug)]
 struct SpecForYaml {
-    name:    String,
+    name:    Option<String>,
     meta:    BTreeMap<String, Yaml>,
     causes:  BTreeMap<usize, PolyForYaml>,
     effects: BTreeMap<usize, PolyForYaml>,
@@ -254,8 +254,8 @@ impl SpecForYaml {
 
             } else if key == "name" {
                 if let Some(name) = value.as_str() {
-                    if self.name.is_empty() {
-                        self.name.push_str(name.trim());
+                    if self.name.is_none() {
+                        self.name = Some(name.trim().to_owned());
 
                         Ok(())
                     } else {
@@ -294,8 +294,8 @@ impl SpecForYaml {
         }
     }
 
-    fn from_str(ctx: &Arc<Mutex<Context>>, spec: &str) -> Result<Self, Box<dyn Error>> {
-        let docs = YamlLoader::load_from_str(spec.into())?;
+    fn from_str(ctx: &Arc<Mutex<Context>>, raw_spec: &str) -> Result<Self, Box<dyn Error>> {
+        let docs = YamlLoader::load_from_str(raw_spec.into())?;
 
         if docs.is_empty() {
             Err(Box::new(AcesError::SpecEmpty))
@@ -311,33 +311,46 @@ impl SpecForYaml {
 
 // FIXME define specific iterators for return types below
 pub(crate) trait CESSpec: Debug {
-    fn get_name(&self) -> &str;
+    fn get_raw(&self) -> Option<&str>;
+    fn get_name(&self) -> Option<&str>;
     fn get_carrier_ids(&self) -> Vec<usize>;
     fn get_causes_by_id(&self, node_id: usize) -> Option<&Vec<Vec<usize>>>;
     fn get_effects_by_id(&self, node_id: usize) -> Option<&Vec<Vec<usize>>>;
 }
 
 impl CESSpec for String {
-    fn get_name(&self) -> &str {
-        self
+    fn get_raw(&self) -> Option<&str> {
+        Some(self)
+    }
+
+    fn get_name(&self) -> Option<&str> {
+        panic!("Attempt to access a phantom specification.")
     }
 
     fn get_carrier_ids(&self) -> Vec<usize> {
-        Vec::new()
+        panic!("Attempt to access a phantom specification.")
     }
 
     fn get_causes_by_id(&self, _node_id: usize) -> Option<&Vec<Vec<usize>>> {
-        None
+        panic!("Attempt to access a phantom specification.")
     }
 
     fn get_effects_by_id(&self, _node_id: usize) -> Option<&Vec<Vec<usize>>> {
-        None
+        panic!("Attempt to access a phantom specification.")
     }
 }
 
 impl CESSpec for SpecForYaml {
-    fn get_name(&self) -> &str {
-        self.name.as_str()
+    fn get_raw(&self) -> Option<&str> {
+        None  // FIXME
+    }
+
+    fn get_name(&self) -> Option<&str> {
+        if let Some (ref name) = self.name {
+            Some(name.as_ref())
+        } else {
+            None
+        }
     }
 
     fn get_carrier_ids(&self) -> Vec<usize> {
@@ -355,9 +368,9 @@ impl CESSpec for SpecForYaml {
 
 pub(crate) fn spec_from_str(
     ctx:  &Arc<Mutex<Context>>,
-    spec: &str,
+    raw_spec: &str,
 ) -> Result<Box<dyn CESSpec>, Box<dyn Error>>
 {
     // FIXME infer the format of spec string: yaml, sexpr, ...
-    Ok(Box::new(SpecForYaml::from_str(ctx, spec)?))
+    Ok(Box::new(SpecForYaml::from_str(ctx, raw_spec)?))
 }
