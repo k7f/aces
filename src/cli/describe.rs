@@ -1,5 +1,5 @@
 use std::{sync::{Mutex, Arc}, error::Error};
-use crate::{Context, CES, Face, sat::{self, IntoAtomID}, error::AcesError};
+use crate::{Context, CES, Face, sat::{self, CESLit}, error::AcesError};
 use super::{App, Command};
 
 pub struct Describe;
@@ -29,7 +29,7 @@ impl Command for Describe {
             Err(Box::new(AcesError::CESIsIncoherent(
                 ces.get_name().unwrap_or("anonymous").to_owned())))
         } else {
-            let formula = ces.get_formula(ctx);
+            let formula = ces.get_formula();
             println!("\nCNF: {:?}", formula);
 
             let mut solver = sat::Solver::new();

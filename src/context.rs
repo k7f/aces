@@ -40,6 +40,12 @@ impl Context {
         Default::default()
     }
 
+    // Nodes
+
+    pub fn take_node_id(&mut self, node_name: &str) -> usize {
+        self.nodes.take_id(node_name)
+    }
+
     pub fn get_node_name(&self, node_id: usize) -> Option<&str> {
         self.nodes.get_name(node_id)
     }
@@ -48,9 +54,7 @@ impl Context {
         self.nodes.get_id(node_name)
     }
 
-    pub fn take_node_id(&mut self, node_name: &str) -> usize {
-        self.nodes.take_id(node_name)
-    }
+    // Atoms
 
     pub fn take_atom(&mut self, atom: Atom) -> usize {
         self.atoms.take_atom(atom)
@@ -86,5 +90,9 @@ impl Context {
 
     pub fn get_link_mut(&mut self, atom_id: usize) -> Option<&mut Link> {
         self.atoms.get_link_mut(atom_id)
+    }
+
+    pub fn get_antiport_id(&self, port_id: usize) -> Option<usize> {
+        self.atoms.get_antiport_id(port_id)
     }
 }

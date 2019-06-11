@@ -1,7 +1,8 @@
-use std::{cmp, fmt};
-use crate::sat::{self, FromAtomID};
+use std::{cmp, fmt, collections::BTreeMap};
+use crate::sat::{self, CESLit};
 
 // FIXME replace with wrapping structs
+pub(crate) type NodeID = usize;
 pub(crate) type TxID = usize;
 pub(crate) type RxID = usize;
 pub(crate) type LinkID = usize;
@@ -34,12 +35,20 @@ impl fmt::Display for Face {
 
 #[derive(Debug)]
 pub(crate) struct AtomSpace {
-    atoms: Vec<Atom>,
+    atoms:          Vec<Atom>,
+    source_nodes:   BTreeMap<NodeID, TxID>,
+    sink_nodes:     BTreeMap<NodeID, RxID>,
+    internal_nodes: BTreeMap<NodeID, (TxID, RxID)>,
 }
 
 impl Default for AtomSpace {
     fn default() -> Self {
-        Self { atoms: vec![Atom::Bottom] }
+        Self {
+            atoms:          vec![Atom::Bottom],
+            source_nodes:   Default::default(),
+            sink_nodes:     Default::default(),
+            internal_nodes: Default::default(),
+        }
     }
 }
 
@@ -59,9 +68,33 @@ impl AtomSpace {
     }
 
     pub(crate) fn take_port(&mut self, port: Port) -> usize {
+        let node_id = port.node_id;
+
         match port.face {
-            Face::Tx => self.take_atom(Atom::Tx(port)),
-            Face::Rx => self.take_atom(Atom::Rx(port)),
+            Face::Tx => {
+                let port_id = self.take_atom(Atom::Tx(port));
+
+                if let Some(&rx_id) = self.sink_nodes.get(&node_id) {
+                    self.sink_nodes.remove(&node_id);
+                    self.internal_nodes.insert(node_id, (port_id, rx_id));
+                } else {
+                    self.source_nodes.insert(node_id, port_id);
+                }
+
+                port_id
+            }
+            Face::Rx => {
+                let port_id = self.take_atom(Atom::Rx(port));
+
+                if let Some(&tx_id) = self.source_nodes.get(&node_id) {
+                    self.source_nodes.remove(&node_id);
+                    self.internal_nodes.insert(node_id, (tx_id, port_id));
+                } else {
+                    self.sink_nodes.insert(node_id, port_id);
+                }
+
+                port_id
+            }
         }
     }
 
@@ -109,6 +142,31 @@ impl AtomSpace {
             Some(Atom::Link(a)) => Some(a),
             _ => None,
         }
+    }
+
+    pub fn get_antiport_id(&self, port_id: usize) -> Option<usize> {
+        if let Some(port) = self.get_port(port_id) {
+            if let Some(&(tx_id, rx_id)) = self.internal_nodes.get(&port.node_id) {
+                match port.face {
+                    Face::Tx => {
+                        if tx_id == port_id {
+                            return Some(rx_id)
+                        } else {
+                            panic!("Corrupt atom space")
+                        }
+                    }
+                    Face::Rx => {
+                        if rx_id == port_id {
+                            return Some(tx_id)
+                        } else {
+                            panic!("Corrupt atom space")
+                        }
+                    }
+                }
+            }
+        }
+
+        None
     }
 }
 

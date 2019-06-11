@@ -11,7 +11,7 @@ use crate::{
     Context, Port, Face, Link, Monomial, Polynomial,
     spec::{CESSpec, spec_from_str},
     atom::{TxID, RxID, LinkID},
-    sat::{self, ExtendFormula, FromAtomID, AddPolynomial},
+    sat::{self, CESLit, CESFormula},
     error::AcesError,
 };
 
@@ -185,33 +185,20 @@ impl CES {
         self.num_broken_links == 0
     }
 
-    pub fn get_formula(&self, ctx: &Arc<Mutex<Context>>) -> sat::CnfFormula {
+    pub fn get_formula(&self) -> sat::CnfFormula {
         let mut formula = sat::CnfFormula::new();
 
         for (&port_id, poly) in self.causes.iter() {
-            let ctx = ctx.lock().unwrap();
+            let port_lit = sat::Lit::from_atom_id(port_id, true);
 
-            if let Some(port) = ctx.get_port(port_id) {
+            formula.add_polynomial(port_lit, poly);
 
-                let port_lit = sat::Lit::from_atom_id(port_id, true);
-                let node_id = port.get_node_id();
+            let ctx = self.context.lock().unwrap();
 
-                // FIXME use a caching method get_antiport()
-                for &antiport_id in self.effects.keys() {
-                    if let Some(antiport) = ctx.get_port(antiport_id) {
-                        if antiport.get_node_id() == node_id {
-                            let antiport_lit = sat::Lit::from_atom_id(antiport_id, true);
-                            let clause = &[port_lit, antiport_lit];
+            if let Some(antiport_id) = ctx.get_antiport_id(port_id) {
+                let antiport_lit = sat::Lit::from_atom_id(antiport_id, true);
 
-                            println!("add antiport clause {:?}", clause);
-                            formula.add_clause(clause);
-
-                            break
-                        }
-                    }
-                }
-
-                formula.add_polynomial(port_lit, poly);
+                formula.add_internal_node(port_lit, antiport_lit);
             }
         }
 
