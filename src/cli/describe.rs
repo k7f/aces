@@ -1,5 +1,5 @@
 use std::{sync::{Mutex, Arc}, error::Error};
-use crate::{Context, CES, sat::{self, IntoAtomID}, error::AcesError};
+use crate::{Context, CES, Face, sat::{self, IntoAtomID}, error::AcesError};
 use super::{App, Command};
 
 pub struct Describe;
@@ -48,7 +48,7 @@ impl Command for Describe {
                             if lit.is_positive() {
                                 let (atom_id, _) = lit.into_atom_id();
                                 if let Some(port) = ctx.get_port(atom_id) {
-                                    if port.is_tx() {
+                                    if port.get_face() == Face::Tx {
                                         solution.0.push(port);
                                     } else {
                                         solution.1.push(port);

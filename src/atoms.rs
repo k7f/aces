@@ -1,17 +1,28 @@
 use std::{cmp, fmt};
 use crate::sat::{self, FromAtomID};
 
-#[derive(PartialEq, Debug)]
-enum Side {
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) enum Face {
     Tx,
     Rx,
 }
 
-impl fmt::Display for Side {
+impl std::ops::Not for Face {
+    type Output = Face;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Face::Tx => Face::Rx,
+            Face::Rx => Face::Tx,
+        }
+    }
+}
+
+impl fmt::Display for Face {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Side::Tx => write!(f, ">"),
-            Side::Rx => write!(f, "<"),
+            Face::Tx => write!(f, ">"),
+            Face::Rx => write!(f, "<"),
         }
     }
 }
@@ -43,9 +54,9 @@ impl AtomSpace {
     }
 
     pub(crate) fn take_port(&mut self, port: Port) -> usize {
-        match port.side {
-            Side::Tx => self.take_atom(Atom::Tx(port)),
-            Side::Rx => self.take_atom(Atom::Rx(port)),
+        match port.face {
+            Face::Tx => self.take_atom(Atom::Tx(port)),
+            Face::Rx => self.take_atom(Atom::Rx(port)),
         }
     }
 
@@ -166,23 +177,19 @@ impl fmt::Display for Atom {
 
 #[derive(Debug)]
 pub struct Port {
-    side:      Side,
+    face:      Face,
     atom_id:   usize,
     node_name: String,
     node_id:   usize,
 }
 
 impl Port {
-    pub fn new_tx(node_name: String, node_id: usize) -> Self {
-        Self { side: Side::Tx, atom_id: 0, node_name, node_id }
+    pub(crate) fn new(face: Face, node_name: String, node_id: usize) -> Self {
+        Self { face: face, atom_id: 0, node_name, node_id }
     }
 
-    pub fn new_rx(node_name: String, node_id: usize) -> Self {
-        Self { side: Side::Rx, atom_id: 0, node_name, node_id }
-    }
-
-    pub fn is_tx(&self) -> bool {
-        self.side == Side::Tx
+    pub(crate) fn get_face(&self) -> Face {
+        self.face
     }
 
     pub fn get_id(&self) -> usize {
@@ -212,7 +219,7 @@ impl cmp::Eq for Port {}
 
 impl fmt::Display for Port {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{} {}]", &self.node_name, self.side)
+        write!(f, "[{} {}]", &self.node_name, self.face)
     }
 }
 

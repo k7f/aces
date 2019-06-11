@@ -8,16 +8,14 @@ use std::{
 };
 
 use crate::{
-    Context,
-    Port,
-    Link,
+    Context, Port, Face, Link,
     spec::{CESSpec, spec_from_str},
     sat::{self, ExtendFormula, FromAtomID, AddPolynomial},
     error::AcesError,
 };
 
-type SourceID = usize;
-type SinkID = usize;
+type TxID = usize;
+type RxID = usize;
 type LinkID = usize;
 
 type Monomial = Vec<LinkID>;
@@ -27,138 +25,141 @@ type Polynomial = Vec<Monomial>;
 pub struct CES {
     context:     Arc<Mutex<Context>>,
     spec:        Box<dyn CESSpec>,
-    causes:      BTreeMap<SourceID, Polynomial>,
-    effects:     BTreeMap<SinkID, Polynomial>,
-    links:       BTreeMap<LinkID, Option<bool>>,
+    causes:      BTreeMap<TxID, Polynomial>,
+    effects:     BTreeMap<RxID, Polynomial>,
+    links:       BTreeMap<LinkID, Option<Face>>,
     is_coherent: bool,
 }
 
 impl CES {
-    pub fn from_str(ctx: &Arc<Mutex<Context>>, spec_str: &str) -> Result<Self, Box<dyn Error>> {
-
-        let context = Arc::clone(ctx);
-
-        let spec = spec_from_str(ctx, spec_str)?;
-
-        let mut causes: BTreeMap<_, _> = Default::default();
-        let mut effects: BTreeMap<_, _> = Default::default();
-        let mut links: BTreeMap<_, _> = Default::default();
-        let mut is_coherent = true;
-
-        let mut ctx = ctx.lock().unwrap();
-
-        for node_id in spec.get_source_ids() {
-
-            if let Some(spec_poly) = spec.get_effects_by_id(node_id) {
-
-                let node_name = ctx.get_node_name(node_id)
-                    .ok_or(AcesError::NodeMissingForSource)?
-                    .to_owned();
-
-                let atom_id = ctx.atoms.take_port(Port::new_tx(node_name.clone(), node_id));
-
-                let mut poly = Polynomial::new();
-
-                for spec_mono in spec_poly {
-
-                    let mut mono = Monomial::new();
-
-                    for &conode_id in spec_mono {
-
-                        let conode_name = ctx.get_node_name(conode_id)
-                            .ok_or(AcesError::NodeMissingForSink)?
-                            .to_owned();
-
-                        let coatom_id = ctx.atoms.take_port(Port::new_rx(conode_name.clone(), conode_id));
-                        let link_id = ctx.atoms.take_link(
-                            Link::new(
-                                atom_id,
-                                node_name.clone(),
-                                node_id,
-                                coatom_id,
-                                conode_name,
-                                conode_id,
-                            )
-                        );
-
-                        mono.push(link_id);
-
-                        // link's occurence in causes is missing
-                        links.insert(link_id, Some(false));
-                    }
-                    poly.push(mono);
-                }
-
-                effects.insert(atom_id, poly);
-            }
+    fn new(ctx: &Arc<Mutex<Context>>) -> Self {
+        Self {
+            context:     Arc::clone(ctx),
+            spec:        Box::new(String::new()),
+            causes:      Default::default(),
+            effects:     Default::default(),
+            links:       Default::default(),
+            is_coherent: true,
         }
+    }
 
-        // FIXME dry
-        for node_id in spec.get_sink_ids() {
+    fn add_polynomial(
+        &mut self,
+        node_id:   usize,
+        face:      Face,
+        spec_poly: &Vec<Vec<usize>>,
+    ) -> Result<(), Box<dyn Error>>
+    {
+        let mut ctx = self.context.lock().unwrap();
 
-            if let Some(spec_poly) = spec.get_causes_by_id(node_id) {
+        let node_name = ctx.get_node_name(node_id)
+            .ok_or(AcesError::NodeMissingForPort(face))?
+            .to_owned();
 
-                let node_name = ctx.get_node_name(node_id)
-                    .ok_or(AcesError::NodeMissingForSink)?
+        let atom_id = ctx.atoms.take_port(Port::new(face, node_name.clone(), node_id));
+
+        let mut poly = Polynomial::new();
+
+        for spec_mono in spec_poly {
+
+            let mut mono = Monomial::new();
+
+            for &conode_id in spec_mono {
+
+                let conode_name = ctx.get_node_name(conode_id)
+                    .ok_or(AcesError::NodeMissingForPort(!face))?
                     .to_owned();
 
-                let atom_id = ctx.atoms.take_port(Port::new_rx(node_name.clone(), node_id));
+                let coatom_id = ctx.atoms.take_port(Port::new(!face, conode_name.clone(), conode_id));
 
-                let mut poly = Polynomial::new();
+                let link_id = match face {
+                    Face::Tx => ctx.atoms.take_link(
+                        Link::new(
+                            atom_id,
+                            node_name.clone(),
+                            node_id,
+                            coatom_id,
+                            conode_name,
+                            conode_id,
+                        )
+                    ),
+                    Face::Rx => ctx.atoms.take_link(
+                        Link::new(
+                            coatom_id,
+                            conode_name,
+                            conode_id,
+                            atom_id,
+                            node_name.clone(),
+                            node_id,
+                        )
+                    ),
+                };
 
-                for spec_mono in spec_poly {
+                match face {
+                    Face::Tx => {
+                        // link occurs in effects (but its occurence in causes is missing)
+                        self.links.insert(link_id, Some(Face::Tx));
+                    }
 
-                    let mut mono = Monomial::new();
-
-                    for &conode_id in spec_mono {
-
-                        let conode_name = ctx.get_node_name(conode_id)
-                            .ok_or(AcesError::NodeMissingForSource)?
-                            .to_owned();
-
-                        let coatom_id = ctx.atoms.take_port(Port::new_tx(conode_name.clone(), conode_id));
-                        let link_id = ctx.atoms.take_link(
-                            Link::new(
-                                coatom_id,
-                                conode_name,
-                                conode_id,
-                                atom_id,
-                                node_name.clone(),
-                                node_id,
-                            )
-                        );
-
-                        mono.push(link_id);
-
-                        if let Some(what_missing) = links.get_mut(&link_id) {
-                            // link occurs in causes
-                            if *what_missing == Some(false) {
-                                // and it occurs in effects
+                    Face::Rx => {
+                        if let Some(what_missing) = self.links.get_mut(&link_id) {
+                            if *what_missing == Some(Face::Tx) {
+                                // link occurs in causes and effects (nothing misses)
                                 *what_missing = None;
                             }
                         } else {
-                            // link's occurence in effects is missing
-                            links.insert(link_id, Some(true));
-                            is_coherent = false;
+                            // link occurs in causes (but its occurence in effects is missing)
+                            self.links.insert(link_id, Some(Face::Rx));
+
+                            // FIXME this works, provided we've already seen all effect polynomials...
+                            self.is_coherent = false;
                         }
                     }
-                    poly.push(mono);
                 }
 
-                causes.insert(atom_id, poly);
+                mono.push(link_id);
+            }
+            poly.push(mono);
+        }
+
+        if face == Face::Tx {
+            self.effects.insert(atom_id, poly);
+        } else {
+            self.causes.insert(atom_id, poly);
+        }
+
+        Ok(())
+    }
+
+    pub fn from_str(ctx: &Arc<Mutex<Context>>, spec_str: &str) -> Result<Self, Box<dyn Error>> {
+        let mut ces = CES::new(ctx);
+
+        let spec = spec_from_str(ctx, spec_str)?;
+
+        for node_id in ces.spec.get_carrier_ids() {
+            if let Some(ref spec_poly) = spec.get_effects_by_id(node_id) {
+                ces.add_polynomial(node_id, Face::Tx, spec_poly)?;
             }
         }
 
-        if is_coherent {
-            for what_missing in links.values() {
+        for node_id in ces.spec.get_carrier_ids() {
+            if let Some(ref spec_poly) = spec.get_causes_by_id(node_id) {
+                ces.add_polynomial(node_id, Face::Rx, spec_poly)?;
+            }
+        }
+
+        if ces.is_coherent {
+            for what_missing in ces.links.values() {
                 if what_missing.is_some() {
-                    is_coherent = false;
+                    ces.is_coherent = false;
                     break
                 }
             }
         }
 
-        Ok(Self { context, spec, causes, effects, links, is_coherent })
+        ces.spec = spec;
+
+        Ok(ces)
     }
 
     pub fn from_file<P: AsRef<Path>>(ctx: &Arc<Mutex<Context>>, path: P) -> Result<Self, Box<dyn Error>> {

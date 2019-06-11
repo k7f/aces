@@ -1,4 +1,5 @@
 use std::{fmt, error::Error};
+use crate::Face;
 
 #[derive(Debug, Clone)]
 pub(crate) enum AcesError {
@@ -16,8 +17,7 @@ pub(crate) enum AcesError {
     SpecLinkReversed,
     SpecLinkList,
 
-    NodeMissingForSource,
-    NodeMissingForSink,
+    NodeMissingForPort(Face),
 
     CESIsIncoherent(String),
 }
@@ -27,7 +27,12 @@ impl fmt::Display for AcesError {
         use AcesError::*;
 
         match self {
-            CESIsIncoherent(name) => write!(f, "Structure '{}' is incoherent", &name),
+            CESIsIncoherent(name) =>
+                write!(f, "Structure '{}' is incoherent",
+                       &name),
+            NodeMissingForPort(face) =>
+                write!(f, "Missing node for {} port",
+                       if *face == Face::Tx { "sending" } else { "receiving" }),
             _ => write!(f, "{}", self.description()),
         }
     }
@@ -52,8 +57,7 @@ impl Error for AcesError {
             SpecLinkReversed => "Reversed link in polynomial specification",
             SpecLinkList => "Link list is invalid in polynomial specification",
 
-            NodeMissingForSource => "Missing node for source",
-            NodeMissingForSink => "Missing node for sink",
+            NodeMissingForPort(_) => "Missing node for port",
 
             CESIsIncoherent(_) => "Incoherent CES",
         }

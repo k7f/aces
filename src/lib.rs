@@ -12,3 +12,5 @@ pub mod cli;
 pub use context::Context;
 pub use atoms::{Atom, Port, Link};
 pub use ces::CES;
+
+pub(crate) use atoms::Face;
