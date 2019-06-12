@@ -2,7 +2,7 @@ use std::{
     collections::BTreeSet,
     sync::{Mutex, Arc},
     convert::TryInto,
-    fmt::Write,
+    fmt::{self, Write},
 };
 use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
 use crate::{Context, Polynomial, Face};
@@ -83,15 +83,19 @@ impl Literal {
     }
 }
 
-#[derive(Default, Debug)]
 pub struct Formula {
+    context:   Arc<Mutex<Context>>,
     cnf:       CnfFormula,
     variables: BTreeSet<Var>,
 }
 
 impl Formula {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(ctx: &Arc<Mutex<Context>>) -> Self {
+        Self {
+            context:   Arc::clone(ctx),
+            cnf:       Default::default(),
+            variables: Default::default(),
+        }
     }
 
     fn add_clause(&mut self, clause: &[Lit], info: &str) {
@@ -123,17 +127,23 @@ impl Formula {
     fn get_variables(&self) -> &BTreeSet<Var> {
         &self.variables
     }
+}
 
-    pub fn show(&self, ctx: &Arc<Mutex<Context>>) -> String {
-        let mut result = String::new();
+impl fmt::Debug for Formula {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Formula {{ cnf: {:?}, variables: {:?} }}", self.cnf, self.variables)
+    }
+}
 
+impl fmt::Display for Formula {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut first_clause = true;
 
         for clause in self.cnf.iter() {
             if first_clause {
                 first_clause = false;
             } else {
-                result.push_str(" /^\\ ");
+                write!(f, " /^\\ ")?;
             }
 
             let mut first_lit = true;
@@ -142,18 +152,17 @@ impl Formula {
                 if first_lit {
                     first_lit = false;
                 } else {
-                    result.push_str(" | ");
+                    write!(f, " | ")?;
                 }
 
-                result.push_str(&lit.show(ctx));
+                write!(f, "{}", &lit.show(&self.context))?;
             }
         }
 
-        result
+        Ok(())
     }
 }
 
-#[derive(Default)]
 pub struct Solver<'a> {
     context:   Arc<Mutex<Context>>,
     engine:    varisat::Solver<'a>,
@@ -207,23 +216,33 @@ impl<'a> Solver<'a> {
     }
 }
 
-#[derive(Default, Debug)]
 pub struct Solution {
+    context:  Arc<Mutex<Context>>,
     model:    Vec<Lit>,
     pre_set:  Vec<Lit>,
     post_set: Vec<Lit>,
 }
 
 impl Solution {
+    fn new(ctx: &Arc<Mutex<Context>>) -> Self {
+        Self {
+            context:  Arc::clone(ctx),
+            model:    Default::default(),
+            pre_set:  Default::default(),
+            post_set: Default::default(),
+        }
+    }
+
     fn from_model<I: IntoIterator<Item = Lit>>(ctx: &Arc<Mutex<Context>>, model: I) -> Self {
-        let mut solution = Self::default();
-        let ctx = ctx.lock().unwrap();
+        let mut solution = Self::new(ctx);
 
         for lit in model {
             solution.model.push(lit);
 
             if lit.is_positive() {
                 let (atom_id, _) = lit.into_atom_id();
+                let ctx = solution.context.lock().unwrap();
+
                 if let Some(port) = ctx.get_port(atom_id) {
                     if port.get_face() == Face::Tx {
                         solution.pre_set.push(lit);
@@ -236,30 +255,39 @@ impl Solution {
 
         solution
     }
+}
 
-    pub fn show(&self, ctx: &Arc<Mutex<Context>>) -> String {
-        let mut result = String::new();
+impl fmt::Debug for Solution {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Solution {{ model: {:?}, pre_set: {:?}, post_set: {:?} }}", self.model, self.pre_set, self.post_set)
+    }
+}
 
+impl fmt::Display for Solution {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.pre_set.is_empty() {
-            result.push_str("{} => {");
+            write!(f, "{{}} => {{")?;
         } else {
-            result.push('{');
+            write!(f, "{{")?;
+
             for lit in self.pre_set.iter() {
-                result.push(' ');
-                result.push_str(&lit.show(ctx));
+                write!(f, " {}", &lit.show(&self.context))?;
             }
-            result.push_str(" } => {");
-        }
-        if self.post_set.is_empty() {
-            result.push('}');
-        } else {
-            for lit in self.post_set.iter() {
-                result.push(' ');
-                result.push_str(&lit.show(ctx));
-            }
-            result.push_str(" }");
+
+            write!(f, " }} => {{")?;
         }
 
-        result
+        if self.post_set.is_empty() {
+            write!(f, "}}")?;
+        } else {
+
+            for lit in self.post_set.iter() {
+                write!(f, " {}", &lit.show(&self.context))?;
+            }
+
+            write!(f, " }}")?;
+        }
+
+        Ok(())
     }
 }

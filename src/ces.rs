@@ -183,7 +183,7 @@ impl CES {
     }
 
     pub fn get_formula(&self) -> sat::Formula {
-        let mut formula = sat::Formula::new();
+        let mut formula = sat::Formula::new(&self.context);
 
         for (&port_id, poly) in self.causes.iter() {
             let port_lit = sat::Literal::from_atom_id(port_id, true);

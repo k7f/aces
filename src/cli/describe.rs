@@ -35,7 +35,7 @@ impl Command for Describe {
             let formula = ces.get_formula();
             println!("\nRaw {:?}", formula);
 
-            println!("Formula: {}", formula.show(ctx));
+            println!("Formula: {}", formula);
 
             let mut solver = sat::Solver::new(ctx);
             solver.add_formula(&formula);
@@ -46,7 +46,7 @@ impl Command for Describe {
                     if let Some(solution) = solver.get_solution() {
                         println!("\nRaw {:?}", solution);
 
-                        println!("Solution: {}", &solution.show(ctx));
+                        println!("Solution: {}", solution);
                     }
                 }
                 Ok(false) => {
