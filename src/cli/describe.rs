@@ -1,5 +1,5 @@
 use std::{sync::{Mutex, Arc}, error::Error};
-use crate::{Context, CES, sat::{self, CESModel, CESFormula}, error::AcesError};
+use crate::{Context, CES, sat::{Solver, Solution, CESFormula}, error::AcesError};
 use super::{App, Command};
 
 pub struct Describe;
@@ -34,18 +34,15 @@ impl Command for Describe {
 
             println!("Formula: {}", formula.show(ctx));
 
-            let mut solver = sat::Solver::new();
+            let mut solver = Solver::new();
             solver.add_formula(&formula);
             match solver.solve() {
                 Ok(true) => {
                     if let Some(model) = solver.model() {
                         println!("\nModel: {:?}", model);
 
-                        println!("Solution: {}", model.show(ctx));
-
-                        // FIXME
-                        // let solution = Solution::from_model(ctx, model);
-                        // println!("Solution: {}", solution);
+                        let solution = Solution::from_model(ctx, model);
+                        println!("Solution: {}", &solution.show(ctx));
                     }
                 }
                 Ok(false) => {
