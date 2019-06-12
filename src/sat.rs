@@ -1,6 +1,6 @@
-use std::convert::TryInto;
+use std::{sync::{Mutex, Arc}, convert::TryInto, fmt::Write};
 use varisat::ExtendFormula;
-use crate::Polynomial;
+use crate::{Context, Polynomial, Face};
 
 pub use varisat::{Solver, CnfFormula, Var, Lit};
 
@@ -20,9 +20,55 @@ impl CESLit for Lit {
     }
 }
 
+pub(crate) trait CESModel {
+    fn show(&self, ctx: &Arc<Mutex<Context>>) -> String;
+}
+
+impl CESModel for [Lit] {
+    fn show(&self, ctx: &Arc<Mutex<Context>>) -> String {
+        let mut solution = (Vec::new(), Vec::new());
+        let ctx = ctx.lock().unwrap();
+        for lit in self {
+            if lit.is_positive() {
+                let (atom_id, _) = lit.into_atom_id();
+                if let Some(port) = ctx.get_port(atom_id) {
+                    if port.get_face() == Face::Tx {
+                        solution.0.push(port);
+                    } else {
+                        solution.1.push(port);
+                    }
+                }
+            }
+        }
+
+        let mut result = String::new();
+
+        if solution.0.is_empty() {
+            result.push_str("{} => {");
+        } else {
+            result.push('{');
+            for atom in solution.0 {
+                result.write_fmt(format_args!(" {}", atom)).unwrap();
+            }
+            result.push_str(" } => {");
+        }
+        if solution.1.is_empty() {
+            result.push('}');
+        } else {
+            for atom in solution.1 {
+                result.write_fmt(format_args!(" {}", atom)).unwrap();
+            }
+            result.push_str(" }");
+        }
+
+        result
+    }
+}
+
 pub(crate) trait CESFormula {
     fn add_internal_node(&mut self, port_lit: Lit, antiport_lit: Lit);
     fn add_polynomial(&mut self, port_lit: Lit, poly: &Polynomial);
+    fn show(&self, ctx: &Arc<Mutex<Context>>) -> String;
 }
 
 impl CESFormula for CnfFormula {
@@ -47,5 +93,46 @@ impl CESFormula for CnfFormula {
             println!("add monomial clause {:?}", clause);
             self.add_clause(&clause);
         }
+    }
+
+    fn show(&self, ctx: &Arc<Mutex<Context>>) -> String {
+        let mut result = String::new();
+        let ctx = ctx.lock().unwrap();
+
+        let mut first_clause = true;
+
+        for clause in self.iter() {
+            if first_clause {
+                first_clause = false;
+            } else {
+                result.push_str(" /^\\ ");
+            }
+
+            let mut first_lit = true;
+
+            for lit in clause {
+                if first_lit {
+                    first_lit = false;
+                } else {
+                    result.push_str(" || ");
+                }
+
+                let (atom_id, is_negated) = lit.into_atom_id();
+
+                if is_negated {
+                    result.push('~');
+                }
+
+                if let Some(port) = ctx.get_port(atom_id) {
+                    result.push_str(&format!("{}", port));
+                } else if let Some(link) = ctx.get_link(atom_id) {
+                    result.push_str(&format!("{}", link));
+                } else {
+                    result.push_str("???");
+                }
+            }
+        }
+
+        result
     }
 }

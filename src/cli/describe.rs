@@ -1,5 +1,5 @@
 use std::{sync::{Mutex, Arc}, error::Error};
-use crate::{Context, CES, Face, sat::{self, CESLit}, error::AcesError};
+use crate::{Context, CES, sat::{self, CESModel, CESFormula}, error::AcesError};
 use super::{App, Command};
 
 pub struct Describe;
@@ -32,6 +32,8 @@ impl Command for Describe {
             let formula = ces.get_formula();
             println!("\nCNF: {:?}", formula);
 
+            println!("Formula: {}", formula.show(ctx));
+
             let mut solver = sat::Solver::new();
             solver.add_formula(&formula);
             match solver.solve() {
@@ -39,42 +41,11 @@ impl Command for Describe {
                     if let Some(model) = solver.model() {
                         println!("\nModel: {:?}", model);
 
-                        print!("Solution: ");
+                        println!("Solution: {}", model.show(ctx));
 
-                        //solution = model.as_solution(ctx);
-
-                        let mut solution = (Vec::new(), Vec::new());
-                        let ctx = ctx.lock().unwrap();
-                        for lit in model {
-                            if lit.is_positive() {
-                                let (atom_id, _) = lit.into_atom_id();
-                                if let Some(port) = ctx.get_port(atom_id) {
-                                    if port.get_face() == Face::Tx {
-                                        solution.0.push(port);
-                                    } else {
-                                        solution.1.push(port);
-                                    }
-                                }
-                            }
-                        }
-
-                        if solution.0.is_empty() {
-                            print!("{{}} => {{");
-                        } else {
-                            print!("{{");
-                            for atom in solution.0 {
-                                print!(" {}", atom);
-                            }
-                            print!(" }} => {{");
-                        }
-                        if solution.1.is_empty() {
-                            println!("}}");
-                        } else {
-                            for atom in solution.1 {
-                                print!(" {}", atom);
-                            }
-                            println!(" }}");
-                        }
+                        // FIXME
+                        // let solution = Solution::from_model(ctx, model);
+                        // println!("Solution: {}", solution);
                     }
                 }
                 Ok(false) => {
