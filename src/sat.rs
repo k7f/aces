@@ -4,34 +4,28 @@ use std::{
     convert::TryInto,
     fmt::Write,
 };
-use varisat::{CnfFormula, ExtendFormula, solver::SolverError};
+use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
 use crate::{Context, Polynomial, Face};
 
-pub use varisat::{Var, Lit};
-
-pub(crate) trait CESLit {
-    fn from_atom_id(atom_id: usize, negated: bool) -> Self;
-    fn into_atom_id(&self) -> (usize, bool);
+trait CESVar {
+    fn from_atom_id(atom_id: usize) -> Self;
+    fn into_atom_id(&self) -> usize;
     fn show(&self, ctx: &Arc<Mutex<Context>>) -> String;
 }
 
-impl CESLit for Lit {
-    fn from_atom_id(atom_id: usize, negated: bool) -> Self {
-        Self::from_var(Var::from_dimacs(atom_id.try_into().unwrap()), negated)
+impl CESVar for Var {
+    fn from_atom_id(atom_id: usize) -> Self {
+        Var::from_dimacs(atom_id.try_into().unwrap())
     }
 
-    fn into_atom_id(&self) -> (usize, bool) {
-        let lit = self.to_dimacs();
-        (lit.abs().try_into().unwrap(), lit > 0)
+    fn into_atom_id(&self) -> usize {
+        let var = self.to_dimacs();
+        var.try_into().unwrap()
     }
 
     fn show(&self, ctx: &Arc<Mutex<Context>>) -> String {
         let mut result = String::new();
-        let (atom_id, is_negated) = self.into_atom_id();
-
-        if is_negated {
-            result.push('~');
-        }
+        let atom_id = self.into_atom_id();
 
         let ctx = ctx.lock().unwrap();
 
@@ -47,6 +41,48 @@ impl CESLit for Lit {
     }
 }
 
+trait CESLit {
+    fn from_atom_id(atom_id: usize, negated: bool) -> Self;
+    fn into_atom_id(&self) -> (usize, bool);
+    fn show(&self, ctx: &Arc<Mutex<Context>>) -> String;
+}
+
+impl CESLit for Lit {
+    fn from_atom_id(atom_id: usize, negated: bool) -> Self {
+        Self::from_var(Var::from_atom_id(atom_id), !negated)
+    }
+
+    fn into_atom_id(&self) -> (usize, bool) {
+        let lit = self.to_dimacs();
+        (lit.abs().try_into().unwrap(), lit < 0)
+    }
+
+    fn show(&self, ctx: &Arc<Mutex<Context>>) -> String {
+        if self.is_negative() {
+            format!("~{}", self.var().show(ctx))
+        } else {
+            self.var().show(ctx)
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct Literal(Lit);
+
+impl Literal {
+    pub fn from_atom_id(atom_id: usize, negated: bool) -> Self {
+        Self(Lit::from_atom_id(atom_id, negated))
+    }
+
+    pub fn into_atom_id(&self) -> (usize, bool) {
+        self.0.into_atom_id()
+    }
+
+    pub fn show(&self, ctx: &Arc<Mutex<Context>>) -> String {
+        self.0.show(ctx)
+    }
+}
+
 #[derive(Default, Debug)]
 pub struct Formula {
     cnf:       CnfFormula,
@@ -59,25 +95,26 @@ impl Formula {
     }
 
     fn add_clause(&mut self, clause: &[Lit], info: &str) {
-        println!("Add {} clause: {:?}.", info, clause);
+        println!("Add (to formula) {} clause: {:?}.", info, clause);
         self.cnf.add_clause(clause);
         self.variables.extend(clause.iter().map(|lit| lit.var()));
     }
 
-    pub fn add_internal_node(&mut self, port_lit: Lit, antiport_lit: Lit) {
-        let clause = &[port_lit, antiport_lit];
+    pub fn add_internal_node(&mut self, port_lit: Literal, antiport_lit: Literal) {
+        let clause = &[port_lit.0, antiport_lit.0];
 
         self.add_clause(clause, "internal node");
     }
 
-    pub fn add_polynomial(&mut self, port_lit: Lit, poly: &Polynomial) {
+    // FIXME
+    pub fn add_polynomial(&mut self, port_lit: Literal, poly: &Polynomial) {
         for (mono_links, other_links) in poly.iter() {
             let clause = mono_links
                 .iter()
                 .map(|&id| Lit::from_atom_id(id, false))
                 .chain(other_links.iter().map(|&id| Lit::from_atom_id(id, true)));
             let mut clause: Vec<_> = clause.collect();
-            clause.push(port_lit);
+            clause.push(port_lit.0);
 
             self.add_clause(&clause, "monomial");
         }
@@ -105,7 +142,7 @@ impl Formula {
                 if first_lit {
                     first_lit = false;
                 } else {
-                    result.push_str(" || ");
+                    result.push_str(" | ");
                 }
 
                 result.push_str(&lit.show(ctx));
@@ -118,41 +155,52 @@ impl Formula {
 
 #[derive(Default)]
 pub struct Solver<'a> {
-    solver:    varisat::Solver<'a>,
-    variables: BTreeSet<Var>,
+    context:   Arc<Mutex<Context>>,
+    engine:    varisat::Solver<'a>,
+    port_vars: BTreeSet<Var>,
 }
 
 impl<'a> Solver<'a> {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(ctx: &Arc<Mutex<Context>>) -> Self {
+        Self {
+            context:   Arc::clone(ctx),
+            engine:    Default::default(),
+            port_vars: Default::default(),
+        }
+    }
+
+    fn add_clause(&mut self, clause: &[Lit], info: &str) {
+        println!("Add (to solver) {} clause: {:?}.", info, clause);
+        self.engine.add_clause(clause);
     }
 
     pub fn add_formula(&mut self, formula: &Formula) {
-        self.solver.add_formula(&formula.cnf);
-        self.variables.extend(formula.get_variables());
+        self.engine.add_formula(&formula.cnf);
+
+        let all_vars = formula.get_variables();
+        let ctx = self.context.lock().unwrap();
+        let port_vars = all_vars.iter().filter(|var| ctx.is_port(var.into_atom_id()));
+
+        self.port_vars.extend(port_vars);
     }
 
     pub fn inhibit_empty_solution(&mut self) {
-        let clause: Vec<_> = self.variables.iter().map(|&var| Lit::from_var(var, true)).collect();
+        let clause: Vec<_> = self.port_vars.iter().map(|&var| Lit::from_var(var, true)).collect();
 
-        self.solver.add_clause(&clause);
+        self.add_clause(&clause, "void inhibition");
     }
 
     pub fn solve(&mut self) -> Result<bool, SolverError> {
-        self.solver.solve()
+        self.engine.solve()
     }
 
-    pub fn assume(&mut self, assumptions: &[Lit]) {
-        self.solver.assume(assumptions);
-    }
+    // fn assume(&mut self, assumptions: &[Lit]) {
+    //     self.engine.assume(assumptions);
+    // }
 
-    pub fn get_model(&self) -> Option<Vec<Lit>> {
-        self.solver.model()
-    }
-
-    pub fn get_solution(&self, ctx: &Arc<Mutex<Context>>) -> Option<Solution> {
-        if let Some(model) = self.solver.model() {
-            Some(Solution::from_model(ctx, model))
+    pub fn get_solution(&self) -> Option<Solution> {
+        if let Some(model) = self.engine.model() {
+            Some(Solution::from_model(&self.context, model))
         } else {
             None
         }
@@ -161,16 +209,19 @@ impl<'a> Solver<'a> {
 
 #[derive(Default, Debug)]
 pub struct Solution {
+    model:    Vec<Lit>,
     pre_set:  Vec<Lit>,
     post_set: Vec<Lit>,
 }
 
 impl Solution {
-    pub fn from_model<I: IntoIterator<Item = Lit>>(ctx: &Arc<Mutex<Context>>, model: I) -> Self {
+    fn from_model<I: IntoIterator<Item = Lit>>(ctx: &Arc<Mutex<Context>>, model: I) -> Self {
         let mut solution = Self::default();
         let ctx = ctx.lock().unwrap();
 
         for lit in model {
+            solution.model.push(lit);
+
             if lit.is_positive() {
                 let (atom_id, _) = lit.into_atom_id();
                 if let Some(port) = ctx.get_port(atom_id) {

@@ -2,11 +2,7 @@ use std::{
     sync::{Mutex, Arc},
     error::Error,
 };
-use crate::{
-    Context, CES,
-    sat::{Solver, Solution},
-    error::AcesError,
-};
+use crate::{Context, CES, sat, error::AcesError};
 use super::{App, Command};
 
 pub struct Describe;
@@ -37,20 +33,19 @@ impl Command for Describe {
             )))
         } else {
             let formula = ces.get_formula();
-            println!("\nCNF: {:?}", formula);
+            println!("\nRaw {:?}", formula);
 
             println!("Formula: {}", formula.show(ctx));
 
-            let mut solver = Solver::new();
+            let mut solver = sat::Solver::new(ctx);
             solver.add_formula(&formula);
             solver.inhibit_empty_solution();
 
             match solver.solve() {
                 Ok(true) => {
-                    if let Some(model) = solver.get_model() {
-                        println!("\nModel: {:?}", model);
+                    if let Some(solution) = solver.get_solution() {
+                        println!("\nRaw {:?}", solution);
 
-                        let solution = Solution::from_model(ctx, model);
                         println!("Solution: {}", &solution.show(ctx));
                     }
                 }

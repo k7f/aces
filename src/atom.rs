@@ -1,5 +1,5 @@
 use std::{cmp, fmt, collections::BTreeMap};
-use crate::sat::{self, CESLit};
+use crate::sat;
 
 // FIXME replace with wrapping structs
 pub(crate) type NodeID = usize;
@@ -114,6 +114,13 @@ impl AtomSpace {
         self.atoms.get_mut(id)
     }
 
+    pub(crate) fn is_port(&self, id: usize) -> bool {
+        match self.get_atom(id) {
+            Some(Atom::Tx(_)) | Some(Atom::Rx(_)) => true,
+            _ => false,
+        }
+    }
+
     pub(crate) fn get_port(&self, id: usize) -> Option<&Port> {
         match self.get_atom(id) {
             Some(Atom::Tx(a)) => Some(a),
@@ -211,8 +218,8 @@ impl Atom {
         id
     }
 
-    pub fn as_sat_literal(&self, negated: bool) -> sat::Lit {
-        sat::Lit::from_atom_id(self.get_id(), negated)
+    pub fn as_sat_literal(&self, negated: bool) -> sat::Literal {
+        sat::Literal::from_atom_id(self.get_id(), negated)
     }
 }
 
@@ -272,8 +279,8 @@ impl Port {
         self.node_id
     }
 
-    pub fn as_sat_literal(&self, negated: bool) -> sat::Lit {
-        sat::Lit::from_atom_id(self.atom_id, negated)
+    pub fn as_sat_literal(&self, negated: bool) -> sat::Literal {
+        sat::Literal::from_atom_id(self.atom_id, negated)
     }
 }
 
@@ -350,8 +357,8 @@ impl Link {
         self.rx_node_id
     }
 
-    pub fn as_sat_literal(&self, negated: bool) -> sat::Lit {
-        sat::Lit::from_atom_id(self.atom_id, negated)
+    pub fn as_sat_literal(&self, negated: bool) -> sat::Literal {
+        sat::Literal::from_atom_id(self.atom_id, negated)
     }
 }
 

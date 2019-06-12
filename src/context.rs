@@ -76,6 +76,10 @@ impl Context {
         self.atoms.get_atom_mut(atom_id)
     }
 
+    pub fn is_port(&self, atom_id: usize) -> bool {
+        self.atoms.is_port(atom_id)
+    }
+
     pub fn get_port(&self, atom_id: usize) -> Option<&Port> {
         self.atoms.get_port(atom_id)
     }

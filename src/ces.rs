@@ -11,7 +11,7 @@ use crate::{
     Context, Port, Face, Link, Monomial, Polynomial,
     spec::{CESSpec, spec_from_str},
     atom::{TxID, RxID, LinkID},
-    sat::{self, CESLit},
+    sat,
     error::AcesError,
 };
 
@@ -186,21 +186,21 @@ impl CES {
         let mut formula = sat::Formula::new();
 
         for (&port_id, poly) in self.causes.iter() {
-            let port_lit = sat::Lit::from_atom_id(port_id, true);
+            let port_lit = sat::Literal::from_atom_id(port_id, true);
 
             formula.add_polynomial(port_lit, poly);
 
             let ctx = self.context.lock().unwrap();
 
             if let Some(antiport_id) = ctx.get_antiport_id(port_id) {
-                let antiport_lit = sat::Lit::from_atom_id(antiport_id, true);
+                let antiport_lit = sat::Literal::from_atom_id(antiport_id, true);
 
                 formula.add_internal_node(port_lit, antiport_lit);
             }
         }
 
         for (&port_id, poly) in self.effects.iter() {
-            let port_lit = sat::Lit::from_atom_id(port_id, true);
+            let port_lit = sat::Literal::from_atom_id(port_id, true);
 
             formula.add_polynomial(port_lit, poly);
         }
