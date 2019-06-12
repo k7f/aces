@@ -29,20 +29,14 @@ impl<'a> App<'a> {
     }
 
     pub fn value_of(&self, key: &str) -> Option<&str> {
-        self.cli_args.subcommand().1
-            .unwrap_or(&self.cli_args)
-            .value_of(key)
+        self.cli_args.subcommand().1.unwrap_or(&self.cli_args).value_of(key)
     }
 
     pub fn occurrences_of(&self, key: &str) -> u64 {
-        self.cli_args.subcommand().1
-            .unwrap_or(&self.cli_args)
-            .occurrences_of(key)
+        self.cli_args.subcommand().1.unwrap_or(&self.cli_args).occurrences_of(key)
     }
 
     pub fn is_present(&self, key: &str) -> bool {
-        self.cli_args.subcommand().1
-            .unwrap_or(&self.cli_args)
-            .is_present(key)
+        self.cli_args.subcommand().1.unwrap_or(&self.cli_args).is_present(key)
     }
 }

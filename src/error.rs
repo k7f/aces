@@ -27,12 +27,12 @@ impl fmt::Display for AcesError {
         use AcesError::*;
 
         match self {
-            CESIsIncoherent(name) =>
-                write!(f, "Structure '{}' is incoherent",
-                       &name),
-            NodeMissingForPort(face) =>
-                write!(f, "Missing node for {} port",
-                       if *face == Face::Tx { "sending" } else { "receiving" }),
+            CESIsIncoherent(name) => write!(f, "Structure '{}' is incoherent", &name),
+            NodeMissingForPort(face) => write!(
+                f,
+                "Missing node for {} port",
+                if *face == Face::Tx { "sending" } else { "receiving" }
+            ),
             _ => write!(f, "{}", self.description()),
         }
     }
@@ -51,7 +51,9 @@ impl Error for AcesError {
             SpecNameDup => "Duplicated CES name in specification",
             SpecPolyInvalid => "Invalid polynomial specification",
             SpecPolyAmbiguous => "Ambiguous polynomial specification",
-            SpecShortPolyWithWords => "Multi-word node name is invalid in short polynomial specification",
+            SpecShortPolyWithWords => {
+                "Multi-word node name is invalid in short polynomial specification"
+            }
             SpecMonoInvalid => "Invalid monomial in polynomial specification",
             SpecLinkInvalid => "Invalid link in polynomial specification",
             SpecLinkReversed => "Reversed link in polynomial specification",

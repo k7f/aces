@@ -1,4 +1,8 @@
-use std::{sync::{Mutex, Arc}, convert::TryInto, fmt::Write};
+use std::{
+    sync::{Mutex, Arc},
+    convert::TryInto,
+    fmt::Write,
+};
 use varisat::ExtendFormula;
 use crate::{Context, Polynomial, Face};
 
@@ -11,7 +15,7 @@ pub struct Solution {
 }
 
 impl Solution {
-    pub fn from_model<I: IntoIterator<Item=Lit>>(ctx: &Arc<Mutex<Context>>, model: I) -> Self {
+    pub fn from_model<I: IntoIterator<Item = Lit>>(ctx: &Arc<Mutex<Context>>, model: I) -> Self {
         let mut solution = Self::default();
         let ctx = ctx.lock().unwrap();
 
@@ -112,12 +116,10 @@ impl CESFormula for CnfFormula {
 
     fn add_polynomial(&mut self, port_lit: Lit, poly: &Polynomial) {
         for (mono_links, other_links) in poly.iter() {
-
-            let clause = mono_links.iter()
+            let clause = mono_links
+                .iter()
                 .map(|&id| Lit::from_atom_id(id, false))
-                .chain(
-                    other_links.iter()
-                        .map(|&id| Lit::from_atom_id(id, true)));
+                .chain(other_links.iter().map(|&id| Lit::from_atom_id(id, true)));
             let mut clause: Vec<_> = clause.collect();
             clause.push(port_lit);
 

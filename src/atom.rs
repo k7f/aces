@@ -181,6 +181,7 @@ pub enum Atom {
 impl Atom {
     fn set_id(&mut self, id: usize) {
         use Atom::*;
+
         let prev_id = match self {
             Tx(a) => &mut a.atom_id,
             Rx(a) => &mut a.atom_id,
@@ -197,6 +198,7 @@ impl Atom {
 
     pub fn get_id(&self) -> usize {
         use Atom::*;
+
         let id = match self {
             Tx(a) => a.atom_id,
             Rx(a) => a.atom_id,
@@ -217,6 +219,8 @@ impl Atom {
 impl cmp::PartialEq for Atom {
     fn eq(&self, other: &Self) -> bool {
         use Atom::*;
+
+        #[rustfmt::skip]
         match self {
             Tx(a) => if let Tx(o) = other { a == o } else { false },
             Rx(a) => if let Rx(o) = other { a == o } else { false },
@@ -229,6 +233,7 @@ impl cmp::PartialEq for Atom {
 impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Atom::*;
+
         match self {
             Tx(a) => a.fmt(f),
             Rx(a) => a.fmt(f),
@@ -248,7 +253,7 @@ pub struct Port {
 
 impl Port {
     pub(crate) fn new(face: Face, node_name: String, node_id: usize) -> Self {
-        Self { face: face, atom_id: 0, node_name, node_id }
+        Self { face, atom_id: 0, node_name, node_id }
     }
 
     pub(crate) fn get_face(&self) -> Face {
@@ -299,14 +304,13 @@ pub struct Link {
 
 impl Link {
     pub fn new(
-        tx_atom_id:   usize,
+        tx_atom_id: usize,
         tx_node_name: String,
-        tx_node_id:   usize,
-        rx_atom_id:   usize,
+        tx_node_id: usize,
+        rx_atom_id: usize,
         rx_node_name: String,
-        rx_node_id:   usize,
-    ) -> Self
-    {
+        rx_node_id: usize,
+    ) -> Self {
         Self {
             atom_id: 0,
             tx_atom_id,

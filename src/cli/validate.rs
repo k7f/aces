@@ -1,4 +1,7 @@
-use std::{sync::{Mutex, Arc}, error::Error};
+use std::{
+    sync::{Mutex, Arc},
+    error::Error,
+};
 use crate::{Context, CES, error::AcesError};
 use super::{App, Command};
 
@@ -6,8 +9,7 @@ pub struct Validate;
 
 impl Command for Validate {
     fn run(app: &App) -> Result<(), Box<dyn Error>> {
-        let glob_path = app.value_of("GLOB_PATH")
-            .unwrap_or_else(|| unreachable!());
+        let glob_path = app.value_of("GLOB_PATH").unwrap_or_else(|| unreachable!());
 
         let do_abort = app.is_present("abort");
         let syntax_only = app.is_present("syntax");
@@ -45,10 +47,14 @@ impl Command for Validate {
                                                 println!("... Aborting on structural error.");
                                             }
 
-                                            eprintln!("!!! Structural error in file '{}'...", path.display());
+                                            eprintln!(
+                                                "!!! Structural error in file '{}'...",
+                                                path.display()
+                                            );
 
                                             let err = AcesError::CESIsIncoherent(
-                                                ces.get_name().unwrap_or("anonymous").to_owned());
+                                                ces.get_name().unwrap_or("anonymous").to_owned(),
+                                            );
 
                                             if do_abort {
                                                 return Err(Box::new(err))
@@ -102,9 +108,7 @@ impl Command for Validate {
 
                 Ok(())
             }
-            Err(err) => {
-                panic!("Invalid glob pattern: {}", err)
-            }
+            Err(err) => panic!("Invalid glob pattern: {}", err),
         }
     }
 }

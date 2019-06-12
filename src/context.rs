@@ -4,7 +4,7 @@ use crate::atom::{AtomSpace, Atom, Port, Link};
 #[derive(Default, Debug)]
 pub(crate) struct NameSpace {
     names: Vec<String>,
-    ids:   BTreeMap<String, usize>,  // FIXME borrow names
+    ids:   BTreeMap<String, usize>, // FIXME borrow names
 }
 
 impl NameSpace {

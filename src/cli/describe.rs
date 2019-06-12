@@ -1,13 +1,19 @@
-use std::{sync::{Mutex, Arc}, error::Error};
-use crate::{Context, CES, sat::{Solver, Solution, CESFormula}, error::AcesError};
+use std::{
+    sync::{Mutex, Arc},
+    error::Error,
+};
+use crate::{
+    Context, CES,
+    sat::{Solver, Solution, CESFormula},
+    error::AcesError,
+};
 use super::{App, Command};
 
 pub struct Describe;
 
 impl Command for Describe {
     fn run(app: &App) -> Result<(), Box<dyn Error>> {
-        let main_path = app.value_of("MAIN_PATH")
-            .unwrap_or_else(|| unreachable!());
+        let main_path = app.value_of("MAIN_PATH").unwrap_or_else(|| unreachable!());
 
         let verbosity = app.occurrences_of("verbose");
 
@@ -27,7 +33,8 @@ impl Command for Describe {
 
         if !ces.is_coherent() {
             Err(Box::new(AcesError::CESIsIncoherent(
-                ces.get_name().unwrap_or("anonymous").to_owned())))
+                ces.get_name().unwrap_or("anonymous").to_owned(),
+            )))
         } else {
             let formula = ces.get_formula();
             println!("\nCNF: {:?}", formula);
@@ -48,7 +55,7 @@ impl Command for Describe {
                 Ok(false) => {
                     println!("\nFound no solutions...");
                 }
-                _ => {}  // FIXME
+                _ => {} // FIXME
             }
 
             Ok(())

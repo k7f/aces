@@ -1,4 +1,9 @@
-use std::{collections::{BTreeMap, BTreeSet}, sync::{Mutex, Arc}, fmt::Debug, error::Error};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::{Mutex, Arc},
+    fmt::Debug,
+    error::Error,
+};
 use regex::Regex;
 use yaml_rust::{Yaml, YamlLoader};
 use crate::{Context, Face, context::NameSpace, error::AcesError};
@@ -37,16 +42,16 @@ impl UpdatableMap<usize, PolyForYaml> for BTreeMap<usize, PolyForYaml> {
                 for new_mono in value {
                     poly.vec_update(new_mono)
                 }
-            }).or_insert(value.to_owned());
+            })
+            .or_insert(value.to_owned());
     }
 }
 
 fn do_take_id(
     nodes: &mut NameSpace,
     name: &str,
-    single_word_only: bool
-) -> Result<usize, Box<dyn Error>>
-{
+    single_word_only: bool,
+) -> Result<usize, Box<dyn Error>> {
     if single_word_only && name.contains(char::is_whitespace) {
         Err(Box::new(AcesError::SpecShortPolyWithWords))
     } else {
@@ -60,9 +65,8 @@ fn post_process_port_spec(
     single_word_only: bool,
 ) -> Result<Vec<usize>, Box<dyn Error>> {
     if spec.contains(',') {
-        let result: Result<Vec<usize>, Box<dyn Error>> = spec.split(',')
-            .map(|s| do_take_id(nodes, s.trim(), single_word_only))
-            .collect();
+        let result: Result<Vec<usize>, Box<dyn Error>> =
+            spec.split(',').map(|s| do_take_id(nodes, s.trim(), single_word_only)).collect();
         let ids = result?;
 
         Ok(ids)
@@ -76,9 +80,8 @@ fn post_process_port_spec(
 fn do_parse_port_spec(
     nodes: &mut NameSpace,
     spec: &str,
-    single_word_only: bool
-) -> Result<Option<(Vec<usize>, Face)>, Box<dyn Error>>
-{
+    single_word_only: bool,
+) -> Result<Option<(Vec<usize>, Face)>, Box<dyn Error>> {
     lazy_static! {
         // Node name (untrimmed, unseparated) is any nonempty string not ending in '>' or '<'.
         // Removal of leading and trailing whitespace is done in post processing,
@@ -90,7 +93,6 @@ fn do_parse_port_spec(
         let ids = post_process_port_spec(nodes, &cap[1], single_word_only)?;
 
         Ok(Some((ids, Face::Tx)))
-
     } else if let Some(cap) = RX_RE.captures(spec) {
         let ids = post_process_port_spec(nodes, &cap[1], single_word_only)?;
 
@@ -103,9 +105,7 @@ fn do_parse_port_spec(
 fn parse_port_spec(ctx: &Arc<Mutex<Context>>, spec: &str) -> Option<(Vec<usize>, Face)> {
     let ref mut nodes = ctx.lock().unwrap().nodes;
 
-    do_parse_port_spec(nodes, spec, false).unwrap_or_else(|_| {
-        unreachable!()
-    })
+    do_parse_port_spec(nodes, spec, false).unwrap_or_else(|_| unreachable!())
 }
 
 fn parse_link_spec(
@@ -113,8 +113,7 @@ fn parse_link_spec(
     spec: &str,
     valid_face: Face,
     single_word_only: bool,
-) -> Result<(usize, bool), Box<dyn Error>>
-{
+) -> Result<(usize, bool), Box<dyn Error>> {
     let ref mut nodes = ctx.lock().unwrap().nodes;
 
     let link_with_colink = do_parse_port_spec(nodes, spec, single_word_only)?;
@@ -151,17 +150,15 @@ impl SpecForYaml {
         ctx: &Arc<Mutex<Context>>,
         node_ids: &[usize],
         face: Face,
-        poly_yaml: &Yaml
-    ) -> Result<(), Box<dyn Error>>
-    {
+        poly_yaml: &Yaml,
+    ) -> Result<(), Box<dyn Error>> {
         assert!(!node_ids.is_empty());
 
         let mut poly_spec = PolyForYaml::new();
 
         match poly_yaml {
             Yaml::String(other_name) => {
-                let (other_id, with_colink) =
-                    parse_link_spec(ctx, other_name.trim(), !face, true)?;
+                let (other_id, with_colink) = parse_link_spec(ctx, other_name.trim(), !face, true)?;
 
                 poly_spec.vec_update(&vec![other_id]);
 
@@ -205,9 +202,11 @@ impl SpecForYaml {
 
                                     if with_colink {
                                         if face == Face::Tx {
-                                            self.causes.map_update(other_id, &vec![node_ids.to_owned()]);
+                                            self.causes
+                                                .map_update(other_id, &vec![node_ids.to_owned()]);
                                         } else {
-                                            self.effects.map_update(other_id, &vec![node_ids.to_owned()]);
+                                            self.effects
+                                                .map_update(other_id, &vec![node_ids.to_owned()]);
                                         }
                                     }
                                 } else {
@@ -216,19 +215,14 @@ impl SpecForYaml {
                             }
                             poly_spec.vec_update(&mono_spec);
                         }
-                        _ => {
-                            return Err(Box::new(AcesError::SpecMonoInvalid))
-                        }
+                        _ => return Err(Box::new(AcesError::SpecMonoInvalid)),
                     }
                 }
                 if is_flat {
                     return Err(Box::new(AcesError::SpecPolyAmbiguous))
                 }
-
             }
-            _ => {
-                return Err(Box::new(AcesError::SpecPolyInvalid))
-            }
+            _ => return Err(Box::new(AcesError::SpecPolyInvalid)),
         }
 
         if face == Face::Tx {
@@ -243,15 +237,18 @@ impl SpecForYaml {
         Ok(())
     }
 
-    fn add_entry(&mut self, ctx: &Arc<Mutex<Context>>, key: &Yaml, value: &Yaml) -> Result<(), Box<dyn Error>> {
+    fn add_entry(
+        &mut self,
+        ctx: &Arc<Mutex<Context>>,
+        key: &Yaml,
+        value: &Yaml,
+    ) -> Result<(), Box<dyn Error>> {
         if let Some(key) = key.as_str() {
             let key = key.trim();
             let port = parse_port_spec(ctx, key);
 
             if let Some((node_ids, face)) = port {
-
                 self.add_ports(ctx, &node_ids, face, value)
-
             } else if key == "name" {
                 if let Some(name) = value.as_str() {
                     if self.name.is_none() {
@@ -277,16 +274,13 @@ impl SpecForYaml {
 
     fn from_yaml(ctx: &Arc<Mutex<Context>>, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
         if let Yaml::Hash(ref dict) = yaml {
-
             let mut spec = Self::default();
 
             for (key, value) in dict {
                 spec.add_entry(ctx, key, value)?;
             }
 
-            spec.carrier = spec.effects.keys()
-                .chain(spec.causes.keys())
-                .copied().collect();
+            spec.carrier = spec.effects.keys().chain(spec.causes.keys()).copied().collect();
 
             Ok(spec)
         } else {
@@ -299,7 +293,6 @@ impl SpecForYaml {
 
         if docs.is_empty() {
             Err(Box::new(AcesError::SpecEmpty))
-
         } else if docs.len() == 1 {
             let spec = Self::from_yaml(ctx, &docs[0])?;
             Ok(spec)
@@ -342,11 +335,11 @@ impl CESSpec for String {
 
 impl CESSpec for SpecForYaml {
     fn get_raw(&self) -> Option<&str> {
-        None  // FIXME
+        None // FIXME
     }
 
     fn get_name(&self) -> Option<&str> {
-        if let Some (ref name) = self.name {
+        if let Some(ref name) = self.name {
             Some(name.as_ref())
         } else {
             None
@@ -367,10 +360,9 @@ impl CESSpec for SpecForYaml {
 }
 
 pub(crate) fn spec_from_str(
-    ctx:  &Arc<Mutex<Context>>,
+    ctx: &Arc<Mutex<Context>>,
     raw_spec: &str,
-) -> Result<Box<dyn CESSpec>, Box<dyn Error>>
-{
+) -> Result<Box<dyn CESSpec>, Box<dyn Error>> {
     // FIXME infer the format of spec string: yaml, sexpr, ...
     Ok(Box::new(SpecForYaml::from_str(ctx, raw_spec)?))
 }
