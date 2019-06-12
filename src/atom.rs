@@ -217,10 +217,10 @@ impl Atom {
 }
 
 impl cmp::PartialEq for Atom {
+    #[rustfmt::skip]
     fn eq(&self, other: &Self) -> bool {
         use Atom::*;
 
-        #[rustfmt::skip]
         match self {
             Tx(a) => if let Tx(o) = other { a == o } else { false },
             Rx(a) => if let Rx(o) = other { a == o } else { false },

@@ -11,7 +11,7 @@ use crate::{
     Context, Port, Face, Link, Monomial, Polynomial,
     spec::{CESSpec, spec_from_str},
     atom::{TxID, RxID, LinkID},
-    sat::{self, CESLit, CESFormula},
+    sat::{self, CESLit},
     error::AcesError,
 };
 
@@ -182,8 +182,8 @@ impl CES {
         self.num_broken_links == 0
     }
 
-    pub fn get_formula(&self) -> sat::CnfFormula {
-        let mut formula = sat::CnfFormula::new();
+    pub fn get_formula(&self) -> sat::Formula {
+        let mut formula = sat::Formula::new();
 
         for (&port_id, poly) in self.causes.iter() {
             let port_lit = sat::Lit::from_atom_id(port_id, true);

@@ -4,7 +4,7 @@ use std::{
 };
 use crate::{
     Context, CES,
-    sat::{Solver, Solution, CESFormula},
+    sat::{Solver, Solution},
     error::AcesError,
 };
 use super::{App, Command};
@@ -43,9 +43,11 @@ impl Command for Describe {
 
             let mut solver = Solver::new();
             solver.add_formula(&formula);
+            solver.inhibit_empty_solution();
+
             match solver.solve() {
                 Ok(true) => {
-                    if let Some(model) = solver.model() {
+                    if let Some(model) = solver.get_model() {
                         println!("\nModel: {:?}", model);
 
                         let solution = Solution::from_model(ctx, model);
