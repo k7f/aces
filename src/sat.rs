@@ -1,16 +1,15 @@
 use std::{
     collections::BTreeSet,
-    sync::{Mutex, Arc},
+    sync::{Arc, Mutex},
     convert::TryInto,
-    fmt::{self, Write},
+    fmt,
 };
 use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
-use crate::{Context, Polynomial, Face, PortID, LinkID, atom::AtomID};
+use crate::{Context, Polynomial, Face, PortID, atom::AtomID};
 
 trait CESVar {
     fn from_atom_id(atom_id: AtomID) -> Self;
     fn into_atom_id(self) -> AtomID;
-    fn show(self, ctx: &Arc<Mutex<Context>>) -> String;
 }
 
 impl CESVar for Var {
@@ -22,29 +21,26 @@ impl CESVar for Var {
         let var = self.to_dimacs();
         unsafe { AtomID::new_unchecked(var.try_into().unwrap()) }
     }
+}
 
-    fn show(self, ctx: &Arc<Mutex<Context>>) -> String {
-        let mut result = String::new();
-        let atom_id = self.into_atom_id();
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[repr(transparent)]
+pub struct Variable(pub(crate) Var);
 
-        let ctx = ctx.lock().unwrap();
+impl Variable {
+    #[allow(dead_code)]
+    pub(crate) fn from_atom_id(atom_id: AtomID) -> Self {
+        Self(Var::from_atom_id(atom_id))
+    }
 
-        if let Some(port) = ctx.get_port(PortID(atom_id)) {
-            result.write_fmt(format_args!("{}", port)).unwrap();
-        } else if let Some(link) = ctx.get_link(LinkID(atom_id)) {
-            result.write_fmt(format_args!("{}", link)).unwrap();
-        } else {
-            result.push_str("???");
-        }
-
-        result
+    pub(crate) fn into_atom_id(self) -> AtomID {
+        self.0.into_atom_id()
     }
 }
 
 trait CESLit {
     fn from_atom_id(atom_id: AtomID, negated: bool) -> Self;
     fn into_atom_id(self) -> (AtomID, bool);
-    fn show(self, ctx: &Arc<Mutex<Context>>) -> String;
 }
 
 impl CESLit for Lit {
@@ -56,18 +52,11 @@ impl CESLit for Lit {
         let lit = self.to_dimacs();
         unsafe { (AtomID::new_unchecked(lit.abs().try_into().unwrap()), lit < 0) }
     }
-
-    fn show(self, ctx: &Arc<Mutex<Context>>) -> String {
-        if self.is_negative() {
-            format!("~{}", self.var().show(ctx))
-        } else {
-            self.var().show(ctx)
-        }
-    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct Literal(Lit);
+#[repr(transparent)]
+pub struct Literal(pub(crate) Lit);
 
 impl Literal {
     pub(crate) fn from_atom_id(atom_id: AtomID, negated: bool) -> Self {
@@ -79,8 +68,8 @@ impl Literal {
         self.0.into_atom_id()
     }
 
-    pub fn show(self, ctx: &Arc<Mutex<Context>>) -> String {
-        self.0.show(ctx)
+    pub fn is_negative(self) -> bool {
+        self.0.is_negative()
     }
 }
 
@@ -147,16 +136,20 @@ impl fmt::Display for Formula {
                 write!(f, " /^\\ ")?;
             }
 
+            let ctx = self.context.lock().unwrap();
             let mut first_lit = true;
 
             for lit in clause {
+                let lit = Literal(*lit);
+
                 if first_lit {
                     first_lit = false;
                 } else {
                     write!(f, " | ")?;
                 }
 
-                write!(f, "{}", &lit.show(&self.context))?;
+                // FIXME unwrap
+                write!(f, "{}", &ctx.show_literal(lit).unwrap())?;
             }
         }
 
@@ -275,8 +268,13 @@ impl fmt::Display for Solution {
         } else {
             write!(f, "{{")?;
 
+            let ctx = self.context.lock().unwrap();
+
             for lit in self.pre_set.iter() {
-                write!(f, " {}", &lit.show(&self.context))?;
+                let lit = Literal(*lit);
+
+                // FIXME unwrap
+                write!(f, " {}", &ctx.show_literal(lit).unwrap())?;
             }
 
             write!(f, " }} => {{")?;
@@ -285,8 +283,13 @@ impl fmt::Display for Solution {
         if self.post_set.is_empty() {
             write!(f, "}}")?;
         } else {
+            let ctx = self.context.lock().unwrap();
+
             for lit in self.post_set.iter() {
-                write!(f, " {}", &lit.show(&self.context))?;
+                let lit = Literal(*lit);
+
+                // FIXME unwrap
+                write!(f, " {}", &ctx.show_literal(lit).unwrap())?;
             }
 
             write!(f, " }}")?;

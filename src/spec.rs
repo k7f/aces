@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{Mutex, Arc},
+    sync::{Arc, Mutex},
     fmt::Debug,
     error::Error,
 };

@@ -1,4 +1,4 @@
-use std::{cmp, fmt, collections::BTreeMap};
+use std::{cmp, collections::BTreeMap, fmt};
 use crate::{ID, NodeID, sat};
 
 pub(crate) type AtomID = ID;
@@ -233,7 +233,7 @@ impl Atom {
         if *prev_id == None {
             *prev_id = Some(atom_id);
         } else {
-            panic!("Attempt to reset ID of atom {}", self);
+            panic!("Attempt to reset ID of atom {:?}", self);
         }
     }
 
@@ -264,30 +264,16 @@ impl cmp::PartialEq for Atom {
     }
 }
 
-impl fmt::Display for Atom {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Atom::*;
-
-        match self {
-            Tx(a) => a.fmt(f),
-            Rx(a) => a.fmt(f),
-            Link(a) => a.fmt(f),
-            Bottom => panic!("Attempt to display the bottom atom"),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct Port {
-    face:      Face,
-    atom_id:   Option<AtomID>,
-    node_name: String,
-    node_id:   NodeID,
+    face:    Face,
+    atom_id: Option<AtomID>,
+    node_id: NodeID,
 }
 
 impl Port {
-    pub(crate) fn new(face: Face, node_name: String, node_id: NodeID) -> Self {
-        Self { face, atom_id: None, node_name, node_id }
+    pub(crate) fn new(face: Face, node_id: NodeID) -> Self {
+        Self { face, atom_id: None, node_id }
     }
 
     pub(crate) fn get_face(&self) -> Face {
@@ -296,10 +282,6 @@ impl Port {
 
     pub fn get_atom_id(&self) -> AtomID {
         self.atom_id.expect("Attempt to access an uninitialized port")
-    }
-
-    pub fn get_node_name(&self) -> &str {
-        self.node_name.as_str()
     }
 
     pub fn get_node_id(&self) -> NodeID {
@@ -319,39 +301,27 @@ impl cmp::PartialEq for Port {
 
 impl cmp::Eq for Port {}
 
-impl fmt::Display for Port {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{} {}]", &self.node_name, self.face)
-    }
-}
-
 #[derive(Debug)]
 pub struct Link {
-    atom_id:      Option<AtomID>,
-    tx_port_id:   PortID,
-    tx_node_name: String,
-    tx_node_id:   NodeID,
-    rx_port_id:   PortID,
-    rx_node_name: String,
-    rx_node_id:   NodeID,
+    atom_id:    Option<AtomID>,
+    tx_port_id: PortID,
+    tx_node_id: NodeID,
+    rx_port_id: PortID,
+    rx_node_id: NodeID,
 }
 
 impl Link {
     pub fn new(
         tx_port_id: PortID,
-        tx_node_name: String,
         tx_node_id: NodeID,
         rx_port_id: PortID,
-        rx_node_name: String,
         rx_node_id: NodeID,
     ) -> Self {
         Self {
             atom_id: None,
             tx_port_id,
-            tx_node_name,
             tx_node_id,
             rx_port_id,
-            rx_node_name,
             rx_node_id,
         }
     }
@@ -392,9 +362,3 @@ impl cmp::PartialEq for Link {
 }
 
 impl cmp::Eq for Link {}
-
-impl fmt::Display for Link {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "({} > {})", &self.tx_node_name, &self.rx_node_name)
-    }
-}

@@ -3,7 +3,7 @@ use std::{
     io::Read,
     fs::File,
     path::Path,
-    sync::{Mutex, Arc},
+    sync::{Arc, Mutex},
     error::Error,
 };
 
@@ -11,7 +11,6 @@ use crate::{
     Context, ID, Port, Face, Link, NodeID, PortID, LinkID, Monomial, Polynomial,
     spec::{CESSpec, spec_from_str},
     sat,
-    error::AcesError,
 };
 
 #[derive(Debug)]
@@ -43,11 +42,7 @@ impl CES {
         spec_poly: &[Vec<ID>],
     ) -> Result<(), Box<dyn Error>> {
         let mut ctx = self.context.lock().unwrap();
-
-        let node_name =
-            ctx.get_node_name(node_id).ok_or(AcesError::NodeMissingForPort(face))?.to_owned();
-
-        let atom_id = ctx.take_port(Port::new(face, node_name.clone(), node_id));
+        let atom_id = ctx.take_port(Port::new(face, node_id));
 
         let mut poly = Polynomial::new();
 
@@ -56,29 +51,19 @@ impl CES {
 
             for conode_id in spec_mono {
                 let conode_id = NodeID(*conode_id);
-
-                let conode_name = ctx
-                    .get_node_name(conode_id)
-                    .ok_or(AcesError::NodeMissingForPort(!face))?
-                    .to_owned();
-
-                let coatom_id = ctx.take_port(Port::new(!face, conode_name.clone(), conode_id));
+                let coatom_id = ctx.take_port(Port::new(!face, conode_id));
 
                 let link_id = match face {
                     Face::Tx => ctx.take_link(Link::new(
                         atom_id,
-                        node_name.clone(),
                         node_id,
                         coatom_id,
-                        conode_name,
                         conode_id,
                     )),
                     Face::Rx => ctx.take_link(Link::new(
                         coatom_id,
-                        conode_name,
                         conode_id,
                         atom_id,
-                        node_name.clone(),
                         node_id,
                     )),
                 };
