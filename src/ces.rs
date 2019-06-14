@@ -8,9 +8,8 @@ use std::{
 };
 
 use crate::{
-    Context, Port, Face, Link, Monomial, Polynomial,
+    Context, ID, Port, Face, Link, NodeID, PortID, LinkID, Monomial, Polynomial,
     spec::{CESSpec, spec_from_str},
-    atom::{TxID, RxID, LinkID},
     sat,
     error::AcesError,
 };
@@ -19,8 +18,8 @@ use crate::{
 pub struct CES {
     context:          Arc<Mutex<Context>>,
     spec:             Option<Box<dyn CESSpec>>,
-    causes:           BTreeMap<TxID, Polynomial>,
-    effects:          BTreeMap<RxID, Polynomial>,
+    causes:           BTreeMap<PortID, Polynomial>,
+    effects:          BTreeMap<PortID, Polynomial>,
     links:            BTreeMap<LinkID, Option<Face>>,
     num_broken_links: u32,
 }
@@ -39,33 +38,35 @@ impl CES {
 
     fn add_polynomial(
         &mut self,
-        node_id: usize,
+        node_id: NodeID,
         face: Face,
-        spec_poly: &Vec<Vec<usize>>,
+        spec_poly: &Vec<Vec<ID>>,
     ) -> Result<(), Box<dyn Error>> {
         let mut ctx = self.context.lock().unwrap();
 
         let node_name =
             ctx.get_node_name(node_id).ok_or(AcesError::NodeMissingForPort(face))?.to_owned();
 
-        let atom_id = ctx.atoms.take_port(Port::new(face, node_name.clone(), node_id));
+        let atom_id = ctx.take_port(Port::new(face, node_name.clone(), node_id));
 
         let mut poly = Polynomial::new();
 
         for spec_mono in spec_poly {
             let mut mono = Monomial::new();
 
-            for &conode_id in spec_mono {
+            for conode_id in spec_mono {
+                let conode_id = NodeID(*conode_id);
+
                 let conode_name = ctx
                     .get_node_name(conode_id)
                     .ok_or(AcesError::NodeMissingForPort(!face))?
                     .to_owned();
 
                 let coatom_id =
-                    ctx.atoms.take_port(Port::new(!face, conode_name.clone(), conode_id));
+                    ctx.take_port(Port::new(!face, conode_name.clone(), conode_id));
 
                 let link_id = match face {
-                    Face::Tx => ctx.atoms.take_link(Link::new(
+                    Face::Tx => ctx.take_link(Link::new(
                         atom_id,
                         node_name.clone(),
                         node_id,
@@ -73,7 +74,7 @@ impl CES {
                         conode_name,
                         conode_id,
                     )),
-                    Face::Rx => ctx.atoms.take_link(Link::new(
+                    Face::Rx => ctx.take_link(Link::new(
                         coatom_id,
                         conode_name,
                         conode_id,
@@ -146,11 +147,13 @@ impl CES {
 
         let spec = spec_from_str(ctx, raw_spec)?;
 
-        for node_id in spec.get_carrier_ids() {
-            if let Some(ref spec_poly) = spec.get_causes_by_id(node_id) {
+        for id in spec.get_carrier_ids() {
+            let node_id = NodeID(id);
+
+            if let Some(ref spec_poly) = spec.get_causes_by_id(id) {
                 ces.add_polynomial(node_id, Face::Rx, spec_poly)?;
             }
-            if let Some(ref spec_poly) = spec.get_effects_by_id(node_id) {
+            if let Some(ref spec_poly) = spec.get_effects_by_id(id) {
                 ces.add_polynomial(node_id, Face::Tx, spec_poly)?;
             }
         }
@@ -186,21 +189,21 @@ impl CES {
         let mut formula = sat::Formula::new(&self.context);
 
         for (&port_id, poly) in self.causes.iter() {
-            let port_lit = sat::Literal::from_atom_id(port_id, true);
+            let port_lit = sat::Literal::from_atom_id(port_id.into(), true);
 
             formula.add_polynomial(port_lit, poly);
 
             let ctx = self.context.lock().unwrap();
 
             if let Some(antiport_id) = ctx.get_antiport_id(port_id) {
-                let antiport_lit = sat::Literal::from_atom_id(antiport_id, true);
+                let antiport_lit = sat::Literal::from_atom_id(antiport_id.into(), true);
 
                 formula.add_internal_node(port_lit, antiport_lit);
             }
         }
 
         for (&port_id, poly) in self.effects.iter() {
-            let port_lit = sat::Literal::from_atom_id(port_id, true);
+            let port_lit = sat::Literal::from_atom_id(port_id.into(), true);
 
             formula.add_polynomial(port_lit, poly);
         }

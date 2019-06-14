@@ -1,30 +1,41 @@
 use std::collections::BTreeMap;
-use crate::atom::{AtomSpace, Atom, Port, Link};
+use crate::{ID, Port, Link, NodeID, PortID, LinkID, atom::{AtomSpace, AtomID}};
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub(crate) struct NameSpace {
     names: Vec<String>,
-    ids:   BTreeMap<String, usize>, // FIXME borrow names
+    ids:   BTreeMap<String, ID>, // FIXME borrow names
 }
 
 impl NameSpace {
-    pub(crate) fn get_name(&self, id: usize) -> Option<&str> {
-        self.names.get(id).map(|s| s.as_str())
+    pub(crate) fn get_name(&self, id: ID) -> Option<&str> {
+        self.names.get(id.get()).map(|s| s.as_str())
     }
 
-    pub(crate) fn get_id(&self, name: &str) -> Option<usize> {
+    pub(crate) fn get_id(&self, name: &str) -> Option<ID> {
         self.ids.get(name).copied()
     }
 
-    pub(crate) fn take_id(&mut self, name: &str) -> usize {
+    pub(crate) fn take_id(&mut self, name: &str) -> ID {
         self.ids.get(name).copied().unwrap_or_else(|| {
-            let id = self.names.len();
+            let id = unsafe {
+                ID::new_unchecked(self.names.len())
+            };
 
             self.names.push(name.to_string());
             self.ids.insert(name.to_string(), id);
 
             id
         })
+    }
+}
+
+impl Default for NameSpace {
+    fn default() -> Self {
+        Self {
+            names: vec![String::new()],
+            ids:   Default::default(),
+        }
     }
 }
 
@@ -42,61 +53,49 @@ impl Context {
 
     // Nodes
 
-    pub fn take_node_id(&mut self, node_name: &str) -> usize {
-        self.nodes.take_id(node_name)
+    pub fn take_node_id(&mut self, node_name: &str) -> NodeID {
+        NodeID(self.nodes.take_id(node_name))
     }
 
-    pub fn get_node_name(&self, node_id: usize) -> Option<&str> {
-        self.nodes.get_name(node_id)
+    pub fn get_node_name(&self, node_id: NodeID) -> Option<&str> {
+        self.nodes.get_name(node_id.get().into())
     }
 
-    pub fn get_node_id(&self, node_name: &str) -> Option<usize> {
-        self.nodes.get_id(node_name)
+    pub fn get_node_id(&self, node_name: &str) -> Option<NodeID> {
+        self.nodes.get_id(node_name).map(|id| NodeID(id))
     }
 
     // Atoms
 
-    pub fn take_atom(&mut self, atom: Atom) -> usize {
-        self.atoms.take_atom(atom)
-    }
-
-    pub fn take_port(&mut self, port: Port) -> usize {
-        self.atoms.take_port(port)
-    }
-
-    pub fn take_link(&mut self, link: Link) -> usize {
-        self.atoms.take_link(link)
-    }
-
-    pub fn get_atom(&self, atom_id: usize) -> Option<&Atom> {
-        self.atoms.get_atom(atom_id)
-    }
-
-    pub fn get_atom_mut(&mut self, atom_id: usize) -> Option<&mut Atom> {
-        self.atoms.get_atom_mut(atom_id)
-    }
-
-    pub fn is_port(&self, atom_id: usize) -> bool {
+    pub(crate) fn is_port(&self, atom_id: AtomID) -> bool {
         self.atoms.is_port(atom_id)
     }
 
-    pub fn get_port(&self, atom_id: usize) -> Option<&Port> {
-        self.atoms.get_port(atom_id)
+    pub fn take_port(&mut self, port: Port) -> PortID {
+        self.atoms.take_port(port)
     }
 
-    pub fn get_port_mut(&mut self, atom_id: usize) -> Option<&mut Port> {
-        self.atoms.get_port_mut(atom_id)
+    pub fn take_link(&mut self, link: Link) -> LinkID {
+        self.atoms.take_link(link)
     }
 
-    pub fn get_link(&self, atom_id: usize) -> Option<&Link> {
-        self.atoms.get_link(atom_id)
+    pub fn get_port(&self, port_id: PortID) -> Option<&Port> {
+        self.atoms.get_port(port_id)
     }
 
-    pub fn get_link_mut(&mut self, atom_id: usize) -> Option<&mut Link> {
-        self.atoms.get_link_mut(atom_id)
+    pub fn get_port_mut(&mut self, port_id: PortID) -> Option<&mut Port> {
+        self.atoms.get_port_mut(port_id)
     }
 
-    pub fn get_antiport_id(&self, port_id: usize) -> Option<usize> {
+    pub fn get_link(&self, link_id: LinkID) -> Option<&Link> {
+        self.atoms.get_link(link_id)
+    }
+
+    pub fn get_link_mut(&mut self, link_id: LinkID) -> Option<&mut Link> {
+        self.atoms.get_link_mut(link_id)
+    }
+
+    pub fn get_antiport_id(&self, port_id: PortID) -> Option<PortID> {
         self.atoms.get_antiport_id(port_id)
     }
 }

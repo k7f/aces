@@ -6,7 +6,7 @@ use std::{
 };
 use regex::Regex;
 use yaml_rust::{Yaml, YamlLoader};
-use crate::{Context, Face, context::NameSpace, error::AcesError};
+use crate::{Context, ID, Face, context::NameSpace, error::AcesError};
 
 trait UpdatableVec<V> {
     fn vec_update(&mut self, value: &V);
@@ -16,11 +16,11 @@ trait UpdatableMap<K, V> {
     fn map_update(&mut self, key: K, value: &V);
 }
 
-type MonoForYaml = Vec<usize>;
+type MonoForYaml = Vec<ID>;
 type PolyForYaml = Vec<MonoForYaml>;
 
-impl UpdatableVec<usize> for MonoForYaml {
-    fn vec_update(&mut self, value: &usize) {
+impl UpdatableVec<ID> for MonoForYaml {
+    fn vec_update(&mut self, value: &ID) {
         if let Err(ndx) = self.binary_search(value) {
             self.insert(ndx, *value);
         }
@@ -35,8 +35,8 @@ impl UpdatableVec<MonoForYaml> for PolyForYaml {
     }
 }
 
-impl UpdatableMap<usize, PolyForYaml> for BTreeMap<usize, PolyForYaml> {
-    fn map_update(&mut self, key: usize, value: &PolyForYaml) {
+impl UpdatableMap<ID, PolyForYaml> for BTreeMap<ID, PolyForYaml> {
+    fn map_update(&mut self, key: ID, value: &PolyForYaml) {
         self.entry(key)
             .and_modify(|poly| {
                 for new_mono in value {
@@ -51,7 +51,7 @@ fn do_take_id(
     nodes: &mut NameSpace,
     name: &str,
     single_word_only: bool,
-) -> Result<usize, Box<dyn Error>> {
+) -> Result<ID, Box<dyn Error>> {
     if single_word_only && name.contains(char::is_whitespace) {
         Err(Box::new(AcesError::SpecShortPolyWithWords))
     } else {
@@ -63,9 +63,9 @@ fn post_process_port_spec(
     nodes: &mut NameSpace,
     spec: &str,
     single_word_only: bool,
-) -> Result<Vec<usize>, Box<dyn Error>> {
+) -> Result<Vec<ID>, Box<dyn Error>> {
     if spec.contains(',') {
-        let result: Result<Vec<usize>, Box<dyn Error>> =
+        let result: Result<Vec<ID>, Box<dyn Error>> =
             spec.split(',').map(|s| do_take_id(nodes, s.trim(), single_word_only)).collect();
         let ids = result?;
 
@@ -81,7 +81,7 @@ fn do_parse_port_spec(
     nodes: &mut NameSpace,
     spec: &str,
     single_word_only: bool,
-) -> Result<Option<(Vec<usize>, Face)>, Box<dyn Error>> {
+) -> Result<Option<(Vec<ID>, Face)>, Box<dyn Error>> {
     lazy_static! {
         // Node name (untrimmed, unseparated) is any nonempty string not ending in '>' or '<'.
         // Removal of leading and trailing whitespace is done in post processing,
@@ -102,7 +102,7 @@ fn do_parse_port_spec(
     }
 }
 
-fn parse_port_spec(ctx: &Arc<Mutex<Context>>, spec: &str) -> Option<(Vec<usize>, Face)> {
+fn parse_port_spec(ctx: &Arc<Mutex<Context>>, spec: &str) -> Option<(Vec<ID>, Face)> {
     let ref mut nodes = ctx.lock().unwrap().nodes;
 
     do_parse_port_spec(nodes, spec, false).unwrap_or_else(|_| unreachable!())
@@ -113,7 +113,7 @@ fn parse_link_spec(
     spec: &str,
     valid_face: Face,
     single_word_only: bool,
-) -> Result<(usize, bool), Box<dyn Error>> {
+) -> Result<(ID, bool), Box<dyn Error>> {
     let ref mut nodes = ctx.lock().unwrap().nodes;
 
     let link_with_colink = do_parse_port_spec(nodes, spec, single_word_only)?;
@@ -139,20 +139,20 @@ fn parse_link_spec(
 struct SpecForYaml {
     name:    Option<String>,
     meta:    BTreeMap<String, Yaml>,
-    causes:  BTreeMap<usize, PolyForYaml>,
-    effects: BTreeMap<usize, PolyForYaml>,
-    carrier: BTreeSet<usize>,
+    causes:  BTreeMap<ID, PolyForYaml>,
+    effects: BTreeMap<ID, PolyForYaml>,
+    carrier: BTreeSet<ID>,
 }
 
 impl SpecForYaml {
     fn add_ports(
         &mut self,
         ctx: &Arc<Mutex<Context>>,
-        node_ids: &[usize],
+        ids: &[ID],
         face: Face,
         poly_yaml: &Yaml,
     ) -> Result<(), Box<dyn Error>> {
-        assert!(!node_ids.is_empty());
+        assert!(!ids.is_empty());
 
         let mut poly_spec = PolyForYaml::new();
 
@@ -164,9 +164,9 @@ impl SpecForYaml {
 
                 if with_colink {
                     if face == Face::Tx {
-                        self.causes.map_update(other_id, &vec![node_ids.to_owned()]);
+                        self.causes.map_update(other_id, &vec![ids.to_owned()]);
                     } else {
-                        self.effects.map_update(other_id, &vec![node_ids.to_owned()]);
+                        self.effects.map_update(other_id, &vec![ids.to_owned()]);
                     }
                 }
             }
@@ -183,9 +183,9 @@ impl SpecForYaml {
 
                             if with_colink {
                                 if face == Face::Tx {
-                                    self.causes.map_update(other_id, &vec![node_ids.to_owned()]);
+                                    self.causes.map_update(other_id, &vec![ids.to_owned()]);
                                 } else {
-                                    self.effects.map_update(other_id, &vec![node_ids.to_owned()]);
+                                    self.effects.map_update(other_id, &vec![ids.to_owned()]);
                                 }
                             }
                         }
@@ -203,10 +203,10 @@ impl SpecForYaml {
                                     if with_colink {
                                         if face == Face::Tx {
                                             self.causes
-                                                .map_update(other_id, &vec![node_ids.to_owned()]);
+                                                .map_update(other_id, &vec![ids.to_owned()]);
                                         } else {
                                             self.effects
-                                                .map_update(other_id, &vec![node_ids.to_owned()]);
+                                                .map_update(other_id, &vec![ids.to_owned()]);
                                         }
                                     }
                                 } else {
@@ -226,11 +226,11 @@ impl SpecForYaml {
         }
 
         if face == Face::Tx {
-            for &id in node_ids {
+            for &id in ids {
                 self.effects.map_update(id, &poly_spec);
             }
         } else {
-            for &id in node_ids {
+            for &id in ids {
                 self.causes.map_update(id, &poly_spec);
             }
         }
@@ -247,8 +247,8 @@ impl SpecForYaml {
             let key = key.trim();
             let port = parse_port_spec(ctx, key);
 
-            if let Some((node_ids, face)) = port {
-                self.add_ports(ctx, &node_ids, face, value)
+            if let Some((ids, face)) = port {
+                self.add_ports(ctx, &ids, face, value)
             } else if key == "name" {
                 if let Some(name) = value.as_str() {
                     if self.name.is_none() {
@@ -306,9 +306,9 @@ impl SpecForYaml {
 pub(crate) trait CESSpec: Debug {
     fn get_raw(&self) -> Option<&str>;
     fn get_name(&self) -> Option<&str>;
-    fn get_carrier_ids(&self) -> Vec<usize>;
-    fn get_causes_by_id(&self, node_id: usize) -> Option<&Vec<Vec<usize>>>;
-    fn get_effects_by_id(&self, node_id: usize) -> Option<&Vec<Vec<usize>>>;
+    fn get_carrier_ids(&self) -> Vec<ID>;
+    fn get_causes_by_id(&self, id: ID) -> Option<&Vec<Vec<ID>>>;
+    fn get_effects_by_id(&self, id: ID) -> Option<&Vec<Vec<ID>>>;
 }
 
 impl CESSpec for String {
@@ -320,15 +320,15 @@ impl CESSpec for String {
         panic!("Attempt to access a phantom specification.")
     }
 
-    fn get_carrier_ids(&self) -> Vec<usize> {
+    fn get_carrier_ids(&self) -> Vec<ID> {
         panic!("Attempt to access a phantom specification.")
     }
 
-    fn get_causes_by_id(&self, _node_id: usize) -> Option<&Vec<Vec<usize>>> {
+    fn get_causes_by_id(&self, _id: ID) -> Option<&Vec<Vec<ID>>> {
         panic!("Attempt to access a phantom specification.")
     }
 
-    fn get_effects_by_id(&self, _node_id: usize) -> Option<&Vec<Vec<usize>>> {
+    fn get_effects_by_id(&self, _id: ID) -> Option<&Vec<Vec<ID>>> {
         panic!("Attempt to access a phantom specification.")
     }
 }
@@ -346,16 +346,16 @@ impl CESSpec for SpecForYaml {
         }
     }
 
-    fn get_carrier_ids(&self) -> Vec<usize> {
+    fn get_carrier_ids(&self) -> Vec<ID> {
         self.carrier.iter().copied().collect()
     }
 
-    fn get_causes_by_id(&self, node_id: usize) -> Option<&Vec<Vec<usize>>> {
-        self.causes.get(&node_id)
+    fn get_causes_by_id(&self, id: ID) -> Option<&Vec<Vec<ID>>> {
+        self.causes.get(&id)
     }
 
-    fn get_effects_by_id(&self, node_id: usize) -> Option<&Vec<Vec<usize>>> {
-        self.effects.get(&node_id)
+    fn get_effects_by_id(&self, id: ID) -> Option<&Vec<Vec<ID>>> {
+        self.effects.get(&id)
     }
 }
 

@@ -5,22 +5,24 @@ use std::{
     fmt::{self, Write},
 };
 use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
-use crate::{Context, Polynomial, Face};
+use crate::{Context, Polynomial, Face, PortID, LinkID, atom::AtomID};
 
 trait CESVar {
-    fn from_atom_id(atom_id: usize) -> Self;
-    fn into_atom_id(&self) -> usize;
+    fn from_atom_id(atom_id: AtomID) -> Self;
+    fn into_atom_id(&self) -> AtomID;
     fn show(&self, ctx: &Arc<Mutex<Context>>) -> String;
 }
 
 impl CESVar for Var {
-    fn from_atom_id(atom_id: usize) -> Self {
-        Var::from_dimacs(atom_id.try_into().unwrap())
+    fn from_atom_id(atom_id: AtomID) -> Self {
+        Var::from_dimacs(atom_id.get().try_into().unwrap())
     }
 
-    fn into_atom_id(&self) -> usize {
+    fn into_atom_id(&self) -> AtomID {
         let var = self.to_dimacs();
-        var.try_into().unwrap()
+        unsafe {
+            AtomID::new_unchecked(var.try_into().unwrap())
+        }
     }
 
     fn show(&self, ctx: &Arc<Mutex<Context>>) -> String {
@@ -29,9 +31,9 @@ impl CESVar for Var {
 
         let ctx = ctx.lock().unwrap();
 
-        if let Some(port) = ctx.get_port(atom_id) {
+        if let Some(port) = ctx.get_port(PortID(atom_id)) {
             result.write_fmt(format_args!("{}", port)).unwrap();
-        } else if let Some(link) = ctx.get_link(atom_id) {
+        } else if let Some(link) = ctx.get_link(LinkID(atom_id)) {
             result.write_fmt(format_args!("{}", link)).unwrap();
         } else {
             result.push_str("???");
@@ -42,19 +44,21 @@ impl CESVar for Var {
 }
 
 trait CESLit {
-    fn from_atom_id(atom_id: usize, negated: bool) -> Self;
-    fn into_atom_id(&self) -> (usize, bool);
+    fn from_atom_id(atom_id: AtomID, negated: bool) -> Self;
+    fn into_atom_id(&self) -> (AtomID, bool);
     fn show(&self, ctx: &Arc<Mutex<Context>>) -> String;
 }
 
 impl CESLit for Lit {
-    fn from_atom_id(atom_id: usize, negated: bool) -> Self {
+    fn from_atom_id(atom_id: AtomID, negated: bool) -> Self {
         Self::from_var(Var::from_atom_id(atom_id), !negated)
     }
 
-    fn into_atom_id(&self) -> (usize, bool) {
+    fn into_atom_id(&self) -> (AtomID, bool) {
         let lit = self.to_dimacs();
-        (lit.abs().try_into().unwrap(), lit < 0)
+        unsafe {
+            (AtomID::new_unchecked(lit.abs().try_into().unwrap()), lit < 0)
+        }
     }
 
     fn show(&self, ctx: &Arc<Mutex<Context>>) -> String {
@@ -70,11 +74,12 @@ impl CESLit for Lit {
 pub struct Literal(Lit);
 
 impl Literal {
-    pub fn from_atom_id(atom_id: usize, negated: bool) -> Self {
+    pub(crate) fn from_atom_id(atom_id: AtomID, negated: bool) -> Self {
         Self(Lit::from_atom_id(atom_id, negated))
     }
 
-    pub fn into_atom_id(&self) -> (usize, bool) {
+    #[allow(dead_code)]
+    pub(crate) fn into_atom_id(&self) -> (AtomID, bool) {
         self.0.into_atom_id()
     }
 
@@ -115,8 +120,8 @@ impl Formula {
         for (mono_links, other_links) in poly.iter() {
             let clause = mono_links
                 .iter()
-                .map(|&id| Lit::from_atom_id(id, false))
-                .chain(other_links.iter().map(|&id| Lit::from_atom_id(id, true)));
+                .map(|&id| Lit::from_atom_id(id.0, false))
+                .chain(other_links.iter().map(|&id| Lit::from_atom_id(id.0, true)));
             let mut clause: Vec<_> = clause.collect();
             clause.push(port_lit.0);
 
@@ -243,7 +248,7 @@ impl Solution {
                 let (atom_id, _) = lit.into_atom_id();
                 let ctx = solution.context.lock().unwrap();
 
-                if let Some(port) = ctx.get_port(atom_id) {
+                if let Some(port) = ctx.get_port(PortID(atom_id)) {
                     if port.get_face() == Face::Tx {
                         solution.pre_set.push(lit);
                     } else {
@@ -259,7 +264,11 @@ impl Solution {
 
 impl fmt::Debug for Solution {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Solution {{ model: {:?}, pre_set: {:?}, post_set: {:?} }}", self.model, self.pre_set, self.post_set)
+        write!(
+            f,
+            "Solution {{ model: {:?}, pre_set: {:?}, post_set: {:?} }}",
+            self.model, self.pre_set, self.post_set
+        )
     }
 }
 
@@ -280,7 +289,6 @@ impl fmt::Display for Solution {
         if self.post_set.is_empty() {
             write!(f, "}}")?;
         } else {
-
             for lit in self.post_set.iter() {
                 write!(f, " {}", &lit.show(&self.context))?;
             }
