@@ -1,3 +1,5 @@
+#![allow(clippy::toplevel_ref_arg)]
+
 use std::error::Error;
 use aces::cli::{App, Command, Describe, Validate};
 

@@ -90,9 +90,7 @@ impl AtomSpace {
             }
         }
 
-        let atom_id = unsafe {
-            AtomID::new_unchecked(self.atoms.len())
-        };
+        let atom_id = unsafe { AtomID::new_unchecked(self.atoms.len()) };
         atom.set_atom_id(atom_id);
         self.atoms.push(atom);
 
@@ -247,7 +245,8 @@ impl Atom {
             Rx(a) => a.atom_id,
             Link(a) => a.atom_id,
             Bottom => panic!("Attempt to get ID of the bottom atom"),
-        }.expect("Attempt to access an uninitialized atom")
+        }
+        .expect("Attempt to access an uninitialized atom")
     }
 }
 
@@ -339,12 +338,12 @@ pub struct Link {
 
 impl Link {
     pub fn new(
-        tx_port_id:   PortID,
+        tx_port_id: PortID,
         tx_node_name: String,
-        tx_node_id:   NodeID,
-        rx_port_id:   PortID,
+        tx_node_id: NodeID,
+        rx_port_id: PortID,
         rx_node_name: String,
-        rx_node_id:   NodeID,
+        rx_node_id: NodeID,
     ) -> Self {
         Self {
             atom_id: None,

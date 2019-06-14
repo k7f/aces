@@ -40,7 +40,7 @@ impl CES {
         &mut self,
         node_id: NodeID,
         face: Face,
-        spec_poly: &Vec<Vec<ID>>,
+        spec_poly: &[Vec<ID>],
     ) -> Result<(), Box<dyn Error>> {
         let mut ctx = self.context.lock().unwrap();
 
@@ -62,8 +62,7 @@ impl CES {
                     .ok_or(AcesError::NodeMissingForPort(!face))?
                     .to_owned();
 
-                let coatom_id =
-                    ctx.take_port(Port::new(!face, conode_name.clone(), conode_id));
+                let coatom_id = ctx.take_port(Port::new(!face, conode_name.clone(), conode_id));
 
                 let link_id = match face {
                     Face::Tx => ctx.take_link(Link::new(
@@ -87,16 +86,13 @@ impl CES {
                 match face {
                     Face::Tx => {
                         if let Some(what_missing) = self.links.get_mut(&link_id) {
-                            match *what_missing {
-                                Some(Face::Tx) => {
-                                    // Link occurs in causes and effects:
-                                    // nothing misses, link not broken.
-                                    *what_missing = None;
-                                    self.num_broken_links -= 1;
-                                }
-                                _ => {
-                                    // Link reoccurrence in effects.
-                                }
+                            if *what_missing == Some(Face::Tx) {
+                                // Link occurs in causes and effects:
+                                // nothing misses, link not broken.
+                                *what_missing = None;
+                                self.num_broken_links -= 1;
+                            } else {
+                                // Link reoccurrence in effects.
                             }
                         } else {
                             // Link occurs in effects, but its occurence
@@ -108,16 +104,13 @@ impl CES {
 
                     Face::Rx => {
                         if let Some(what_missing) = self.links.get_mut(&link_id) {
-                            match *what_missing {
-                                Some(Face::Rx) => {
-                                    // Link occurs in causes and effects:
-                                    // nothing misses, link not broken.
-                                    *what_missing = None;
-                                    self.num_broken_links -= 1;
-                                }
-                                _ => {
-                                    // Link reoccurrence in causes.
-                                }
+                            if *what_missing == Some(Face::Rx) {
+                                // Link occurs in causes and effects:
+                                // nothing misses, link not broken.
+                                *what_missing = None;
+                                self.num_broken_links -= 1;
+                            } else {
+                                // Link reoccurrence in causes.
                             }
                         } else {
                             // Link occurs in causes, but its occurence
@@ -142,7 +135,7 @@ impl CES {
         Ok(())
     }
 
-    pub fn from_str(ctx: &Arc<Mutex<Context>>, raw_spec: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn from_str<S: AsRef<str>>(ctx: &Arc<Mutex<Context>>, raw_spec: S) -> Result<Self, Box<dyn Error>> {
         let mut ces = CES::new(ctx);
 
         let spec = spec_from_str(ctx, raw_spec)?;

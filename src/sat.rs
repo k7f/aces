@@ -9,8 +9,8 @@ use crate::{Context, Polynomial, Face, PortID, LinkID, atom::AtomID};
 
 trait CESVar {
     fn from_atom_id(atom_id: AtomID) -> Self;
-    fn into_atom_id(&self) -> AtomID;
-    fn show(&self, ctx: &Arc<Mutex<Context>>) -> String;
+    fn into_atom_id(self) -> AtomID;
+    fn show(self, ctx: &Arc<Mutex<Context>>) -> String;
 }
 
 impl CESVar for Var {
@@ -18,14 +18,12 @@ impl CESVar for Var {
         Var::from_dimacs(atom_id.get().try_into().unwrap())
     }
 
-    fn into_atom_id(&self) -> AtomID {
+    fn into_atom_id(self) -> AtomID {
         let var = self.to_dimacs();
-        unsafe {
-            AtomID::new_unchecked(var.try_into().unwrap())
-        }
+        unsafe { AtomID::new_unchecked(var.try_into().unwrap()) }
     }
 
-    fn show(&self, ctx: &Arc<Mutex<Context>>) -> String {
+    fn show(self, ctx: &Arc<Mutex<Context>>) -> String {
         let mut result = String::new();
         let atom_id = self.into_atom_id();
 
@@ -45,8 +43,8 @@ impl CESVar for Var {
 
 trait CESLit {
     fn from_atom_id(atom_id: AtomID, negated: bool) -> Self;
-    fn into_atom_id(&self) -> (AtomID, bool);
-    fn show(&self, ctx: &Arc<Mutex<Context>>) -> String;
+    fn into_atom_id(self) -> (AtomID, bool);
+    fn show(self, ctx: &Arc<Mutex<Context>>) -> String;
 }
 
 impl CESLit for Lit {
@@ -54,14 +52,12 @@ impl CESLit for Lit {
         Self::from_var(Var::from_atom_id(atom_id), !negated)
     }
 
-    fn into_atom_id(&self) -> (AtomID, bool) {
+    fn into_atom_id(self) -> (AtomID, bool) {
         let lit = self.to_dimacs();
-        unsafe {
-            (AtomID::new_unchecked(lit.abs().try_into().unwrap()), lit < 0)
-        }
+        unsafe { (AtomID::new_unchecked(lit.abs().try_into().unwrap()), lit < 0) }
     }
 
-    fn show(&self, ctx: &Arc<Mutex<Context>>) -> String {
+    fn show(self, ctx: &Arc<Mutex<Context>>) -> String {
         if self.is_negative() {
             format!("~{}", self.var().show(ctx))
         } else {
@@ -79,11 +75,11 @@ impl Literal {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn into_atom_id(&self) -> (AtomID, bool) {
+    pub(crate) fn into_atom_id(self) -> (AtomID, bool) {
         self.0.into_atom_id()
     }
 
-    pub fn show(&self, ctx: &Arc<Mutex<Context>>) -> String {
+    pub fn show(self, ctx: &Arc<Mutex<Context>>) -> String {
         self.0.show(ctx)
     }
 }
@@ -103,8 +99,8 @@ impl Formula {
         }
     }
 
-    fn add_clause(&mut self, clause: &[Lit], info: &str) {
-        println!("Add (to formula) {} clause: {:?}.", info, clause);
+    fn add_clause<S: AsRef<str>>(&mut self, clause: &[Lit], info: S) {
+        println!("Add (to formula) {} clause: {:?}.", info.as_ref(), clause);
         self.cnf.add_clause(clause);
         self.variables.extend(clause.iter().map(|lit| lit.var()));
     }
@@ -183,8 +179,8 @@ impl<'a> Solver<'a> {
         }
     }
 
-    fn add_clause(&mut self, clause: &[Lit], info: &str) {
-        println!("Add (to solver) {} clause: {:?}.", info, clause);
+    fn add_clause<S: AsRef<str>>(&mut self, clause: &[Lit], info: S) {
+        println!("Add (to solver) {} clause: {:?}.", info.as_ref(), clause);
         self.engine.add_clause(clause);
     }
 

@@ -28,15 +28,15 @@ impl<'a> App<'a> {
         self.cli_args.subcommand_name()
     }
 
-    pub fn value_of(&self, key: &str) -> Option<&str> {
+    pub fn value_of<S: AsRef<str>>(&self, key: S) -> Option<&str> {
         self.cli_args.subcommand().1.unwrap_or(&self.cli_args).value_of(key)
     }
 
-    pub fn occurrences_of(&self, key: &str) -> u64 {
+    pub fn occurrences_of<S: AsRef<str>>(&self, key: S) -> u64 {
         self.cli_args.subcommand().1.unwrap_or(&self.cli_args).occurrences_of(key)
     }
 
-    pub fn is_present(&self, key: &str) -> bool {
+    pub fn is_present<S: AsRef<str>>(&self, key: S) -> bool {
         self.cli_args.subcommand().1.unwrap_or(&self.cli_args).is_present(key)
     }
 }

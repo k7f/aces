@@ -41,27 +41,25 @@ impl Command for Validate {
                                         println!("+++ {:?}", ces);
                                     }
 
-                                    if !syntax_only {
-                                        if !ces.is_coherent() {
-                                            if do_abort {
-                                                println!("... Aborting on structural error.");
-                                            }
+                                    if !syntax_only && !ces.is_coherent() {
+                                        if do_abort {
+                                            println!("... Aborting on structural error.");
+                                        }
 
-                                            eprintln!(
-                                                "!!! Structural error in file '{}'...",
-                                                path.display()
-                                            );
+                                        eprintln!(
+                                            "!!! Structural error in file '{}'...",
+                                            path.display()
+                                        );
 
-                                            let err = AcesError::CESIsIncoherent(
-                                                ces.get_name().unwrap_or("anonymous").to_owned(),
-                                            );
+                                        let err = AcesError::CESIsIncoherent(
+                                            ces.get_name().unwrap_or("anonymous").to_owned(),
+                                        );
 
-                                            if do_abort {
-                                                return Err(Box::new(err))
-                                            } else {
-                                                eprintln!("[Error] {}.", err);
-                                                num_bad_files += 1;
-                                            }
+                                        if do_abort {
+                                            return Err(Box::new(err))
+                                        } else {
+                                            eprintln!("[Error] {}.", err);
+                                            num_bad_files += 1;
                                         }
                                     }
                                 }

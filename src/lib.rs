@@ -1,3 +1,5 @@
+#![allow(clippy::toplevel_ref_arg)]
+
 #[macro_use]
 extern crate lazy_static;
 

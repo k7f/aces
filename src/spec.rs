@@ -43,45 +43,47 @@ impl UpdatableMap<ID, PolyForYaml> for BTreeMap<ID, PolyForYaml> {
                     poly.vec_update(new_mono)
                 }
             })
-            .or_insert(value.to_owned());
+            .or_insert_with(|| value.to_owned());
     }
 }
 
-fn do_take_id(
+fn do_take_id<S: AsRef<str>>(
     nodes: &mut NameSpace,
-    name: &str,
+    name: S,
     single_word_only: bool,
 ) -> Result<ID, Box<dyn Error>> {
-    if single_word_only && name.contains(char::is_whitespace) {
+    if single_word_only && name.as_ref().contains(char::is_whitespace) {
         Err(Box::new(AcesError::SpecShortPolyWithWords))
     } else {
         Ok(nodes.take_id(name))
     }
 }
 
-fn post_process_port_spec(
+fn post_process_port_spec<S: AsRef<str>>(
     nodes: &mut NameSpace,
-    spec: &str,
+    spec: S,
     single_word_only: bool,
 ) -> Result<Vec<ID>, Box<dyn Error>> {
-    if spec.contains(',') {
+    if spec.as_ref().contains(',') {
         let result: Result<Vec<ID>, Box<dyn Error>> =
-            spec.split(',').map(|s| do_take_id(nodes, s.trim(), single_word_only)).collect();
+            spec.as_ref().split(',').map(|s| do_take_id(nodes, s.trim(), single_word_only)).collect();
         let ids = result?;
 
         Ok(ids)
     } else {
-        let id = do_take_id(nodes, spec.trim(), single_word_only)?;
+        let id = do_take_id(nodes, spec.as_ref().trim(), single_word_only)?;
 
         Ok(vec![id])
     }
 }
 
-fn do_parse_port_spec(
+type PortParsed = (Vec<ID>, Face);
+
+fn do_parse_port_spec<S: AsRef<str>>(
     nodes: &mut NameSpace,
-    spec: &str,
+    spec: S,
     single_word_only: bool,
-) -> Result<Option<(Vec<ID>, Face)>, Box<dyn Error>> {
+) -> Result<Option<PortParsed>, Box<dyn Error>> {
     lazy_static! {
         // Node name (untrimmed, unseparated) is any nonempty string not ending in '>' or '<'.
         // Removal of leading and trailing whitespace is done in post processing,
@@ -89,11 +91,11 @@ fn do_parse_port_spec(
         static ref TX_RE: Regex = Regex::new(r"^(.*[^><])(>+|\s+effects)$").unwrap();
         static ref RX_RE: Regex = Regex::new(r"^(.*[^><])(<+|\s+causes)$").unwrap();
     }
-    if let Some(cap) = TX_RE.captures(spec) {
+    if let Some(cap) = TX_RE.captures(spec.as_ref()) {
         let ids = post_process_port_spec(nodes, &cap[1], single_word_only)?;
 
         Ok(Some((ids, Face::Tx)))
-    } else if let Some(cap) = RX_RE.captures(spec) {
+    } else if let Some(cap) = RX_RE.captures(spec.as_ref()) {
         let ids = post_process_port_spec(nodes, &cap[1], single_word_only)?;
 
         Ok(Some((ids, Face::Rx)))
@@ -102,15 +104,15 @@ fn do_parse_port_spec(
     }
 }
 
-fn parse_port_spec(ctx: &Arc<Mutex<Context>>, spec: &str) -> Option<(Vec<ID>, Face)> {
+fn parse_port_spec<S: AsRef<str>>(ctx: &Arc<Mutex<Context>>, spec: S) -> Option<PortParsed> {
     let ref mut nodes = ctx.lock().unwrap().nodes;
 
     do_parse_port_spec(nodes, spec, false).unwrap_or_else(|_| unreachable!())
 }
 
-fn parse_link_spec(
+fn parse_link_spec<S: AsRef<str> + Copy>(
     ctx: &Arc<Mutex<Context>>,
-    spec: &str,
+    spec: S,
     valid_face: Face,
     single_word_only: bool,
 ) -> Result<(ID, bool), Box<dyn Error>> {
@@ -202,8 +204,7 @@ impl SpecForYaml {
 
                                     if with_colink {
                                         if face == Face::Tx {
-                                            self.causes
-                                                .map_update(other_id, &vec![ids.to_owned()]);
+                                            self.causes.map_update(other_id, &vec![ids.to_owned()]);
                                         } else {
                                             self.effects
                                                 .map_update(other_id, &vec![ids.to_owned()]);
@@ -245,9 +246,9 @@ impl SpecForYaml {
     ) -> Result<(), Box<dyn Error>> {
         if let Some(key) = key.as_str() {
             let key = key.trim();
-            let port = parse_port_spec(ctx, key);
+            let port_parsed = parse_port_spec(ctx, key);
 
-            if let Some((ids, face)) = port {
+            if let Some((ids, face)) = port_parsed {
                 self.add_ports(ctx, &ids, face, value)
             } else if key == "name" {
                 if let Some(name) = value.as_str() {
@@ -288,8 +289,8 @@ impl SpecForYaml {
         }
     }
 
-    fn from_str(ctx: &Arc<Mutex<Context>>, raw_spec: &str) -> Result<Self, Box<dyn Error>> {
-        let docs = YamlLoader::load_from_str(raw_spec.into())?;
+    fn from_str<S: AsRef<str>>(ctx: &Arc<Mutex<Context>>, raw_spec: S) -> Result<Self, Box<dyn Error>> {
+        let docs = YamlLoader::load_from_str(raw_spec.as_ref())?;
 
         if docs.is_empty() {
             Err(Box::new(AcesError::SpecEmpty))
@@ -359,9 +360,9 @@ impl CESSpec for SpecForYaml {
     }
 }
 
-pub(crate) fn spec_from_str(
+pub(crate) fn spec_from_str<S: AsRef<str>>(
     ctx: &Arc<Mutex<Context>>,
-    raw_spec: &str,
+    raw_spec: S,
 ) -> Result<Box<dyn CESSpec>, Box<dyn Error>> {
     // FIXME infer the format of spec string: yaml, sexpr, ...
     Ok(Box::new(SpecForYaml::from_str(ctx, raw_spec)?))

@@ -1,5 +1,8 @@
 use std::collections::BTreeMap;
-use crate::{ID, Port, Link, NodeID, PortID, LinkID, atom::{AtomSpace, AtomID}};
+use crate::{
+    ID, Port, Link, NodeID, PortID, LinkID,
+    atom::{AtomSpace, AtomID},
+};
 
 #[derive(Debug)]
 pub(crate) struct NameSpace {
@@ -12,18 +15,16 @@ impl NameSpace {
         self.names.get(id.get()).map(|s| s.as_str())
     }
 
-    pub(crate) fn get_id(&self, name: &str) -> Option<ID> {
-        self.ids.get(name).copied()
+    pub(crate) fn get_id<S: AsRef<str>>(&self, name: S) -> Option<ID> {
+        self.ids.get(name.as_ref()).copied()
     }
 
-    pub(crate) fn take_id(&mut self, name: &str) -> ID {
-        self.ids.get(name).copied().unwrap_or_else(|| {
-            let id = unsafe {
-                ID::new_unchecked(self.names.len())
-            };
+    pub(crate) fn take_id<S: AsRef<str>>(&mut self, name: S) -> ID {
+        self.ids.get(name.as_ref()).copied().unwrap_or_else(|| {
+            let id = unsafe { ID::new_unchecked(self.names.len()) };
 
-            self.names.push(name.to_string());
-            self.ids.insert(name.to_string(), id);
+            self.names.push(name.as_ref().to_string());
+            self.ids.insert(name.as_ref().to_string(), id);
 
             id
         })
@@ -32,10 +33,7 @@ impl NameSpace {
 
 impl Default for NameSpace {
     fn default() -> Self {
-        Self {
-            names: vec![String::new()],
-            ids:   Default::default(),
-        }
+        Self { names: vec![String::new()], ids: Default::default() }
     }
 }
 
@@ -53,16 +51,16 @@ impl Context {
 
     // Nodes
 
-    pub fn take_node_id(&mut self, node_name: &str) -> NodeID {
+    pub fn take_node_id<S: AsRef<str>>(&mut self, node_name: S) -> NodeID {
         NodeID(self.nodes.take_id(node_name))
     }
 
     pub fn get_node_name(&self, node_id: NodeID) -> Option<&str> {
-        self.nodes.get_name(node_id.get().into())
+        self.nodes.get_name(node_id.get())
     }
 
-    pub fn get_node_id(&self, node_name: &str) -> Option<NodeID> {
-        self.nodes.get_id(node_name).map(|id| NodeID(id))
+    pub fn get_node_id<S: AsRef<str>>(&self, node_name: S) -> Option<NodeID> {
+        self.nodes.get_id(node_name).map(NodeID)
     }
 
     // Atoms
