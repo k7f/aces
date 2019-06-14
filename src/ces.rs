@@ -54,18 +54,8 @@ impl CES {
                 let coatom_id = ctx.take_port(Port::new(!face, conode_id));
 
                 let link_id = match face {
-                    Face::Tx => ctx.take_link(Link::new(
-                        atom_id,
-                        node_id,
-                        coatom_id,
-                        conode_id,
-                    )),
-                    Face::Rx => ctx.take_link(Link::new(
-                        coatom_id,
-                        conode_id,
-                        atom_id,
-                        node_id,
-                    )),
+                    Face::Tx => ctx.take_link(Link::new(atom_id, node_id, coatom_id, conode_id)),
+                    Face::Rx => ctx.take_link(Link::new(coatom_id, conode_id, atom_id, node_id)),
                 };
 
                 match face {
@@ -120,7 +110,10 @@ impl CES {
         Ok(())
     }
 
-    pub fn from_str<S: AsRef<str>>(ctx: &Arc<Mutex<Context>>, raw_spec: S) -> Result<Self, Box<dyn Error>> {
+    pub fn from_str<S: AsRef<str>>(
+        ctx: &Arc<Mutex<Context>>,
+        raw_spec: S,
+    ) -> Result<Self, Box<dyn Error>> {
         let mut ces = CES::new(ctx);
 
         let spec = spec_from_str(ctx, raw_spec)?;

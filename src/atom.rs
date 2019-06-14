@@ -317,13 +317,7 @@ impl Link {
         rx_port_id: PortID,
         rx_node_id: NodeID,
     ) -> Self {
-        Self {
-            atom_id: None,
-            tx_port_id,
-            tx_node_id,
-            rx_port_id,
-            rx_node_id,
-        }
+        Self { atom_id: None, tx_port_id, tx_node_id, rx_port_id, rx_node_id }
     }
 
     pub fn get_atom_id(&self) -> AtomID {

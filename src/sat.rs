@@ -148,8 +148,7 @@ impl fmt::Display for Formula {
                     write!(f, " | ")?;
                 }
 
-                // FIXME unwrap
-                write!(f, "{}", &ctx.show_literal(lit).unwrap())?;
+                write!(f, "{}", ctx.with_literal(lit))?;
             }
         }
 
@@ -273,8 +272,7 @@ impl fmt::Display for Solution {
             for lit in self.pre_set.iter() {
                 let lit = Literal(*lit);
 
-                // FIXME unwrap
-                write!(f, " {}", &ctx.show_literal(lit).unwrap())?;
+                write!(f, " {}", ctx.with_literal(lit))?;
             }
 
             write!(f, " }} => {{")?;
@@ -288,8 +286,7 @@ impl fmt::Display for Solution {
             for lit in self.post_set.iter() {
                 let lit = Literal(*lit);
 
-                // FIXME unwrap
-                write!(f, " {}", &ctx.show_literal(lit).unwrap())?;
+                write!(f, " {}", ctx.with_literal(lit))?;
             }
 
             write!(f, " }}")?;

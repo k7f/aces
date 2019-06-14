@@ -65,8 +65,11 @@ fn post_process_port_spec<S: AsRef<str>>(
     single_word_only: bool,
 ) -> Result<Vec<ID>, Box<dyn Error>> {
     if spec.as_ref().contains(',') {
-        let result: Result<Vec<ID>, Box<dyn Error>> =
-            spec.as_ref().split(',').map(|s| do_take_id(nodes, s.trim(), single_word_only)).collect();
+        let result: Result<Vec<ID>, Box<dyn Error>> = spec
+            .as_ref()
+            .split(',')
+            .map(|s| do_take_id(nodes, s.trim(), single_word_only))
+            .collect();
         let ids = result?;
 
         Ok(ids)
@@ -289,7 +292,10 @@ impl SpecForYaml {
         }
     }
 
-    fn from_str<S: AsRef<str>>(ctx: &Arc<Mutex<Context>>, raw_spec: S) -> Result<Self, Box<dyn Error>> {
+    fn from_str<S: AsRef<str>>(
+        ctx: &Arc<Mutex<Context>>,
+        raw_spec: S,
+    ) -> Result<Self, Box<dyn Error>> {
         let docs = YamlLoader::load_from_str(raw_spec.as_ref())?;
 
         if docs.is_empty() {

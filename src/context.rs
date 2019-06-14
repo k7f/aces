@@ -1,7 +1,10 @@
-use std::{collections::BTreeMap, fmt::Write, error::Error};
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Write},
+    error::Error,
+};
 use crate::{
-    ID, Port, Face, Link, NodeID, PortID, LinkID,
-    sat,
+    ID, Port, Face, Link, NodeID, PortID, LinkID, sat,
     atom::{AtomSpace, AtomID},
     error::AcesError,
 };
@@ -99,30 +102,33 @@ impl Context {
         self.atoms.get_antiport_id(port_id)
     }
 
-    pub fn show_port(&self, port: &Port) -> Result<String, Box<dyn Error>> {
-        let node_name =
-            self.get_node_name(port.get_node_id()).ok_or(AcesError::NodeMissingForPort(Face::Tx))?;
+    pub fn format_port(&self, port: &Port) -> Result<String, Box<dyn Error>> {
+        let node_name = self
+            .get_node_name(port.get_node_id())
+            .ok_or(AcesError::NodeMissingForPort(Face::Tx))?;
 
         Ok(format!("[{} {}]", node_name, port.get_face()))
     }
 
-    pub fn show_link(&self, link: &Link) -> Result<String, Box<dyn Error>> {
-        let tx_node_name =
-            self.get_node_name(link.get_tx_node_id()).ok_or(AcesError::NodeMissingForPort(Face::Tx))?;
-        let rx_node_name =
-            self.get_node_name(link.get_rx_node_id()).ok_or(AcesError::NodeMissingForPort(Face::Rx))?;
+    pub fn format_link(&self, link: &Link) -> Result<String, Box<dyn Error>> {
+        let tx_node_name = self
+            .get_node_name(link.get_tx_node_id())
+            .ok_or(AcesError::NodeMissingForPort(Face::Tx))?;
+        let rx_node_name = self
+            .get_node_name(link.get_rx_node_id())
+            .ok_or(AcesError::NodeMissingForPort(Face::Rx))?;
 
         Ok(format!("({} > {})", tx_node_name, rx_node_name))
     }
 
-    pub fn show_variable(&self, var: sat::Variable) -> Result<String, Box<dyn Error>> {
+    pub fn format_variable(&self, var: sat::Variable) -> Result<String, Box<dyn Error>> {
         let mut result = String::new();
         let atom_id = var.into_atom_id();
 
         if let Some(port) = self.get_port(PortID(atom_id)) {
-            result.write_fmt(format_args!("{}", self.show_port(port)?))?;
+            result.write_fmt(format_args!("{}", self.format_port(port)?))?;
         } else if let Some(link) = self.get_link(LinkID(atom_id)) {
-            result.write_fmt(format_args!("{}", self.show_link(link)?))?;
+            result.write_fmt(format_args!("{}", self.format_link(link)?))?;
         } else {
             result.push_str("???");
         }
@@ -130,11 +136,52 @@ impl Context {
         Ok(result)
     }
 
-    pub fn show_literal(&self, lit: sat::Literal) -> Result<String, Box<dyn Error>> {
+    pub fn format_literal(&self, lit: sat::Literal) -> Result<String, Box<dyn Error>> {
         if lit.is_negative() {
-            Ok(format!("~{}", self.show_variable(sat::Variable(lit.0.var()))?))
+            Ok(format!("~{}", self.format_variable(sat::Variable(lit.0.var()))?))
         } else {
-            self.show_variable(sat::Variable(lit.0.var()))
+            self.format_variable(sat::Variable(lit.0.var()))
         }
+    }
+
+    pub fn with_port<'a>(&'a self, port: &'a Port) -> Contextual<'a> {
+        Contextual::Port(self, port)
+    }
+
+    pub fn with_link<'a>(&'a self, link: &'a Link) -> Contextual<'a> {
+        Contextual::Link(self, link)
+    }
+
+    pub fn with_variable(&self, var: sat::Variable) -> Contextual {
+        Contextual::Var(self, var)
+    }
+
+    pub fn with_literal(&self, lit: sat::Literal) -> Contextual {
+        Contextual::Lit(self, lit)
+    }
+}
+
+pub enum Contextual<'a> {
+    Var(&'a Context, sat::Variable),
+    Lit(&'a Context, sat::Literal),
+    Port(&'a Context, &'a Port),
+    Link(&'a Context, &'a Link),
+}
+
+impl<'a> fmt::Display for Contextual<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Contextual::*;
+
+        write!(
+            f,
+            "{}",
+            match self {
+                &Var(ctx, lit) => ctx.format_variable(lit),
+                &Lit(ctx, lit) => ctx.format_literal(lit),
+                &Port(ctx, port) => ctx.format_port(&port),
+                &Link(ctx, link) => ctx.format_link(&link),
+            }
+            .expect("Can't display")
+        )
     }
 }
