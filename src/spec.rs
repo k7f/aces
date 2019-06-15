@@ -6,7 +6,7 @@ use std::{
 };
 use regex::Regex;
 use yaml_rust::{Yaml, YamlLoader};
-use crate::{Context, ID, Face, context::NameSpace, error::AcesError};
+use crate::{Context, ID, Face, name::NameSpace, error::AcesError};
 
 trait UpdatableVec<V> {
     fn vec_update(&mut self, value: &V);

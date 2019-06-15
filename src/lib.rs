@@ -3,9 +3,10 @@
 #[macro_use]
 extern crate lazy_static;
 
-mod context;
+mod name;
 mod node;
 mod atom;
+mod context;
 mod polynomial;
 mod ces;
 mod spec;

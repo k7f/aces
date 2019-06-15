@@ -1,46 +1,13 @@
 use std::{
-    collections::BTreeMap,
     fmt::{self, Write},
     error::Error,
 };
 use crate::{
-    ID, Port, Face, Link, NodeID, PortID, LinkID, sat,
+    Port, Face, Link, NodeID, PortID, LinkID, sat,
+    name::NameSpace,
     atom::{AtomSpace, AtomID},
     error::AcesError,
 };
-
-#[derive(Debug)]
-pub(crate) struct NameSpace {
-    names: Vec<String>,
-    ids:   BTreeMap<String, ID>, // FIXME borrow names
-}
-
-impl NameSpace {
-    pub(crate) fn get_name(&self, id: ID) -> Option<&str> {
-        self.names.get(id.get()).map(|s| s.as_str())
-    }
-
-    pub(crate) fn get_id<S: AsRef<str>>(&self, name: S) -> Option<ID> {
-        self.ids.get(name.as_ref()).copied()
-    }
-
-    pub(crate) fn take_id<S: AsRef<str>>(&mut self, name: S) -> ID {
-        self.ids.get(name.as_ref()).copied().unwrap_or_else(|| {
-            let id = unsafe { ID::new_unchecked(self.names.len()) };
-
-            self.names.push(name.as_ref().to_string());
-            self.ids.insert(name.as_ref().to_string(), id);
-
-            id
-        })
-    }
-}
-
-impl Default for NameSpace {
-    fn default() -> Self {
-        Self { names: vec![String::new()], ids: Default::default() }
-    }
-}
 
 #[derive(Default, Debug)]
 pub struct Context {
@@ -175,11 +142,11 @@ impl<'a> fmt::Display for Contextual<'a> {
         write!(
             f,
             "{}",
-            match self {
-                &Var(ctx, lit) => ctx.format_variable(lit),
-                &Lit(ctx, lit) => ctx.format_literal(lit),
-                &Port(ctx, port) => ctx.format_port(&port),
-                &Link(ctx, link) => ctx.format_link(&link),
+            match *self {
+                Var(ctx, var) => ctx.format_variable(var),
+                Lit(ctx, lit) => ctx.format_literal(lit),
+                Port(ctx, port) => ctx.format_port(&port),
+                Link(ctx, link) => ctx.format_link(&link),
             }
             .expect("Can't display")
         )
