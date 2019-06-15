@@ -68,87 +68,78 @@ impl Context {
     pub fn get_antiport_id(&self, port_id: PortID) -> Option<PortID> {
         self.atoms.get_antiport_id(port_id)
     }
+}
 
-    pub fn format_port(&self, port: &Port) -> Result<String, Box<dyn Error>> {
-        let node_name = self
-            .get_node_name(port.get_node_id())
+pub trait Contextual {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>>;
+}
+
+impl Contextual for Port {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        let node_name = ctx
+            .get_node_name(self.get_node_id())
             .ok_or(AcesError::NodeMissingForPort(Face::Tx))?;
 
-        Ok(format!("[{} {}]", node_name, port.get_face()))
+        Ok(format!("[{} {}]", node_name, self.get_face()))
     }
+}
 
-    pub fn format_link(&self, link: &Link) -> Result<String, Box<dyn Error>> {
-        let tx_node_name = self
-            .get_node_name(link.get_tx_node_id())
+impl Contextual for Link {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        let tx_node_name = ctx
+            .get_node_name(self.get_tx_node_id())
             .ok_or(AcesError::NodeMissingForPort(Face::Tx))?;
-        let rx_node_name = self
-            .get_node_name(link.get_rx_node_id())
+        let rx_node_name = ctx
+            .get_node_name(self.get_rx_node_id())
             .ok_or(AcesError::NodeMissingForPort(Face::Rx))?;
 
         Ok(format!("({} > {})", tx_node_name, rx_node_name))
     }
-
-    pub fn format_variable(&self, var: sat::Variable) -> Result<String, Box<dyn Error>> {
-        let mut result = String::new();
-        let atom_id = var.into_atom_id();
-
-        if let Some(port) = self.get_port(PortID(atom_id)) {
-            result.write_fmt(format_args!("{}", self.format_port(port)?))?;
-        } else if let Some(link) = self.get_link(LinkID(atom_id)) {
-            result.write_fmt(format_args!("{}", self.format_link(link)?))?;
-        } else {
-            result.push_str("???");
-        }
-
-        Ok(result)
-    }
-
-    pub fn format_literal(&self, lit: sat::Literal) -> Result<String, Box<dyn Error>> {
-        if lit.is_negative() {
-            Ok(format!("~{}", self.format_variable(sat::Variable(lit.0.var()))?))
-        } else {
-            self.format_variable(sat::Variable(lit.0.var()))
-        }
-    }
-
-    pub fn with_port<'a>(&'a self, port: &'a Port) -> Contextual<'a> {
-        Contextual::Port(self, port)
-    }
-
-    pub fn with_link<'a>(&'a self, link: &'a Link) -> Contextual<'a> {
-        Contextual::Link(self, link)
-    }
-
-    pub fn with_variable(&self, var: sat::Variable) -> Contextual {
-        Contextual::Var(self, var)
-    }
-
-    pub fn with_literal(&self, lit: sat::Literal) -> Contextual {
-        Contextual::Lit(self, lit)
-    }
 }
 
-pub enum Contextual<'a> {
-    Var(&'a Context, sat::Variable),
-    Lit(&'a Context, sat::Literal),
-    Port(&'a Context, &'a Port),
-    Link(&'a Context, &'a Link),
+impl Contextual for sat::Variable {
+   fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+       let mut result = String::new();
+       let atom_id = self.into_atom_id();
+
+       if let Some(port) = ctx.get_port(PortID(atom_id)) {
+           result.write_fmt(format_args!("{}", port.format(ctx)?))?;
+       } else if let Some(link) = ctx.get_link(LinkID(atom_id)) {
+           result.write_fmt(format_args!("{}", link.format(ctx)?))?;
+       } else {
+           result.push_str("???");
+       }
+
+       Ok(result)
+   }
 }
 
-impl<'a> fmt::Display for Contextual<'a> {
+impl Contextual for sat::Literal {
+   fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+       if self.is_negative() {
+           Ok(format!("~{}", sat::Variable(self.0.var()).format(ctx)?))
+       } else {
+           sat::Variable(self.0.var()).format(ctx)
+       }
+   }
+}
+
+/// A short-term binding of [`Context`] and any data implementing the
+/// [`Contextual`] trait.
+///
+/// The main purpose of this type is to allow a transparent access to
+/// names which are cached in a [`Context`].
+pub struct WithContext<'a, D: Contextual>(&'a Context, &'a D);
+
+impl<'a, D: Contextual> fmt::Display for WithContext<'a, D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Contextual::*;
+        let WithContext(ctx, data) = *self;
+        write!(f, "{}", data.format(ctx).expect("Can't display"))
+    }
+}
 
-        write!(
-            f,
-            "{}",
-            match *self {
-                Var(ctx, var) => ctx.format_variable(var),
-                Lit(ctx, lit) => ctx.format_literal(lit),
-                Port(ctx, port) => ctx.format_port(&port),
-                Link(ctx, link) => ctx.format_link(&link),
-            }
-            .expect("Can't display")
-        )
+impl Context {
+    pub fn with<'a, D: Contextual>(&'a self, data: &'a D) -> WithContext<'a, D> {
+        WithContext(self, data)
     }
 }

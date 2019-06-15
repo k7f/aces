@@ -94,6 +94,10 @@ impl Formula {
         self.variables.extend(clause.iter().map(|lit| lit.var()));
     }
 
+    /// Adds _antiport_ clause to a formula.  This clause constrains
+    /// internal nodes to a single part of a firing component, source
+    /// or sink, so that the induced graph of any firing component is
+    /// bipartite.
     pub fn add_internal_node(&mut self, port_lit: Literal, antiport_lit: Literal) {
         let clause = &[port_lit.0, antiport_lit.0];
 
@@ -148,7 +152,7 @@ impl fmt::Display for Formula {
                     write!(f, " | ")?;
                 }
 
-                write!(f, "{}", ctx.with_literal(lit))?;
+                write!(f, "{}", ctx.with(&lit))?;
             }
         }
 
@@ -272,7 +276,7 @@ impl fmt::Display for Solution {
             for lit in self.pre_set.iter() {
                 let lit = Literal(*lit);
 
-                write!(f, " {}", ctx.with_literal(lit))?;
+                write!(f, " {}", ctx.with(&lit))?;
             }
 
             write!(f, " }} => {{")?;
@@ -286,7 +290,7 @@ impl fmt::Display for Solution {
             for lit in self.post_set.iter() {
                 let lit = Literal(*lit);
 
-                write!(f, " {}", ctx.with_literal(lit))?;
+                write!(f, " {}", ctx.with(&lit))?;
             }
 
             write!(f, " }}")?;

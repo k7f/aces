@@ -14,7 +14,7 @@ mod error;
 pub mod sat;
 pub mod cli;
 
-pub use context::Context;
+pub use context::{Context, Contextual, WithContext};
 pub use node::NodeID;
 pub use atom::{Port, Face, Link, PortID, LinkID};
 pub use polynomial::{Monomial, Polynomial};
