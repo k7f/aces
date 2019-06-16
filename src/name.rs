@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 use crate::ID;
 
+/// An interned `String` representing the name of a symbol.
 type Name = string_cache::DefaultAtom;
 
+/// This type maintains a bijection between symbol [`Name`]s and their
+/// serial [`ID`]s.
 #[derive(Debug)]
 pub(crate) struct NameSpace {
     names: Vec<Name>,

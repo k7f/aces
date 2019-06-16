@@ -21,4 +21,10 @@ pub use polynomial::{Monomial, Polynomial};
 pub use ces::CES;
 
 use std::num::NonZeroUsize;
+
+/// A generic one-based serial identifier.
+///
+/// Used as a common internal type backing the conversion between
+/// vector indices and specific identifiers, such as [`NodeID`],
+/// [`PortID`], and [`LinkID`].
 pub(crate) type ID = NonZeroUsize;

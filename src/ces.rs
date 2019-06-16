@@ -13,6 +13,11 @@ use crate::{
     sat,
 };
 
+/// A single c-e structure.
+///
+/// Instances of this type directly contain structural information,
+/// i.e. the cause and effect polynomials.  Some other properties are
+/// available indirectly through shared [`Context`] objects.
 #[derive(Debug)]
 pub struct CES {
     context:          Arc<Mutex<Context>>,
@@ -152,6 +157,14 @@ impl CES {
         }
     }
 
+    /// Returns link coherence status indicating whether this [`CES`]
+    /// object represents a proper c-e structure.
+    ///
+    /// C-e structure is coherent iff it has no broken links, where a
+    /// link is broken iff it occurs either in causes or in effects,
+    /// but not in both.  Internally, there is a broken links counter
+    /// associated with each [`CES`] object.  This counter is updated
+    /// whenever a polynomial is added to the structure.
     pub fn is_coherent(&self) -> bool {
         self.num_broken_links == 0
     }

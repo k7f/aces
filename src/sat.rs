@@ -2,10 +2,11 @@ use std::{
     collections::BTreeSet,
     sync::{Arc, Mutex},
     convert::TryInto,
-    fmt,
+    fmt::{self, Write},
+    error::Error,
 };
 use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
-use crate::{Context, Polynomial, Face, PortID, atom::AtomID};
+use crate::{Context, Contextual, Polynomial, Face, PortID, LinkID, atom::AtomID};
 
 trait CESVar {
     fn from_atom_id(atom_id: AtomID) -> Self;
@@ -35,6 +36,23 @@ impl Variable {
 
     pub(crate) fn into_atom_id(self) -> AtomID {
         self.0.into_atom_id()
+    }
+}
+
+impl Contextual for Variable {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        let mut result = String::new();
+        let atom_id = self.into_atom_id();
+
+        if let Some(port) = ctx.get_port(PortID(atom_id)) {
+            result.write_fmt(format_args!("{}", port.format(ctx)?))?;
+        } else if let Some(link) = ctx.get_link(LinkID(atom_id)) {
+            result.write_fmt(format_args!("{}", link.format(ctx)?))?;
+        } else {
+            result.push_str("???");
+        }
+
+        Ok(result)
     }
 }
 
@@ -73,6 +91,16 @@ impl Literal {
     }
 }
 
+impl Contextual for Literal {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        if self.is_negative() {
+            Ok(format!("~{}", Variable(self.0.var()).format(ctx)?))
+        } else {
+            Variable(self.0.var()).format(ctx)
+        }
+    }
+}
+
 pub struct Formula {
     context:   Arc<Mutex<Context>>,
     cnf:       CnfFormula,
@@ -94,10 +122,11 @@ impl Formula {
         self.variables.extend(clause.iter().map(|lit| lit.var()));
     }
 
-    /// Adds _antiport_ clause to a formula.  This clause constrains
-    /// internal nodes to a single part of a firing component, source
-    /// or sink, so that the induced graph of any firing component is
-    /// bipartite.
+    /// Adds _antiport_ clause to a formula.
+    ///
+    /// This clause constrains internal nodes to a single part of a
+    /// firing component, source or sink, so that the induced graph of
+    /// any firing component is bipartite.
     pub fn add_internal_node(&mut self, port_lit: Literal, antiport_lit: Literal) {
         let clause = &[port_lit.0, antiport_lit.0];
 
@@ -105,6 +134,7 @@ impl Formula {
     }
 
     // FIXME
+    /// Adds _monomial_ clauses to a formula.
     pub fn add_polynomial(&mut self, port_lit: Literal, poly: &Polynomial) {
         for (mono_links, other_links) in poly.iter() {
             let clause = mono_links
@@ -190,6 +220,15 @@ impl<'a> Solver<'a> {
         self.port_vars.extend(port_vars);
     }
 
+    /// Block empty solution models by adding a _void inhibition_
+    /// clause.
+    ///
+    /// A model represents an empty solution iff it contains only
+    /// negative [`Port`] literals (hence no [`Port`] variable
+    /// evaluates to `true`).  Thus, the blocking clause is the
+    /// disjunction of all [`Port`] variables known by the solver.
+    ///
+    /// [`Port`]: crate::Port
     pub fn inhibit_empty_solution(&mut self) {
         let clause: Vec<_> = self.port_vars.iter().map(|&var| Lit::from_var(var, true)).collect();
 

@@ -1,14 +1,29 @@
-use std::{
-    fmt::{self, Write},
-    error::Error,
-};
+use std::{fmt, error::Error};
 use crate::{
-    Port, Face, Link, NodeID, PortID, LinkID, sat,
+    Port, Link, NodeID, PortID, LinkID,
     name::NameSpace,
     atom::{AtomSpace, AtomID},
-    error::AcesError,
 };
 
+/// A representation of shared state.
+///
+/// This is an umbrella type which, currently, includes two symbol
+/// tables (for structure names and for node names), and a collection
+/// of [`Atom`]s.
+///
+/// All `Context` handles used in _aces_ have type
+/// `Arc<Mutex<Context>>`.  They are stored permanently in the
+/// following structs: [`CES`], [`sat::Formula`], [`sat::Solver`], and
+/// [`sat::Solution`].
+///
+/// For another way of binding `Context` to data see [`Contextual`]
+/// trait and [`WithContext`] struct.
+///
+/// [`CES`]: crate::CES
+/// [`Atom`]: crate::atom::Atom
+/// [`sat::Formula`]: crate::sat::Formula
+/// [`sat::Solver`]: crate::sat::Solver
+/// [`sat::Solution`]: crate::sat::Solution
 #[derive(Default, Debug)]
 pub struct Context {
     pub(crate) globals: NameSpace,
@@ -70,65 +85,20 @@ impl Context {
     }
 }
 
+/// A trait for binding objects to [`Context`] temporarily, without
+/// permanently storing (and synchronizing) context references inside
+/// the objects.
+///
+/// See [`WithContext`] for more details.
 pub trait Contextual {
     fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>>;
-}
-
-impl Contextual for Port {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
-        let node_name = ctx
-            .get_node_name(self.get_node_id())
-            .ok_or(AcesError::NodeMissingForPort(Face::Tx))?;
-
-        Ok(format!("[{} {}]", node_name, self.get_face()))
-    }
-}
-
-impl Contextual for Link {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
-        let tx_node_name = ctx
-            .get_node_name(self.get_tx_node_id())
-            .ok_or(AcesError::NodeMissingForPort(Face::Tx))?;
-        let rx_node_name = ctx
-            .get_node_name(self.get_rx_node_id())
-            .ok_or(AcesError::NodeMissingForPort(Face::Rx))?;
-
-        Ok(format!("({} > {})", tx_node_name, rx_node_name))
-    }
-}
-
-impl Contextual for sat::Variable {
-   fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
-       let mut result = String::new();
-       let atom_id = self.into_atom_id();
-
-       if let Some(port) = ctx.get_port(PortID(atom_id)) {
-           result.write_fmt(format_args!("{}", port.format(ctx)?))?;
-       } else if let Some(link) = ctx.get_link(LinkID(atom_id)) {
-           result.write_fmt(format_args!("{}", link.format(ctx)?))?;
-       } else {
-           result.push_str("???");
-       }
-
-       Ok(result)
-   }
-}
-
-impl Contextual for sat::Literal {
-   fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
-       if self.is_negative() {
-           Ok(format!("~{}", sat::Variable(self.0.var()).format(ctx)?))
-       } else {
-           sat::Variable(self.0.var()).format(ctx)
-       }
-   }
 }
 
 /// A short-term binding of [`Context`] and any data implementing the
 /// [`Contextual`] trait.
 ///
 /// The main purpose of this type is to allow a transparent access to
-/// names which are cached in a [`Context`].
+/// names cached in a [`Context`].
 pub struct WithContext<'a, D: Contextual>(&'a Context, &'a D);
 
 impl<'a, D: Contextual> fmt::Display for WithContext<'a, D> {
@@ -139,7 +109,7 @@ impl<'a, D: Contextual> fmt::Display for WithContext<'a, D> {
 }
 
 impl Context {
-    pub fn with<'a, D: Contextual>(&'a self, data: &'a D) -> WithContext<'a, D> {
-        WithContext(self, data)
+    pub fn with<'a, T: Contextual>(&'a self, value: &'a T) -> WithContext<'a, T> {
+        WithContext(self, value)
     }
 }

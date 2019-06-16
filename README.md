@@ -1,6 +1,7 @@
 aces
 ====
 [![Latest version](https://img.shields.io/crates/v/aces.svg)](https://crates.io/crates/aces)
+[![docs](https://docs.rs/aces/badge.svg)](https://docs.rs/aces)
 ![Rust](https://img.shields.io/badge/rust-nightly-brightgreen.svg)
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 

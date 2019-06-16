@@ -1,8 +1,21 @@
-use std::{cmp, collections::BTreeMap, fmt};
-use crate::{ID, NodeID, sat};
+use std::{cmp, collections::BTreeMap, fmt, error::Error};
+use crate::{ID, NodeID, Context, Contextual, sat, error::AcesError};
 
+/// An abstract structural identifier serving as the common base of
+/// [`PortID`] and [`LinkID`].
+///
+/// Since this is a numeric identifier, which is serial and one-based,
+/// it trivially maps into numeric codes of variables in the DIMACS
+/// SAT format.
+///
+/// See [`ID`] for more details.
 pub(crate) type AtomID = ID;
 
+/// An identifier of a [`Port`], a type derived from [`AtomID`].
+///
+/// There is a trivial bijection between values of this type and
+/// numeric codes of DIMACS variables.  This mapping simplifies the
+/// construction of SAT queries and interpretation of solutions.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[repr(transparent)]
 pub struct PortID(pub(crate) AtomID);
@@ -20,6 +33,11 @@ impl From<PortID> for AtomID {
     }
 }
 
+/// An identifier of a [`Link`], a type derived from [`AtomID`].
+///
+/// There is a trivial bijection between values of this type and
+/// numeric codes of DIMACS variables.  This mapping simplifies the
+/// construction of SAT queries and interpretation of solutions.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[repr(transparent)]
 pub struct LinkID(pub(crate) AtomID);
@@ -63,6 +81,11 @@ impl fmt::Display for Face {
     }
 }
 
+/// A collection of [`Atom`]s ([`PortID`]s and [`LinkID`]s) and a
+/// mapping from [`NodeID`]s to [`PortID`]s.
+///
+/// For the reverse mapping, from [`PortID`]s to [`NodeID`]s, call
+/// [`AtomSpace::get_port()`] followed by [`Port::get_node_id()`].
 #[derive(Debug)]
 pub(crate) struct AtomSpace {
     atoms:          Vec<Atom>,
@@ -301,6 +324,15 @@ impl cmp::PartialEq for Port {
 
 impl cmp::Eq for Port {}
 
+impl Contextual for Port {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        let node_name =
+            ctx.get_node_name(self.get_node_id()).ok_or(AcesError::NodeMissingForPort(Face::Tx))?;
+
+        Ok(format!("[{} {}]", node_name, self.get_face()))
+    }
+}
+
 #[derive(Debug)]
 pub struct Link {
     atom_id:    Option<AtomID>,
@@ -356,3 +388,16 @@ impl cmp::PartialEq for Link {
 }
 
 impl cmp::Eq for Link {}
+
+impl Contextual for Link {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        let tx_node_name = ctx
+            .get_node_name(self.get_tx_node_id())
+            .ok_or(AcesError::NodeMissingForPort(Face::Tx))?;
+        let rx_node_name = ctx
+            .get_node_name(self.get_rx_node_id())
+            .ok_or(AcesError::NodeMissingForPort(Face::Rx))?;
+
+        Ok(format!("({} > {})", tx_node_name, rx_node_name))
+    }
+}
