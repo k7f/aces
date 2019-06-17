@@ -117,23 +117,65 @@ impl Formula {
         self.variables.extend(clause.iter().map(|lit| lit.var()));
     }
 
-    /// Adds _antiport_ clause to a `Formula`.
+    /// Adds an _antiport_ constraint to this `Formula`.
     ///
     /// This clause constrains nodes to a single part of a firing
     /// component, source or sink, so that the induced graph of any
     /// firing component is bipartite.  The `Formula` should contain
-    /// one such clause for each internal node of a c-e structure.
-    pub fn add_internal_node(&mut self, port_lit: Literal, antiport_lit: Literal) {
-        let clause = &[port_lit.0, antiport_lit.0];
+    /// one such clause for each internal node of the c-e structure
+    /// under analysis.
+    pub fn add_port(&mut self, port_id: PortID) {
+        let (port_lit, antiport_lit) = {
+            if let Some(antiport_id) = self.context.lock().unwrap().get_antiport_id(port_id) {
+                (
+                    Literal::from_atom_id(port_id.into(), true),
+                    Literal::from_atom_id(antiport_id.into(), true),
+                )
+            } else {
+                return // this isn't an internal node
+            }
+        };
 
-        self.add_clause(clause, "internal node");
+        self.add_clause(&[port_lit.0, antiport_lit.0], "internal node");
     }
 
-    // FIXME add link clause: link => port and coport
+    /// Adds a _link coherence_ constraint to this `Formula`.
+    ///
+    /// This constraint consists of two clauses which are added in
+    /// order to maintain link coherence, so that any firing component
+    /// of a c-e structure is itself a proper c-e structure.  The
+    /// `Formula` should contain one such constraint for each link of
+    /// the c-e structure under analysis.
+    ///
+    /// Panics if `link_id` doesn't identify any `Link` in the
+    /// `Context` of this `Formula`.
+    pub fn add_link(&mut self, link_id: LinkID) {
+        let link_lit = Literal::from_atom_id(link_id.into(), true);
+
+        let (tx_port_lit, rx_port_lit) = {
+            let ctx = self.context.lock().unwrap();
+
+            if let Some(link) = ctx.get_link(link_id) {
+                let tx_port_id = link.get_tx_port_id();
+                let rx_port_id = link.get_rx_port_id();
+
+                (
+                    Literal::from_atom_id(tx_port_id.into(), false),
+                    Literal::from_atom_id(rx_port_id.into(), false),
+                )
+            } else {
+                panic!("There is no link with ID {:?}.", link_id)
+            }
+        };
+        self.add_clause(&[link_lit.0, tx_port_lit.0], "link coherence (Tx side)");
+        self.add_clause(&[link_lit.0, rx_port_lit.0], "link coherence (Rx side)");
+    }
 
     // FIXME
-    /// Adds _monomial_ clauses to a formula.
-    pub fn add_polynomial(&mut self, port_lit: Literal, poly: &Polynomial) {
+    /// Adds _monomial_ constraint to a formula.
+    pub fn add_polynomial(&mut self, port_id: PortID, poly: &Polynomial) {
+        let port_lit = Literal::from_atom_id(port_id.into(), true);
+
         for (mono_links, other_links) in poly.iter() {
             let clause = mono_links
                 .iter()

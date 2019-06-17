@@ -173,23 +173,16 @@ impl CES {
         let mut formula = sat::Formula::new(self.context.clone());
 
         for (&port_id, poly) in self.causes.iter() {
-            let port_lit = sat::Literal::from_atom_id(port_id.into(), true);
-
-            formula.add_polynomial(port_lit, poly);
-
-            let ctx = self.context.lock().unwrap();
-
-            if let Some(antiport_id) = ctx.get_antiport_id(port_id) {
-                let antiport_lit = sat::Literal::from_atom_id(antiport_id.into(), true);
-
-                formula.add_internal_node(port_lit, antiport_lit);
-            }
+            formula.add_polynomial(port_id, poly);
+            formula.add_port(port_id);
         }
 
         for (&port_id, poly) in self.effects.iter() {
-            let port_lit = sat::Literal::from_atom_id(port_id.into(), true);
+            formula.add_polynomial(port_id, poly);
+        }
 
-            formula.add_polynomial(port_lit, poly);
+        for (&link_id, _) in self.links.iter() {
+            formula.add_link(link_id);
         }
 
         formula
