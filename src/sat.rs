@@ -1,12 +1,11 @@
 use std::{
     collections::BTreeSet,
-    sync::{Arc, Mutex},
     convert::TryInto,
     fmt::{self, Write},
     error::Error,
 };
 use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
-use crate::{Context, Contextual, Polynomial, Face, PortID, LinkID, atom::AtomID};
+use crate::{Context, ContextHandle, Contextual, Polynomial, Face, PortID, LinkID, atom::AtomID};
 
 trait CESVar {
     fn from_atom_id(atom_id: AtomID) -> Self;
@@ -102,18 +101,14 @@ impl Contextual for Literal {
 }
 
 pub struct Formula {
-    context:   Arc<Mutex<Context>>,
+    context:   ContextHandle,
     cnf:       CnfFormula,
     variables: BTreeSet<Var>,
 }
 
 impl Formula {
-    pub fn new(ctx: &Arc<Mutex<Context>>) -> Self {
-        Self {
-            context:   Arc::clone(ctx),
-            cnf:       Default::default(),
-            variables: Default::default(),
-        }
+    pub fn new(ctx: ContextHandle) -> Self {
+        Self { context: ctx, cnf: Default::default(), variables: Default::default() }
     }
 
     fn add_clause<S: AsRef<str>>(&mut self, clause: &[Lit], info: S) {
@@ -122,16 +117,19 @@ impl Formula {
         self.variables.extend(clause.iter().map(|lit| lit.var()));
     }
 
-    /// Adds _antiport_ clause to a formula.
+    /// Adds _antiport_ clause to a `Formula`.
     ///
-    /// This clause constrains internal nodes to a single part of a
-    /// firing component, source or sink, so that the induced graph of
-    /// any firing component is bipartite.
+    /// This clause constrains nodes to a single part of a firing
+    /// component, source or sink, so that the induced graph of any
+    /// firing component is bipartite.  The `Formula` should contain
+    /// one such clause for each internal node of a c-e structure.
     pub fn add_internal_node(&mut self, port_lit: Literal, antiport_lit: Literal) {
         let clause = &[port_lit.0, antiport_lit.0];
 
         self.add_clause(clause, "internal node");
     }
+
+    // FIXME add link clause: link => port and coport
 
     // FIXME
     /// Adds _monomial_ clauses to a formula.
@@ -191,18 +189,14 @@ impl fmt::Display for Formula {
 }
 
 pub struct Solver<'a> {
-    context:   Arc<Mutex<Context>>,
+    context:   ContextHandle,
     engine:    varisat::Solver<'a>,
     port_vars: BTreeSet<Var>,
 }
 
 impl<'a> Solver<'a> {
-    pub fn new(ctx: &Arc<Mutex<Context>>) -> Self {
-        Self {
-            context:   Arc::clone(ctx),
-            engine:    Default::default(),
-            port_vars: Default::default(),
-        }
+    pub fn new(ctx: ContextHandle) -> Self {
+        Self { context: ctx, engine: Default::default(), port_vars: Default::default() }
     }
 
     fn add_clause<S: AsRef<str>>(&mut self, clause: &[Lit], info: S) {
@@ -245,7 +239,7 @@ impl<'a> Solver<'a> {
 
     pub fn get_solution(&self) -> Option<Solution> {
         if let Some(model) = self.engine.model() {
-            Some(Solution::from_model(&self.context, model))
+            Some(Solution::from_model(self.context.clone(), model))
         } else {
             None
         }
@@ -253,23 +247,23 @@ impl<'a> Solver<'a> {
 }
 
 pub struct Solution {
-    context:  Arc<Mutex<Context>>,
+    context:  ContextHandle,
     model:    Vec<Lit>,
     pre_set:  Vec<Lit>,
     post_set: Vec<Lit>,
 }
 
 impl Solution {
-    fn new(ctx: &Arc<Mutex<Context>>) -> Self {
+    fn new(ctx: ContextHandle) -> Self {
         Self {
-            context:  Arc::clone(ctx),
+            context:  ctx,
             model:    Default::default(),
             pre_set:  Default::default(),
             post_set: Default::default(),
         }
     }
 
-    fn from_model<I: IntoIterator<Item = Lit>>(ctx: &Arc<Mutex<Context>>, model: I) -> Self {
+    fn from_model<I: IntoIterator<Item = Lit>>(ctx: ContextHandle, model: I) -> Self {
         let mut solution = Self::new(ctx);
 
         for lit in model {

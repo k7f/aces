@@ -1,12 +1,11 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{Arc, Mutex},
     fmt::Debug,
     error::Error,
 };
 use regex::Regex;
 use yaml_rust::{Yaml, YamlLoader};
-use crate::{Context, ID, Face, name::NameSpace, error::AcesError};
+use crate::{ContextHandle, ID, Face, name::NameSpace, error::AcesError};
 
 trait UpdatableVec<V> {
     fn vec_update(&mut self, value: &V);
@@ -107,14 +106,14 @@ fn do_parse_port_spec<S: AsRef<str>>(
     }
 }
 
-fn parse_port_spec<S: AsRef<str>>(ctx: &Arc<Mutex<Context>>, spec: S) -> Option<PortParsed> {
+fn parse_port_spec<S: AsRef<str>>(ctx: &ContextHandle, spec: S) -> Option<PortParsed> {
     let ref mut nodes = ctx.lock().unwrap().nodes;
 
     do_parse_port_spec(nodes, spec, false).unwrap_or_else(|_| unreachable!())
 }
 
 fn parse_link_spec<S: AsRef<str> + Copy>(
-    ctx: &Arc<Mutex<Context>>,
+    ctx: &ContextHandle,
     spec: S,
     valid_face: Face,
     single_word_only: bool,
@@ -152,7 +151,7 @@ struct SpecForYaml {
 impl SpecForYaml {
     fn add_ports(
         &mut self,
-        ctx: &Arc<Mutex<Context>>,
+        ctx: &ContextHandle,
         ids: &[ID],
         face: Face,
         poly_yaml: &Yaml,
@@ -243,7 +242,7 @@ impl SpecForYaml {
 
     fn add_entry(
         &mut self,
-        ctx: &Arc<Mutex<Context>>,
+        ctx: &ContextHandle,
         key: &Yaml,
         value: &Yaml,
     ) -> Result<(), Box<dyn Error>> {
@@ -276,7 +275,7 @@ impl SpecForYaml {
         }
     }
 
-    fn from_yaml(ctx: &Arc<Mutex<Context>>, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
+    fn from_yaml(ctx: &ContextHandle, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
         if let Yaml::Hash(ref dict) = yaml {
             let mut spec = Self::default();
 
@@ -292,10 +291,7 @@ impl SpecForYaml {
         }
     }
 
-    fn from_str<S: AsRef<str>>(
-        ctx: &Arc<Mutex<Context>>,
-        raw_spec: S,
-    ) -> Result<Self, Box<dyn Error>> {
+    fn from_str<S: AsRef<str>>(ctx: &ContextHandle, raw_spec: S) -> Result<Self, Box<dyn Error>> {
         let docs = YamlLoader::load_from_str(raw_spec.as_ref())?;
 
         if docs.is_empty() {
@@ -310,6 +306,13 @@ impl SpecForYaml {
 }
 
 // FIXME define specific iterators for return types below
+/// An abstraction over c-e structure specification formats.
+///
+/// Note: types implementing `CESSpec` trait shouldn't own
+/// [`ContextHandle`]s, because `CESSpec` trait objects are owned by
+/// [`CES`] structs, along with [`ContextHandle`]s themselves.
+///
+/// [`CES`]: crate::CES
 pub(crate) trait CESSpec: Debug {
     fn get_raw(&self) -> Option<&str>;
     fn get_name(&self) -> Option<&str>;
@@ -366,8 +369,14 @@ impl CESSpec for SpecForYaml {
     }
 }
 
+/// Parses a string specification of a c-e structure.
+///
+/// Returns a [`CESSpec`] trait object if parsing was successful,
+/// where a concrete type depends on a specification format.
+///
+/// Errors depend on a specification format.
 pub(crate) fn spec_from_str<S: AsRef<str>>(
-    ctx: &Arc<Mutex<Context>>,
+    ctx: &ContextHandle,
     raw_spec: S,
 ) -> Result<Box<dyn CESSpec>, Box<dyn Error>> {
     // FIXME infer the format of spec string: yaml, sexpr, ...

@@ -1,7 +1,4 @@
-use std::{
-    sync::{Mutex, Arc},
-    error::Error,
-};
+use std::error::Error;
 use crate::{Context, CES, sat, error::AcesError};
 use super::{App, Command};
 
@@ -13,8 +10,9 @@ impl Command for Describe {
 
         let verbosity = app.occurrences_of("verbose");
 
-        let ref ctx = Arc::new(Mutex::new(Context::new()));
-        let ces = CES::from_file(ctx, main_path)?;
+        let ctx = Context::new_as_handle();
+
+        let ces = CES::from_file(ctx.clone(), main_path)?;
 
         if verbosity >= 1 {
             if verbosity >= 2 {
@@ -37,7 +35,7 @@ impl Command for Describe {
 
             println!("Formula: {}", formula);
 
-            let mut solver = sat::Solver::new(ctx);
+            let mut solver = sat::Solver::new(ctx.clone());
             solver.add_formula(&formula);
             solver.inhibit_empty_solution();
 

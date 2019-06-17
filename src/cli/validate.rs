@@ -1,7 +1,4 @@
-use std::{
-    sync::{Mutex, Arc},
-    error::Error,
-};
+use std::error::Error;
 use crate::{Context, CES, error::AcesError};
 use super::{App, Command};
 
@@ -20,7 +17,8 @@ impl Command for Validate {
         let ref glob_path = format!("{}/*.ces", glob_path);
 
         let mut num_bad_files = 0;
-        let ref ctx = Arc::new(Mutex::new(Context::new()));
+
+        let ctx = Context::new_as_handle();
 
         if recursive {
             // FIXME
@@ -34,7 +32,7 @@ impl Command for Validate {
                             if verbosity >= 1 {
                                 println!("> {}", path.display());
                             }
-                            let result = CES::from_file(ctx, path);
+                            let result = CES::from_file(ctx.clone(), path);
                             match result {
                                 Ok(ces) => {
                                     if verbosity >= 2 {

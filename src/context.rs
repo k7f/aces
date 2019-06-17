@@ -1,30 +1,41 @@
-use std::{fmt, error::Error};
+use std::{
+    fmt,
+    error::Error,
+    sync::{Arc, Mutex},
+};
 use crate::{
     Port, Link, NodeID, PortID, LinkID,
     name::NameSpace,
     atom::{AtomSpace, AtomID},
 };
 
-/// A representation of shared state.
+/// A handle to a [`Context`] instance.
 ///
-/// This is an umbrella type which, currently, includes two symbol
-/// tables (for structure names and for node names), and a collection
-/// of [`Atom`]s.
-///
-/// All `Context` handles used in _aces_ have type
+/// All [`Context`] handles used in _aces_ have type
 /// `Arc<Mutex<Context>>`.  They are stored permanently in the
 /// following structs: [`CES`], [`sat::Formula`], [`sat::Solver`], and
 /// [`sat::Solution`].
 ///
-/// For another way of binding `Context` to data see [`Contextual`]
+/// For another way of binding [`Context`] to data see [`Contextual`]
 /// trait and [`WithContext`] struct.
 ///
 /// [`CES`]: crate::CES
-/// [`Atom`]: crate::atom::Atom
 /// [`sat::Formula`]: crate::sat::Formula
 /// [`sat::Solver`]: crate::sat::Solver
 /// [`sat::Solution`]: crate::sat::Solution
-#[derive(Default, Debug)]
+pub type ContextHandle = Arc<Mutex<Context>>;
+
+/// A representation of shared state.
+///
+/// This is an umbrella type which, currently, includes a collection
+/// of [`Atom`]s and two symbol tables, one for structure names, and
+/// another for node names.
+///
+/// For usage, see [`ContextHandle`] type, [`Contextual`] trait and
+/// [`WithContext`] struct.
+///
+/// [`Atom`]: crate::atom::Atom
+#[derive(Debug)]
 pub struct Context {
     pub(crate) globals: NameSpace,
     pub(crate) nodes:   NameSpace,
@@ -32,8 +43,21 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new() -> Self {
-        Default::default()
+    fn new() -> Self {
+        Self {
+            globals: Default::default(),
+            nodes:   Default::default(),
+            atoms:   Default::default(),
+        }
+    }
+
+    /// Creates a new `Context` instance and returns a corresponding
+    /// [`ContextHandle`].
+    ///
+    /// Calling this method is the only public way of creating new
+    /// `Context` instances.
+    pub fn new_as_handle() -> ContextHandle {
+        Arc::new(Mutex::new(Context::new()))
     }
 
     // Nodes

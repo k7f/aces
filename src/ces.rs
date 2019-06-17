@@ -1,26 +1,24 @@
-use std::{
-    collections::BTreeMap,
-    io::Read,
-    fs::File,
-    path::Path,
-    sync::{Arc, Mutex},
-    error::Error,
-};
+use std::{collections::BTreeMap, io::Read, fs::File, path::Path, error::Error};
 
 use crate::{
-    Context, ID, Port, Face, Link, NodeID, PortID, LinkID, Monomial, Polynomial,
+    ContextHandle, ID, Port, Face, Link, NodeID, PortID, LinkID, Monomial, Polynomial,
     spec::{CESSpec, spec_from_str},
     sat,
 };
 
 /// A single c-e structure.
 ///
-/// Instances of this type directly contain structural information,
-/// i.e. the cause and effect polynomials.  Some other properties are
-/// available indirectly through shared [`Context`] objects.
+/// Internally, instances of this type own structural information (the
+/// cause and effect polynomials), the specification from which a c-e
+/// structure originated (optionally), and some auxiliary recomputable
+/// data.  Other properties are available indirectly: `CES` instance
+/// owns a [`ContextHandle`] which resolves to a shared [`Context`]
+/// object.
+///
+/// [`Context`]: crate::Context
 #[derive(Debug)]
 pub struct CES {
-    context:          Arc<Mutex<Context>>,
+    context:          ContextHandle,
     spec:             Option<Box<dyn CESSpec>>,
     causes:           BTreeMap<PortID, Polynomial>,
     effects:          BTreeMap<PortID, Polynomial>,
@@ -29,9 +27,10 @@ pub struct CES {
 }
 
 impl CES {
-    fn new(ctx: &Arc<Mutex<Context>>) -> Self {
+    /// Creates an empty c-e structure from a given [`ContextHandle`].
+    pub fn new(ctx: ContextHandle) -> Self {
         Self {
-            context:          Arc::clone(ctx),
+            context:          ctx,
             spec:             Default::default(),
             causes:           Default::default(),
             effects:          Default::default(),
@@ -115,13 +114,15 @@ impl CES {
         Ok(())
     }
 
+    /// Creates a new c-e structure from a given [`ContextHandle`] and
+    /// a specification string.
     pub fn from_str<S: AsRef<str>>(
-        ctx: &Arc<Mutex<Context>>,
+        ctx: ContextHandle,
         raw_spec: S,
     ) -> Result<Self, Box<dyn Error>> {
-        let mut ces = CES::new(ctx);
+        let spec = spec_from_str(&ctx, raw_spec)?;
 
-        let spec = spec_from_str(ctx, raw_spec)?;
+        let mut ces = CES::new(ctx);
 
         for id in spec.get_carrier_ids() {
             let node_id = NodeID(id);
@@ -138,10 +139,9 @@ impl CES {
         Ok(ces)
     }
 
-    pub fn from_file<P: AsRef<Path>>(
-        ctx: &Arc<Mutex<Context>>,
-        path: P,
-    ) -> Result<Self, Box<dyn Error>> {
+    /// Creates a new c-e structure from a given [`ContextHandle`] and
+    /// a specification file to be found along the `path`.
+    pub fn from_file<P: AsRef<Path>>(ctx: ContextHandle, path: P) -> Result<Self, Box<dyn Error>> {
         let mut fp = File::open(path)?;
         let mut raw_spec = String::new();
         fp.read_to_string(&mut raw_spec)?;
@@ -157,20 +157,20 @@ impl CES {
         }
     }
 
-    /// Returns link coherence status indicating whether this [`CES`]
-    /// object represents a proper c-e structure.
+    /// Returns link coherence status indicating whether this object
+    /// represents a proper c-e structure.
     ///
     /// C-e structure is coherent iff it has no broken links, where a
     /// link is broken iff it occurs either in causes or in effects,
     /// but not in both.  Internally, there is a broken links counter
-    /// associated with each [`CES`] object.  This counter is updated
+    /// associated with each `CES` object.  This counter is updated
     /// whenever a polynomial is added to the structure.
     pub fn is_coherent(&self) -> bool {
         self.num_broken_links == 0
     }
 
     pub fn get_formula(&self) -> sat::Formula {
-        let mut formula = sat::Formula::new(&self.context);
+        let mut formula = sat::Formula::new(self.context.clone());
 
         for (&port_id, poly) in self.causes.iter() {
             let port_lit = sat::Literal::from_atom_id(port_id.into(), true);
