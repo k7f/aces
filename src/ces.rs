@@ -3,13 +3,14 @@ use std::{collections::BTreeMap, io::Read, fs::File, path::Path, error::Error};
 use crate::{
     ContextHandle, ID, Port, Face, Link, NodeID, PortID, LinkID, Polynomial,
     spec::{CESSpec, spec_from_str},
-    sat,
+    node, sat,
 };
 
 /// A single c-e structure.
 ///
 /// Internally, instances of this type own structural information (the
-/// cause and effect polynomials), the specification from which a c-e
+/// cause and effect polynomials), semantic properties (node
+/// capacities for the carrier), the specification from which a c-e
 /// structure originated (optionally), and some auxiliary recomputable
 /// data.  Other properties are available indirectly: `CES` instance
 /// owns a [`ContextHandle`] which resolves to a shared [`Context`]
@@ -23,6 +24,7 @@ pub struct CES {
     causes:           BTreeMap<PortID, Polynomial>,
     effects:          BTreeMap<PortID, Polynomial>,
     links:            BTreeMap<LinkID, Option<Face>>,
+    carrier:          BTreeMap<NodeID, node::Capacity>,
     num_broken_links: u32,
 }
 
@@ -35,6 +37,7 @@ impl CES {
             causes:           Default::default(),
             effects:          Default::default(),
             links:            Default::default(),
+            carrier:          Default::default(),
             num_broken_links: 0,
         }
     }
@@ -110,6 +113,10 @@ impl CES {
             self.effects.insert(atom_id, poly);
         } else {
             self.causes.insert(atom_id, poly);
+        }
+
+        if !self.carrier.contains_key(&node_id) {
+            self.carrier.insert(node_id, Default::default());
         }
 
         Ok(())

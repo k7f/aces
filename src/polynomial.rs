@@ -5,7 +5,7 @@ use crate::atom::LinkID;
 pub struct Polynomial {
     product: BTreeSet<LinkID>,
     links:   Vec<LinkID>,
-    sum:     Vec<(BTreeSet<LinkID>, BTreeSet<LinkID>)>
+    sum:     Vec<(BTreeSet<LinkID>, BTreeSet<LinkID>)>,
 }
 
 impl Polynomial {

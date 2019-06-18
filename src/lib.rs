@@ -4,7 +4,7 @@
 extern crate lazy_static;
 
 mod name;
-mod node;
+pub mod node;
 mod atom;
 mod context;
 mod polynomial;
