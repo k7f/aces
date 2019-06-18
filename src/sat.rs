@@ -124,7 +124,7 @@ impl Formula {
     /// firing component is bipartite.  The `Formula` should contain
     /// one such clause for each internal node of the c-e structure
     /// under analysis.
-    pub fn add_port(&mut self, port_id: PortID) {
+    pub fn add_antiport(&mut self, port_id: PortID) {
         let (port_lit, antiport_lit) = {
             if let Some(antiport_id) = self.context.lock().unwrap().get_antiport_id(port_id) {
                 (
@@ -149,7 +149,7 @@ impl Formula {
     ///
     /// Panics if `link_id` doesn't identify any `Link` in the
     /// `Context` of this `Formula`.
-    pub fn add_link(&mut self, link_id: LinkID) {
+    pub fn add_link_coherence(&mut self, link_id: LinkID) {
         let link_lit = Literal::from_atom_id(link_id.into(), true);
 
         let (tx_port_lit, rx_port_lit) = {
@@ -172,9 +172,23 @@ impl Formula {
     }
 
     // FIXME
-    /// Adds _monomial_ constraint to a formula.
+    /// Adds a _polynomial_ constraint to this formula.
     pub fn add_polynomial(&mut self, port_id: PortID, poly: &Polynomial) {
         let port_lit = Literal::from_atom_id(port_id.into(), true);
+
+        if poly.is_empty() {
+            return
+        } else if poly.is_single_link() {
+            // Consequence is a single positive link literal.  The
+            // constraint is a single clause:  &[port_lit, link_lit]
+        } else if poly.is_monomial() {
+            // Consequence is a conjunction of at least two positive
+            // link literals.  The constraint is a sequence of clauses.
+        } else {
+            // Consequence consists of at least two clauses, each
+            // being a conjunction of the same number of positive and
+            // negative (at least one of each) link literals.
+        }
 
         for (mono_links, other_links) in poly.iter() {
             let clause = mono_links

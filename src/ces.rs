@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, io::Read, fs::File, path::Path, error::Error};
 
 use crate::{
-    ContextHandle, ID, Port, Face, Link, NodeID, PortID, LinkID, Monomial, Polynomial,
+    ContextHandle, ID, Port, Face, Link, NodeID, PortID, LinkID, Polynomial,
     spec::{CESSpec, spec_from_str},
     sat,
 };
@@ -48,10 +48,11 @@ impl CES {
         let mut ctx = self.context.lock().unwrap();
         let atom_id = ctx.take_port(Port::new(face, node_id));
 
+        let mut mono = Polynomial::new();
         let mut poly = Polynomial::new();
 
         for spec_mono in spec_poly {
-            let mut mono = Monomial::new();
+            mono.clear();
 
             for conode_id in spec_mono {
                 let conode_id = NodeID(*conode_id);
@@ -100,9 +101,9 @@ impl CES {
                     }
                 }
 
-                mono.insert(link_id);
+                mono.multiply_by_link(link_id);
             }
-            poly.add_monomial(mono);
+            poly.add_polynomial(&mono);
         }
 
         if face == Face::Tx {
@@ -174,7 +175,7 @@ impl CES {
 
         for (&port_id, poly) in self.causes.iter() {
             formula.add_polynomial(port_id, poly);
-            formula.add_port(port_id);
+            formula.add_antiport(port_id);
         }
 
         for (&port_id, poly) in self.effects.iter() {
@@ -182,7 +183,7 @@ impl CES {
         }
 
         for (&link_id, _) in self.links.iter() {
-            formula.add_link(link_id);
+            formula.add_link_coherence(link_id);
         }
 
         formula
