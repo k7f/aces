@@ -3,14 +3,15 @@
 #[macro_use]
 extern crate lazy_static;
 
+mod error;
 mod name;
 pub mod node;
 mod atom;
-mod context;
+pub mod monomial;
 mod polynomial;
+mod context;
 mod ces;
 mod spec;
-mod error;
 pub mod sat;
 pub mod cli;
 

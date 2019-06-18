@@ -190,7 +190,7 @@ impl Formula {
             // negative (at least one of each) link literals.
         }
 
-        for (mono_links, other_links) in poly.iter() {
+        for (mono_links, other_links, _) in poly.iter() {
             let clause = mono_links
                 .iter()
                 .map(|&id| Lit::from_atom_id(id.0, false))

@@ -1,11 +1,12 @@
 use std::{slice, collections::BTreeSet};
-use crate::atom::LinkID;
+//use bit_vec::BitVec;
+use crate::{monomial, atom::LinkID};
 
 #[derive(Default, Debug)]
 pub struct Polynomial {
     product: BTreeSet<LinkID>,
     links:   Vec<LinkID>,
-    sum:     Vec<(BTreeSet<LinkID>, BTreeSet<LinkID>)>,
+    sum:     Vec<(BTreeSet<LinkID>, BTreeSet<LinkID>, monomial::Weight)>,
 }
 
 impl Polynomial {
@@ -23,7 +24,7 @@ impl Polynomial {
         if self.is_empty() {
             self.product.insert(link_id);
             self.links.push(link_id);
-            self.sum.push((self.product.clone(), Default::default()));
+            self.sum.push((self.product.clone(), Default::default(), Default::default()));
         } else {
             if self.product.contains(&link_id) {
                 if self.is_monomial() {
@@ -37,7 +38,7 @@ impl Polynomial {
                 self.links.extend(self.product.iter());
             }
 
-            for (mono, _) in self.sum.iter_mut() {
+            for (mono, _, _) in self.sum.iter_mut() {
                 mono.insert(link_id);
             }
         }
@@ -55,7 +56,7 @@ impl Polynomial {
     /// nop; the second: clear followed by clone.
     pub fn add_polynomial(&mut self, other: &Self) {
         if other.is_monomial() {
-            for (mono, _) in self.sum.iter() {
+            for (mono, _, _) in self.sum.iter() {
                 if *mono == other.product {
                     return
                 }
@@ -67,9 +68,9 @@ impl Polynomial {
             self.links.clear();
             self.links.extend(self.product.iter());
 
-            self.sum.push((other.product.clone(), Default::default()));
+            self.sum.push((other.product.clone(), Default::default(), Default::default()));
 
-            for (mono, rest) in self.sum.iter_mut() {
+            for (mono, rest, _) in self.sum.iter_mut() {
                 rest.extend(self.product.difference(&mono).copied());
             }
         } else {
@@ -92,7 +93,7 @@ impl Polynomial {
         self.sum.len() == 1
     }
 
-    pub fn iter(&self) -> slice::Iter<(BTreeSet<LinkID>, BTreeSet<LinkID>)> {
+    pub fn iter(&self) -> slice::Iter<(BTreeSet<LinkID>, BTreeSet<LinkID>, monomial::Weight)> {
         self.sum.iter()
     }
 }
