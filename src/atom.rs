@@ -25,6 +25,10 @@ impl PortID {
     pub const fn get(self) -> AtomID {
         self.0
     }
+
+    pub fn as_sat_literal(&self, negated: bool) -> sat::Literal {
+        sat::Literal::from_atom_id(self.get(), negated)
+    }
 }
 
 impl From<PortID> for AtomID {
@@ -46,6 +50,10 @@ impl LinkID {
     #[inline]
     pub const fn get(self) -> AtomID {
         self.0
+    }
+
+    pub fn as_sat_literal(&self, negated: bool) -> sat::Literal {
+        sat::Literal::from_atom_id(self.get(), negated)
     }
 }
 

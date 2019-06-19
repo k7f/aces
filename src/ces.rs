@@ -51,11 +51,11 @@ impl CES {
         let mut ctx = self.context.lock().unwrap();
         let atom_id = ctx.take_port(Port::new(face, node_id));
 
-        let mut mono = Polynomial::new();
+        let mut mono_links = Vec::new();
         let mut poly = Polynomial::new();
 
         for spec_mono in spec_poly {
-            mono.clear();
+            mono_links.clear();
 
             for conode_id in spec_mono {
                 let conode_id = NodeID(*conode_id);
@@ -104,9 +104,9 @@ impl CES {
                     }
                 }
 
-                mono.multiply_by_link(link_id);
+                mono_links.push(link_id);
             }
-            poly.add_polynomial(&mono);
+            poly.add_links(&mono_links);
         }
 
         if face == Face::Tx {
@@ -115,9 +115,7 @@ impl CES {
             self.causes.insert(atom_id, poly);
         }
 
-        if !self.carrier.contains_key(&node_id) {
-            self.carrier.insert(node_id, Default::default());
-        }
+        self.carrier.entry(node_id).or_insert(Default::default());
 
         Ok(())
     }

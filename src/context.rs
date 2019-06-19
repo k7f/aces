@@ -121,8 +121,9 @@ pub trait Contextual {
 /// A short-term binding of [`Context`] and any data implementing the
 /// [`Contextual`] trait.
 ///
-/// The main purpose of this type is to allow a transparent access to
-/// names cached in a [`Context`].
+/// [`Context`] can't be modified through `WithContext`.  The purpose
+/// of this type is to allow a transparent read access to shared data,
+/// like names etc.
 pub struct WithContext<'a, D: Contextual>(&'a Context, &'a D);
 
 impl<'a, D: Contextual> fmt::Display for WithContext<'a, D> {

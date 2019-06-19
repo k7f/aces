@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeSet,
     convert::TryInto,
+    ops,
     fmt::{self, Write},
     error::Error,
 };
@@ -88,6 +89,26 @@ impl Literal {
     pub fn is_negative(self) -> bool {
         self.0.is_negative()
     }
+
+    pub fn is_positive(self) -> bool {
+        self.0.is_positive()
+    }
+}
+
+impl ops::Not for Literal {
+    type Output = Self;
+
+    fn not(self) -> Self {
+        Self(self.0.not())
+    }
+}
+
+impl ops::BitXor<bool> for Literal {
+    type Output = Self;
+
+    fn bitxor(self, rhs: bool) -> Self {
+        Self(self.0.bitxor(rhs))
+    }
 }
 
 impl Contextual for Literal {
@@ -111,10 +132,17 @@ impl Formula {
         Self { context: ctx, cnf: Default::default(), variables: Default::default() }
     }
 
-    fn add_clause<S: AsRef<str>>(&mut self, clause: &[Lit], info: S) {
-        println!("Add (to formula) {} clause: {:?}.", info.as_ref(), clause);
-        self.cnf.add_clause(clause);
-        self.variables.extend(clause.iter().map(|lit| lit.var()));
+    // FIXME define `Clause` type
+    fn add_clause<'a, I, S>(&mut self, clause: I, info: S)
+    where
+        I: IntoIterator<Item = &'a Literal>,
+        S: AsRef<str>,
+    {
+        let vc: Vec<_> = clause.into_iter().map(|lit| lit.0).collect();
+
+        println!("Add (to formula) {} clause: {:?}.", info.as_ref(), vc);
+        self.cnf.add_clause(vc.as_slice());
+        self.variables.extend(vc.iter().map(|lit| lit.var()));
     }
 
     /// Adds an _antiport_ constraint to this `Formula`.
@@ -136,7 +164,7 @@ impl Formula {
             }
         };
 
-        self.add_clause(&[port_lit.0, antiport_lit.0], "internal node");
+        self.add_clause(&[port_lit, antiport_lit], "internal node");
     }
 
     /// Adds a _link coherence_ constraint to this `Formula`.
@@ -167,37 +195,28 @@ impl Formula {
                 panic!("There is no link with ID {:?}.", link_id)
             }
         };
-        self.add_clause(&[link_lit.0, tx_port_lit.0], "link coherence (Tx side)");
-        self.add_clause(&[link_lit.0, rx_port_lit.0], "link coherence (Rx side)");
+        self.add_clause(&[link_lit, tx_port_lit], "link coherence (Tx side)");
+        self.add_clause(&[link_lit, rx_port_lit], "link coherence (Rx side)");
     }
 
     // FIXME
     /// Adds a _polynomial_ constraint to this formula.
-    pub fn add_polynomial(&mut self, port_id: PortID, poly: &Polynomial) {
-        let port_lit = Literal::from_atom_id(port_id.into(), true);
+    pub fn add_polynomial(&mut self, _port_id: PortID, poly: &Polynomial) {
+        // if poly.is_empty() {
+        //     return
+        // } else if poly.is_single_link() {
+        //     // Consequence is a single positive link literal.  The
+        //     // constraint is a single clause:  &[port_lit, link_lit]
+        // } else if poly.is_monomial() {
+        //     // Consequence is a conjunction of at least two positive
+        //     // link literals.  The constraint is a sequence of clauses.
+        // } else {
+        //     // Consequence consists of at least two clauses, each
+        //     // being a conjunction of the same number of positive and
+        //     // negative (at least one of each) link literals.
+        // }
 
-        if poly.is_empty() {
-            return
-        } else if poly.is_single_link() {
-            // Consequence is a single positive link literal.  The
-            // constraint is a single clause:  &[port_lit, link_lit]
-        } else if poly.is_monomial() {
-            // Consequence is a conjunction of at least two positive
-            // link literals.  The constraint is a sequence of clauses.
-        } else {
-            // Consequence consists of at least two clauses, each
-            // being a conjunction of the same number of positive and
-            // negative (at least one of each) link literals.
-        }
-
-        for (mono_links, other_links, _) in poly.iter() {
-            let clause = mono_links
-                .iter()
-                .map(|&id| Lit::from_atom_id(id.0, false))
-                .chain(other_links.iter().map(|&id| Lit::from_atom_id(id.0, true)));
-            let mut clause: Vec<_> = clause.collect();
-            clause.push(port_lit.0);
-
+        for clause in poly.as_sat_clauses() {
             self.add_clause(&clause, "monomial");
         }
     }
