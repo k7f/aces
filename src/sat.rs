@@ -6,7 +6,7 @@ use std::{
     error::Error,
 };
 use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
-use crate::{Context, ContextHandle, Contextual, Polynomial, Face, PortID, LinkID, atom::AtomID};
+use crate::{Context, ContextHandle, Contextual, Polynomial, PortID, LinkID, node, atom::AtomID};
 
 trait CESVar {
     fn from_atom_id(atom_id: AtomID) -> Self;
@@ -349,7 +349,7 @@ impl Solution {
                 let ctx = solution.context.lock().unwrap();
 
                 if let Some(port) = ctx.get_port(PortID(atom_id)) {
-                    if port.get_face() == Face::Tx {
+                    if port.get_face() == node::Face::Tx {
                         solution.pre_set.push(lit);
                     } else {
                         solution.post_set.push(lit);

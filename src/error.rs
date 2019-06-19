@@ -1,5 +1,5 @@
 use std::{fmt, error::Error};
-use crate::Face;
+use crate::node;
 
 #[derive(Debug, Clone)]
 pub(crate) enum AcesError {
@@ -17,7 +17,7 @@ pub(crate) enum AcesError {
     SpecLinkReversed,
     SpecLinkList,
 
-    NodeMissingForPort(Face),
+    NodeMissingForPort(node::Face),
 
     CESIsIncoherent(String),
 }
@@ -31,7 +31,7 @@ impl fmt::Display for AcesError {
             NodeMissingForPort(face) => write!(
                 f,
                 "Missing node for {} port",
-                if *face == Face::Tx { "sending" } else { "receiving" }
+                if *face == node::Face::Tx { "sending" } else { "receiving" }
             ),
             _ => write!(f, "{}", self.description()),
         }

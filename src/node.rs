@@ -1,3 +1,4 @@
+use std::fmt;
 use crate::ID;
 
 /// An identifier of a single node used in c-e structures.
@@ -30,6 +31,32 @@ impl NodeID {
 impl From<NodeID> for ID {
     fn from(id: NodeID) -> Self {
         id.0
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Face {
+    Tx,
+    Rx,
+}
+
+impl std::ops::Not for Face {
+    type Output = Face;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Face::Tx => Face::Rx,
+            Face::Rx => Face::Tx,
+        }
+    }
+}
+
+impl fmt::Display for Face {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Face::Tx => write!(f, ">"),
+            Face::Rx => write!(f, "<"),
+        }
     }
 }
 

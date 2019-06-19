@@ -5,7 +5,7 @@ use std::{
 };
 use regex::Regex;
 use yaml_rust::{Yaml, YamlLoader};
-use crate::{ContextHandle, ID, Face, name::NameSpace, error::AcesError};
+use crate::{ContextHandle, ID, node, name::NameSpace, error::AcesError};
 
 trait UpdatableVec<V> {
     fn vec_update(&mut self, value: &V);
@@ -79,7 +79,7 @@ fn post_process_port_spec<S: AsRef<str>>(
     }
 }
 
-type PortParsed = (Vec<ID>, Face);
+type PortParsed = (Vec<ID>, node::Face);
 
 fn do_parse_port_spec<S: AsRef<str>>(
     nodes: &mut NameSpace,
@@ -96,11 +96,11 @@ fn do_parse_port_spec<S: AsRef<str>>(
     if let Some(cap) = TX_RE.captures(spec.as_ref()) {
         let ids = post_process_port_spec(nodes, &cap[1], single_word_only)?;
 
-        Ok(Some((ids, Face::Tx)))
+        Ok(Some((ids, node::Face::Tx)))
     } else if let Some(cap) = RX_RE.captures(spec.as_ref()) {
         let ids = post_process_port_spec(nodes, &cap[1], single_word_only)?;
 
-        Ok(Some((ids, Face::Rx)))
+        Ok(Some((ids, node::Face::Rx)))
     } else {
         Ok(None)
     }
@@ -115,7 +115,7 @@ fn parse_port_spec<S: AsRef<str>>(ctx: &ContextHandle, spec: S) -> Option<PortPa
 fn parse_link_spec<S: AsRef<str> + Copy>(
     ctx: &ContextHandle,
     spec: S,
-    valid_face: Face,
+    valid_face: node::Face,
     single_word_only: bool,
 ) -> Result<(ID, bool), Box<dyn Error>> {
     let ref mut nodes = ctx.lock().unwrap().nodes;
@@ -153,7 +153,7 @@ impl SpecForYaml {
         &mut self,
         ctx: &ContextHandle,
         ids: &[ID],
-        face: Face,
+        face: node::Face,
         poly_yaml: &Yaml,
     ) -> Result<(), Box<dyn Error>> {
         assert!(!ids.is_empty());
@@ -167,7 +167,7 @@ impl SpecForYaml {
                 poly_spec.vec_update(&vec![other_id]);
 
                 if with_colink {
-                    if face == Face::Tx {
+                    if face == node::Face::Tx {
                         self.causes.map_update(other_id, &vec![ids.to_owned()]);
                     } else {
                         self.effects.map_update(other_id, &vec![ids.to_owned()]);
@@ -186,7 +186,7 @@ impl SpecForYaml {
                             poly_spec.vec_update(&vec![other_id]);
 
                             if with_colink {
-                                if face == Face::Tx {
+                                if face == node::Face::Tx {
                                     self.causes.map_update(other_id, &vec![ids.to_owned()]);
                                 } else {
                                     self.effects.map_update(other_id, &vec![ids.to_owned()]);
@@ -205,7 +205,7 @@ impl SpecForYaml {
                                     mono_spec.vec_update(&other_id);
 
                                     if with_colink {
-                                        if face == Face::Tx {
+                                        if face == node::Face::Tx {
                                             self.causes.map_update(other_id, &vec![ids.to_owned()]);
                                         } else {
                                             self.effects
@@ -228,7 +228,7 @@ impl SpecForYaml {
             _ => return Err(Box::new(AcesError::SpecPolyInvalid)),
         }
 
-        if face == Face::Tx {
+        if face == node::Face::Tx {
             for &id in ids {
                 self.effects.map_update(id, &poly_spec);
             }

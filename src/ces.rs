@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, io::Read, fs::File, path::Path, error::Error};
 
 use crate::{
-    ContextHandle, ID, Port, Face, Link, NodeID, PortID, LinkID, Polynomial,
+    ContextHandle, ID, Port, Link, NodeID, PortID, LinkID, Polynomial,
     spec::{CESSpec, spec_from_str},
     node, sat,
 };
@@ -23,7 +23,7 @@ pub struct CES {
     spec:             Option<Box<dyn CESSpec>>,
     causes:           BTreeMap<PortID, Polynomial>,
     effects:          BTreeMap<PortID, Polynomial>,
-    links:            BTreeMap<LinkID, Option<Face>>,
+    links:            BTreeMap<LinkID, Option<node::Face>>,
     carrier:          BTreeMap<NodeID, node::Capacity>,
     num_broken_links: u32,
 }
@@ -45,7 +45,7 @@ impl CES {
     fn add_polynomial(
         &mut self,
         node_id: NodeID,
-        face: Face,
+        face: node::Face,
         spec_poly: &[Vec<ID>],
     ) -> Result<(), Box<dyn Error>> {
         let mut ctx = self.context.lock().unwrap();
@@ -62,14 +62,14 @@ impl CES {
                 let coatom_id = ctx.take_port(Port::new(!face, conode_id));
 
                 let link_id = match face {
-                    Face::Tx => ctx.take_link(Link::new(atom_id, node_id, coatom_id, conode_id)),
-                    Face::Rx => ctx.take_link(Link::new(coatom_id, conode_id, atom_id, node_id)),
+                    node::Face::Tx => ctx.take_link(Link::new(atom_id, node_id, coatom_id, conode_id)),
+                    node::Face::Rx => ctx.take_link(Link::new(coatom_id, conode_id, atom_id, node_id)),
                 };
 
                 match face {
-                    Face::Tx => {
+                    node::Face::Tx => {
                         if let Some(what_missing) = self.links.get_mut(&link_id) {
-                            if *what_missing == Some(Face::Tx) {
+                            if *what_missing == Some(node::Face::Tx) {
                                 // Link occurs in causes and effects:
                                 // nothing misses, link not broken.
                                 *what_missing = None;
@@ -80,14 +80,14 @@ impl CES {
                         } else {
                             // Link occurs in effects, but its occurence
                             // in causes is missing: link is broken.
-                            self.links.insert(link_id, Some(Face::Rx));
+                            self.links.insert(link_id, Some(node::Face::Rx));
                             self.num_broken_links += 1;
                         }
                     }
 
-                    Face::Rx => {
+                    node::Face::Rx => {
                         if let Some(what_missing) = self.links.get_mut(&link_id) {
-                            if *what_missing == Some(Face::Rx) {
+                            if *what_missing == Some(node::Face::Rx) {
                                 // Link occurs in causes and effects:
                                 // nothing misses, link not broken.
                                 *what_missing = None;
@@ -98,7 +98,7 @@ impl CES {
                         } else {
                             // Link occurs in causes, but its occurence
                             // in effects is missing: link is broken.
-                            self.links.insert(link_id, Some(Face::Tx));
+                            self.links.insert(link_id, Some(node::Face::Tx));
                             self.num_broken_links += 1;
                         }
                     }
@@ -109,7 +109,7 @@ impl CES {
             poly.add_links(&mono_links);
         }
 
-        if face == Face::Tx {
+        if face == node::Face::Tx {
             self.effects.insert(atom_id, poly);
         } else {
             self.causes.insert(atom_id, poly);
@@ -134,10 +134,10 @@ impl CES {
             let node_id = NodeID(id);
 
             if let Some(ref spec_poly) = spec.get_causes_by_id(id) {
-                ces.add_polynomial(node_id, Face::Rx, spec_poly)?;
+                ces.add_polynomial(node_id, node::Face::Rx, spec_poly)?;
             }
             if let Some(ref spec_poly) = spec.get_effects_by_id(id) {
-                ces.add_polynomial(node_id, Face::Tx, spec_poly)?;
+                ces.add_polynomial(node_id, node::Face::Tx, spec_poly)?;
             }
         }
 

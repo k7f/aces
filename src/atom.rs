@@ -1,5 +1,5 @@
-use std::{cmp, collections::BTreeMap, fmt, error::Error};
-use crate::{ID, NodeID, Context, Contextual, sat, error::AcesError};
+use std::{cmp, collections::BTreeMap, error::Error};
+use crate::{ID, NodeID, Context, Contextual, node, sat, error::AcesError};
 
 /// An abstract structural identifier serving as the common base of
 /// [`PortID`] and [`LinkID`].
@@ -63,32 +63,6 @@ impl From<LinkID> for AtomID {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Face {
-    Tx,
-    Rx,
-}
-
-impl std::ops::Not for Face {
-    type Output = Face;
-
-    fn not(self) -> Self::Output {
-        match self {
-            Face::Tx => Face::Rx,
-            Face::Rx => Face::Tx,
-        }
-    }
-}
-
-impl fmt::Display for Face {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Face::Tx => write!(f, ">"),
-            Face::Rx => write!(f, "<"),
-        }
-    }
-}
-
 /// A collection of [`Atom`]s ([`PortID`]s and [`LinkID`]s) and a
 /// mapping from [`NodeID`]s to [`PortID`]s.
 ///
@@ -132,7 +106,7 @@ impl AtomSpace {
         let node_id = port.node_id;
 
         match port.face {
-            Face::Tx => {
+            node::Face::Tx => {
                 let port_id = PortID(self.take_atom(Atom::Tx(port)));
 
                 if let Some(&rx_id) = self.sink_nodes.get(&node_id) {
@@ -144,7 +118,7 @@ impl AtomSpace {
 
                 port_id
             }
-            Face::Rx => {
+            node::Face::Rx => {
                 let port_id = PortID(self.take_atom(Atom::Rx(port)));
 
                 if let Some(&tx_id) = self.source_nodes.get(&node_id) {
@@ -220,14 +194,14 @@ impl AtomSpace {
         if let Some(port) = self.get_port(port_id) {
             if let Some(&(tx_id, rx_id)) = self.internal_nodes.get(&port.node_id) {
                 match port.face {
-                    Face::Tx => {
+                    node::Face::Tx => {
                         if tx_id == port_id {
                             return Some(rx_id)
                         } else {
                             panic!("Corrupt atom space")
                         }
                     }
-                    Face::Rx => {
+                    node::Face::Rx => {
                         if rx_id == port_id {
                             return Some(tx_id)
                         } else {
@@ -297,17 +271,17 @@ impl cmp::PartialEq for Atom {
 
 #[derive(Debug)]
 pub struct Port {
-    face:    Face,
+    face:    node::Face,
     atom_id: Option<AtomID>,
     node_id: NodeID,
 }
 
 impl Port {
-    pub(crate) fn new(face: Face, node_id: NodeID) -> Self {
+    pub(crate) fn new(face: node::Face, node_id: NodeID) -> Self {
         Self { face, atom_id: None, node_id }
     }
 
-    pub(crate) fn get_face(&self) -> Face {
+    pub(crate) fn get_face(&self) -> node::Face {
         self.face
     }
 
@@ -335,7 +309,7 @@ impl cmp::Eq for Port {}
 impl Contextual for Port {
     fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let node_name =
-            ctx.get_node_name(self.get_node_id()).ok_or(AcesError::NodeMissingForPort(Face::Tx))?;
+            ctx.get_node_name(self.get_node_id()).ok_or(AcesError::NodeMissingForPort(node::Face::Tx))?;
 
         Ok(format!("[{} {}]", node_name, self.get_face()))
     }
@@ -401,10 +375,10 @@ impl Contextual for Link {
     fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let tx_node_name = ctx
             .get_node_name(self.get_tx_node_id())
-            .ok_or(AcesError::NodeMissingForPort(Face::Tx))?;
+            .ok_or(AcesError::NodeMissingForPort(node::Face::Tx))?;
         let rx_node_name = ctx
             .get_node_name(self.get_rx_node_id())
-            .ok_or(AcesError::NodeMissingForPort(Face::Rx))?;
+            .ok_or(AcesError::NodeMissingForPort(node::Face::Rx))?;
 
         Ok(format!("({} > {})", tx_node_name, rx_node_name))
     }
