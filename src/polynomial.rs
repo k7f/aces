@@ -26,15 +26,16 @@ pub struct Polynomial {
 }
 
 impl Polynomial {
+    /// Creates an empty polynomial, _&theta;_.
     pub fn new() -> Self {
         Default::default()
     }
 
-    pub fn from_spec(
-        ctx: ContextHandle,
-        port: &Port,
-        spec_poly: &[Vec<ID>],
-    ) -> Self {
+    /// Creates a polynomial from a sequence of vectors of node
+    /// [`ID`]s and within a [`Context`] given by a [`ContextHandle`].
+    ///
+    /// [`Context`]: crate::Context
+    pub fn from_spec(ctx: ContextHandle, port: &Port, spec_poly: &[Vec<ID>]) -> Self {
         let mut result = Self::new();
 
         let node_id = port.get_node_id();

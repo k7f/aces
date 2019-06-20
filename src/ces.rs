@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, io::Read, fs::File, path::Path, error::Error};
 
 use crate::{
-    ContextHandle, ID, Port, NodeID, PortID, LinkID, Polynomial,
+    ContextHandle, Port, NodeID, PortID, LinkID, Polynomial,
     spec::{CESSpec, spec_from_str},
     node, sat,
 };
@@ -29,7 +29,10 @@ pub struct CES {
 }
 
 impl CES {
-    /// Creates an empty c-e structure from a given [`ContextHandle`].
+    /// Creates an empty c-e structure within a [`Context`] given by a
+    /// [`ContextHandle`].
+    ///
+    /// [`Context`]: crate::Context
     pub fn new(ctx: ContextHandle) -> Self {
         Self {
             context:          ctx,
@@ -42,82 +45,74 @@ impl CES {
         }
     }
 
-    // pub fn add_polynomial(
-    //     &mut self,
-    //     node_id: NodeID,
-    //     face: node::Face,
-    //     poly: Polynomial,
-    // ) -> Result<(), Box<dyn Error>> {
-    //     Ok(())
-    // }
-
-    fn register_effect_link(&mut self, link_id: LinkID) {
-        if let Some(what_missing) = self.links.get_mut(&link_id) {
-            if *what_missing == Some(node::Face::Tx) {
-                // Link occurs in causes and effects:
-                // nothing misses, link not broken.
-                *what_missing = None;
-                self.num_broken_links -= 1;
+    fn add_effect_polynomial(&mut self, port_id: PortID, poly: Polynomial) {
+        for &link_id in poly.get_links() {
+            if let Some(what_missing) = self.links.get_mut(&link_id) {
+                if *what_missing == Some(node::Face::Tx) {
+                    // Link occurs in causes and effects:
+                    // nothing misses, link not broken.
+                    *what_missing = None;
+                    self.num_broken_links -= 1;
+                } else {
+                    // Link reoccurrence in effects.
+                }
             } else {
-                // Link reoccurrence in effects.
+                // Link occurs in effects, but its occurence
+                // in causes is missing: link is broken.
+                self.links.insert(link_id, Some(node::Face::Rx));
+                self.num_broken_links += 1;
             }
-        } else {
-            // Link occurs in effects, but its occurence
-            // in causes is missing: link is broken.
-            self.links.insert(link_id, Some(node::Face::Rx));
-            self.num_broken_links += 1;
         }
+
+        // FIXME add to old if any
+        self.effects.insert(port_id, poly);
     }
 
-    fn register_cause_link(&mut self, link_id: LinkID) {
-        if let Some(what_missing) = self.links.get_mut(&link_id) {
-            if *what_missing == Some(node::Face::Rx) {
-                // Link occurs in causes and effects:
-                // nothing misses, link not broken.
-                *what_missing = None;
-                self.num_broken_links -= 1;
+    fn add_cause_polynomial(&mut self, port_id: PortID, poly: Polynomial) {
+        for &link_id in poly.get_links() {
+            if let Some(what_missing) = self.links.get_mut(&link_id) {
+                if *what_missing == Some(node::Face::Rx) {
+                    // Link occurs in causes and effects:
+                    // nothing misses, link not broken.
+                    *what_missing = None;
+                    self.num_broken_links -= 1;
+                } else {
+                    // Link reoccurrence in causes.
+                }
             } else {
-                // Link reoccurrence in causes.
+                // Link occurs in causes, but its occurence
+                // in effects is missing: link is broken.
+                self.links.insert(link_id, Some(node::Face::Tx));
+                self.num_broken_links += 1;
             }
-        } else {
-            // Link occurs in causes, but its occurence
-            // in effects is missing: link is broken.
-            self.links.insert(link_id, Some(node::Face::Tx));
-            self.num_broken_links += 1;
         }
+
+        // FIXME add to old if any
+        self.causes.insert(port_id, poly);
     }
 
-    fn add_polynomial_from_spec(
-        &mut self,
-        node_id: NodeID,
-        face: node::Face,
-        spec_poly: &[Vec<ID>],
-    ) -> Result<(), Box<dyn Error>> {
+    /// Adds a [`Polynomial`] to this `CES` at a given `face` (cause
+    /// or effect) of a node.
+    ///
+    /// The polynomial `poly` is added to another polynomial which is
+    /// already, explicitly or implicitly (as the default _&theta;_),
+    /// attached to a `node_id` at a given `face`.
+    pub fn add_polynomial(&mut self, node_id: NodeID, face: node::Face, poly: Polynomial) {
         let mut port = Port::new(face, node_id);
         let port_id = self.context.lock().unwrap().share_port(&mut port);
 
-        let poly = Polynomial::from_spec(self.context.clone(), &port, spec_poly);
-
-        for link_id in poly.get_links() {
-            match face {
-                node::Face::Tx => self.register_effect_link(*link_id),
-                node::Face::Rx => self.register_cause_link(*link_id),
-            }
-        }
-
-        if face == node::Face::Tx {
-            self.effects.insert(port_id, poly);
-        } else {
-            self.causes.insert(port_id, poly);
+        match face {
+            node::Face::Rx => self.add_cause_polynomial(port_id, poly),
+            node::Face::Tx => self.add_effect_polynomial(port_id, poly),
         }
 
         self.carrier.entry(node_id).or_insert_with(Default::default);
-
-        Ok(())
     }
 
-    /// Creates a new c-e structure from a given [`ContextHandle`] and
-    /// a specification string.
+    /// Creates a new c-e structure from a specification string and within
+    /// a [`Context`] given by a [`ContextHandle`].
+    ///
+    /// [`Context`]: crate::Context
     pub fn from_str<S: AsRef<str>>(
         ctx: ContextHandle,
         raw_spec: S,
@@ -130,10 +125,23 @@ impl CES {
             let node_id = NodeID(id);
 
             if let Some(ref spec_poly) = spec.get_causes_by_id(id) {
-                ces.add_polynomial_from_spec(node_id, node::Face::Rx, spec_poly)?;
+                let mut port = Port::new(node::Face::Rx, node_id);
+                let port_id = ces.context.lock().unwrap().share_port(&mut port);
+
+                let poly = Polynomial::from_spec(ces.context.clone(), &port, spec_poly);
+
+                ces.add_cause_polynomial(port_id, poly);
+                ces.carrier.entry(node_id).or_insert_with(Default::default);
             }
+
             if let Some(ref spec_poly) = spec.get_effects_by_id(id) {
-                ces.add_polynomial_from_spec(node_id, node::Face::Tx, spec_poly)?;
+                let mut port = Port::new(node::Face::Tx, node_id);
+                let port_id = ces.context.lock().unwrap().share_port(&mut port);
+
+                let poly = Polynomial::from_spec(ces.context.clone(), &port, spec_poly);
+
+                ces.add_effect_polynomial(port_id, poly);
+                ces.carrier.entry(node_id).or_insert_with(Default::default);
             }
         }
 
@@ -141,8 +149,11 @@ impl CES {
         Ok(ces)
     }
 
-    /// Creates a new c-e structure from a given [`ContextHandle`] and
-    /// a specification file to be found along the `path`.
+    /// Creates a new c-e structure from a specification file to be
+    /// found along the `path` and within a [`Context`] given by a
+    /// [`ContextHandle`].
+    ///
+    /// [`Context`]: crate::Context
     pub fn from_file<P: AsRef<Path>>(ctx: ContextHandle, path: P) -> Result<Self, Box<dyn Error>> {
         let mut fp = File::open(path)?;
         let mut raw_spec = String::new();
