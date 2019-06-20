@@ -1,5 +1,6 @@
+use std::{slice, collections::BTreeSet};
 use bit_vec::BitVec;
-use crate::{monomial, sat, atom::LinkID};
+use crate::{ID, NodeID, Port, PortID, Link, LinkID, ContextHandle, node, monomial, sat};
 
 /// A formal polynomial.
 ///
@@ -21,12 +22,49 @@ pub struct Polynomial {
     product: Vec<LinkID>,
     weights: Vec<monomial::Weight>,
     // FIXME choose a better representation of a boolean matrix.
-    sum:     Vec<BitVec>,
+    sum: Vec<BitVec>,
 }
 
 impl Polynomial {
     pub fn new() -> Self {
         Default::default()
+    }
+
+    pub fn from_spec(
+        ctx: ContextHandle,
+        port: &Port,
+        spec_poly: &[Vec<ID>],
+    ) -> Self {
+        let mut result = Self::new();
+
+        let node_id = port.get_node_id();
+        let face = port.get_face();
+        let port_id = PortID(port.get_atom_id());
+
+        let mut mono_links = BTreeSet::new();
+
+        let mut ctx = ctx.lock().unwrap();
+
+        for spec_mono in spec_poly {
+            mono_links.clear();
+
+            for conode_id in spec_mono {
+                let conode_id = NodeID(*conode_id);
+                let mut coport = Port::new(!face, conode_id);
+                let coport_id = ctx.share_port(&mut coport);
+
+                let mut link = match face {
+                    node::Face::Tx => Link::new(port_id, node_id, coport_id, conode_id),
+                    node::Face::Rx => Link::new(coport_id, conode_id, port_id, node_id),
+                };
+                let link_id = ctx.share_link(&mut link);
+
+                mono_links.insert(link_id);
+            }
+            result.add_links_sorted(&mono_links);
+        }
+
+        result
     }
 
     /// Resets this polynomial into _&theta;_.
@@ -46,14 +84,12 @@ impl Polynomial {
             let mut row = BitVec::new();
             row.push(true);
             self.sum.push(row);
-
         } else if link_id > *self.product.last().unwrap() {
             self.product.push(link_id);
 
             for row in self.sum.iter_mut() {
                 row.push(true);
             }
-
         } else {
             match self.product.binary_search(&link_id) {
                 Ok(ndx) => {
@@ -87,7 +123,7 @@ impl Polynomial {
     /// monomial.
     ///
     /// Panics if `links` aren't given in strictly increasing order.
-    pub fn add_links<'a, I>(&mut self, links: I)
+    pub fn add_links_sorted<'a, I>(&mut self, links: I)
     where
         I: IntoIterator<Item = &'a LinkID>,
     {
@@ -97,7 +133,6 @@ impl Polynomial {
 
         for &link_id in links.into_iter() {
             let this_num = link_id.get().get();
-            // FIXME abort and call add_links_unsorted()
             assert!(
                 this_num > last_num,
                 "Argument `links` have to be given in strictly increasing order."
@@ -148,6 +183,10 @@ impl Polynomial {
         self.sum.len()
     }
 
+    pub fn get_links(&self) -> slice::Iter<LinkID> {
+        self.product.iter()
+    }
+
     pub fn as_sat_clauses(&self) -> Vec<Vec<sat::Literal>> {
         let mut clauses = Vec::new();
 
@@ -156,13 +195,11 @@ impl Polynomial {
 
         for row in self.sum.iter() {
             let mut mono = mono_template.clone();
-            let mut i = 0;
 
-            for lit in mono.iter_mut() {
+            for (i, lit) in mono.iter_mut().enumerate() {
                 if row[i] {
                     *lit = !*lit
                 }
-                i += 1;
             }
             clauses.push(mono)
         }

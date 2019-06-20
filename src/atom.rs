@@ -26,7 +26,7 @@ impl PortID {
         self.0
     }
 
-    pub fn as_sat_literal(&self, negated: bool) -> sat::Literal {
+    pub fn as_sat_literal(self, negated: bool) -> sat::Literal {
         sat::Literal::from_atom_id(self.get(), negated)
     }
 }
@@ -52,7 +52,7 @@ impl LinkID {
         self.0
     }
 
-    pub fn as_sat_literal(&self, negated: bool) -> sat::Literal {
+    pub fn as_sat_literal(self, negated: bool) -> sat::Literal {
         sat::Literal::from_atom_id(self.get(), negated)
     }
 }
@@ -88,26 +88,33 @@ impl Default for AtomSpace {
 }
 
 impl AtomSpace {
-    pub(crate) fn take_atom(&mut self, mut atom: Atom) -> AtomID {
+    fn do_share_atom(&mut self, mut new_atom: Atom) -> AtomID {
         for old_atom in self.atoms.iter() {
-            if old_atom == &atom {
+            if old_atom == &new_atom {
+                if new_atom.do_get_atom_id().is_some() {
+                    panic!("Attempt to reset ID of atom {:?}", new_atom);
+                }
                 return old_atom.get_atom_id()
             }
         }
 
         let atom_id = unsafe { AtomID::new_unchecked(self.atoms.len()) };
-        atom.set_atom_id(atom_id);
-        self.atoms.push(atom);
+        new_atom.set_atom_id(atom_id);
+        self.atoms.push(new_atom);
 
         atom_id
     }
 
-    pub(crate) fn take_port(&mut self, port: Port) -> PortID {
+    pub(crate) fn share_port(&mut self, port: &mut Port) -> PortID {
         let node_id = port.node_id;
 
         match port.face {
             node::Face::Tx => {
-                let port_id = PortID(self.take_atom(Atom::Tx(port)));
+                let atom_id = self.do_share_atom(Atom::Tx(port.clone()));
+
+                port.atom_id = Some(atom_id);
+
+                let port_id = PortID(atom_id);
 
                 if let Some(&rx_id) = self.sink_nodes.get(&node_id) {
                     self.sink_nodes.remove(&node_id);
@@ -119,7 +126,11 @@ impl AtomSpace {
                 port_id
             }
             node::Face::Rx => {
-                let port_id = PortID(self.take_atom(Atom::Rx(port)));
+                let atom_id = self.do_share_atom(Atom::Rx(port.clone()));
+
+                port.atom_id = Some(atom_id);
+
+                let port_id = PortID(atom_id);
 
                 if let Some(&tx_id) = self.source_nodes.get(&node_id) {
                     self.source_nodes.remove(&node_id);
@@ -134,8 +145,12 @@ impl AtomSpace {
     }
 
     #[inline]
-    pub(crate) fn take_link(&mut self, link: Link) -> LinkID {
-        LinkID(self.take_atom(Atom::Link(link)))
+    pub(crate) fn share_link(&mut self, link: &mut Link) -> LinkID {
+        let atom_id = self.do_share_atom(Atom::Link(link.clone()));
+
+        link.atom_id = Some(atom_id);
+
+        LinkID(atom_id)
     }
 
     #[inline]
@@ -229,9 +244,9 @@ impl Atom {
         use Atom::*;
 
         let prev_id = match self {
-            Tx(a) => &mut a.atom_id,
-            Rx(a) => &mut a.atom_id,
-            Link(a) => &mut a.atom_id,
+            Tx(p) => &mut p.atom_id,
+            Rx(p) => &mut p.atom_id,
+            Link(l) => &mut l.atom_id,
             Bottom => panic!("Attempt to set ID of the bottom atom"),
         };
 
@@ -242,16 +257,19 @@ impl Atom {
         }
     }
 
-    pub fn get_atom_id(&self) -> AtomID {
+    fn do_get_atom_id(&self) -> Option<AtomID> {
         use Atom::*;
 
         match self {
-            Tx(a) => a.atom_id,
-            Rx(a) => a.atom_id,
-            Link(a) => a.atom_id,
+            Tx(p) => p.atom_id,
+            Rx(p) => p.atom_id,
+            Link(l) => l.atom_id,
             Bottom => panic!("Attempt to get ID of the bottom atom"),
         }
-        .expect("Attempt to access an uninitialized atom")
+    }
+
+    pub fn get_atom_id(&self) -> AtomID {
+        self.do_get_atom_id().expect("Attempt to access an uninitialized atom")
     }
 }
 
@@ -261,15 +279,15 @@ impl cmp::PartialEq for Atom {
         use Atom::*;
 
         match self {
-            Tx(a) => if let Tx(o) = other { a == o } else { false },
-            Rx(a) => if let Rx(o) = other { a == o } else { false },
-            Link(a) => if let Link(o) = other { a == o } else { false },
+            Tx(p) => if let Tx(o) = other { p == o } else { false },
+            Rx(p) => if let Rx(o) = other { p == o } else { false },
+            Link(l) => if let Link(o) = other { l == o } else { false },
             Bottom => false, // irreflexive, hence no `impl cmp::Eq for Atom`
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Port {
     face:    node::Face,
     atom_id: Option<AtomID>,
@@ -308,14 +326,15 @@ impl cmp::Eq for Port {}
 
 impl Contextual for Port {
     fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
-        let node_name =
-            ctx.get_node_name(self.get_node_id()).ok_or(AcesError::NodeMissingForPort(node::Face::Tx))?;
+        let node_name = ctx
+            .get_node_name(self.get_node_id())
+            .ok_or(AcesError::NodeMissingForPort(node::Face::Tx))?;
 
         Ok(format!("[{} {}]", node_name, self.get_face()))
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Link {
     atom_id:    Option<AtomID>,
     tx_port_id: PortID,

@@ -46,7 +46,7 @@ impl UpdatableMap<ID, PolyForYaml> for BTreeMap<ID, PolyForYaml> {
     }
 }
 
-fn do_take_id<S: AsRef<str>>(
+fn do_share_name<S: AsRef<str>>(
     nodes: &mut NameSpace,
     name: S,
     single_word_only: bool,
@@ -54,7 +54,7 @@ fn do_take_id<S: AsRef<str>>(
     if single_word_only && name.as_ref().contains(char::is_whitespace) {
         Err(Box::new(AcesError::SpecShortPolyWithWords))
     } else {
-        Ok(nodes.take_id(name))
+        Ok(nodes.share_name(name))
     }
 }
 
@@ -67,13 +67,13 @@ fn post_process_port_spec<S: AsRef<str>>(
         let result: Result<Vec<ID>, Box<dyn Error>> = spec
             .as_ref()
             .split(',')
-            .map(|s| do_take_id(nodes, s.trim(), single_word_only))
+            .map(|s| do_share_name(nodes, s.trim(), single_word_only))
             .collect();
         let ids = result?;
 
         Ok(ids)
     } else {
-        let id = do_take_id(nodes, spec.as_ref().trim(), single_word_only)?;
+        let id = do_share_name(nodes, spec.as_ref().trim(), single_word_only)?;
 
         Ok(vec![id])
     }
@@ -133,7 +133,7 @@ fn parse_link_spec<S: AsRef<str> + Copy>(
             Err(Box::new(AcesError::SpecLinkReversed))
         }
     } else {
-        let id = do_take_id(nodes, spec, single_word_only)?;
+        let id = do_share_name(nodes, spec, single_word_only)?;
 
         Ok((id, false))
     }

@@ -21,7 +21,7 @@ impl NameSpace {
         self.ids.get(&Name::from(name.as_ref())).copied()
     }
 
-    pub(crate) fn take_id<S: AsRef<str>>(&mut self, name: S) -> ID {
+    pub(crate) fn share_name<S: AsRef<str>>(&mut self, name: S) -> ID {
         self.ids.get(&Name::from(name.as_ref())).copied().unwrap_or_else(|| {
             let id = unsafe { ID::new_unchecked(self.names.len()) };
             let name = Name::from(name.as_ref());

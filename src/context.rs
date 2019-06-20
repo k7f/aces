@@ -62,8 +62,8 @@ impl Context {
 
     // Nodes
 
-    pub fn take_node_id<S: AsRef<str>>(&mut self, node_name: S) -> NodeID {
-        NodeID(self.nodes.take_id(node_name))
+    pub fn share_node_name<S: AsRef<str>>(&mut self, node_name: S) -> NodeID {
+        NodeID(self.nodes.share_name(node_name))
     }
 
     pub fn get_node_name(&self, node_id: NodeID) -> Option<&str> {
@@ -80,12 +80,12 @@ impl Context {
         self.atoms.is_port(atom_id)
     }
 
-    pub fn take_port(&mut self, port: Port) -> PortID {
-        self.atoms.take_port(port)
+    pub fn share_port(&mut self, port: &mut Port) -> PortID {
+        self.atoms.share_port(port)
     }
 
-    pub fn take_link(&mut self, link: Link) -> LinkID {
-        self.atoms.take_link(link)
+    pub fn share_link(&mut self, link: &mut Link) -> LinkID {
+        self.atoms.share_link(link)
     }
 
     pub fn get_port(&self, port_id: PortID) -> Option<&Port> {
