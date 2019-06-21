@@ -1,6 +1,8 @@
-use std::{slice, cmp, ops, collections::BTreeSet, error::Error};
+use std::{slice, iter, cmp, ops, collections::BTreeSet, error::Error};
 use bit_vec::BitVec;
-use crate::{ID, NodeID, Port, PortID, Link, LinkID, ContextHandle, node, monomial, sat, error::AcesError};
+use crate::{
+    ID, NodeID, Port, PortID, Link, LinkID, ContextHandle, node, monomial, sat, error::AcesError,
+};
 
 /// A formal polynomial.
 ///
@@ -52,12 +54,10 @@ impl Polynomial {
         let face = port.get_face();
         let port_id = PortID(port.get_atom_id());
 
-        let mut mono_links = BTreeSet::new();
-
         let mut ctx = ctx.lock().unwrap();
 
         for spec_mono in spec_poly {
-            mono_links.clear();
+            let mut mono_links = BTreeSet::new();
 
             for conode_id in spec_mono {
                 let conode_id = NodeID(*conode_id);
@@ -72,7 +72,7 @@ impl Polynomial {
 
                 mono_links.insert(link_id);
             }
-            result.add_links_sorted(&mono_links).unwrap();
+            result.add_links_sorted(mono_links.into_iter()).unwrap();
         }
 
         result
@@ -140,14 +140,14 @@ impl Polynomial {
     /// order, or in case of port mismatch, or if context mismatch was
     /// detected.
     // FIXME more checks for port/context mismatch
-    pub fn add_links_sorted<'a, I>(&mut self, links: I) -> Result<bool, Box<dyn Error>>
+    pub fn add_links_sorted<I>(&mut self, links: I) -> Result<bool, Box<dyn Error>>
     where
-        I: IntoIterator<Item = &'a LinkID>,
+        I: IntoIterator<Item = LinkID>,
     {
         if self.is_empty() {
             let mut last_link_id = None;
 
-            for &link_id in links.into_iter() {
+            for link_id in links.into_iter() {
                 if let Some(last_id) = last_link_id {
                     if link_id <= last_id {
                         self.product.clear();
@@ -185,7 +185,7 @@ impl Polynomial {
 
         let mut ndx = 0;
 
-        for &link_id in links.into_iter() {
+        for link_id in links.into_iter() {
             if let Some(last_id) = last_link_id {
                 if link_id <= last_id {
                     // Error recovery.
@@ -292,7 +292,7 @@ impl Polynomial {
         self.sum.len()
     }
 
-    fn get_monomials(&self) -> Monomials {
+    pub fn get_monomials(&self) -> Monomials {
         Monomials { poly: self, ndx: 0 }
     }
 
@@ -332,14 +332,14 @@ impl cmp::PartialOrd for Polynomial {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         // FIXME optimize
 
-        if self.clone().add_polynomial(other) {
-            if other.clone().add_polynomial(self) {
+        if self.clone().add_polynomial(other).unwrap() {
+            if other.clone().add_polynomial(self).unwrap() {
                 None
             } else {
                 Some(cmp::Ordering::Less)
             }
         } else {
-            if other.clone().add_polynomial(self) {
+            if other.clone().add_polynomial(self).unwrap() {
                 Some(cmp::Ordering::Less)
             } else {
                 Some(cmp::Ordering::Equal)
@@ -354,23 +354,40 @@ impl ops::AddAssign<&Self> for Polynomial {
     }
 }
 
-struct Monomials<'a> {
+/// An iterator yielding monomials of a [`Polynomial`] as sequences of
+/// [`LinkID`]s.
+///
+/// This is a two-level iterator: the yielded items are themselves
+/// iterators.  It borrows the [`Polynomial`] being iterated over and
+/// traverses its data in place, without allocating extra space for
+/// inner iteration.
+pub struct Monomials<'a> {
     poly: &'a Polynomial,
     ndx:  usize,
 }
 
 impl<'a> Iterator for Monomials<'a> {
-    type Item = Vec<&'a LinkID>;
+    type Item = iter::FilterMap<
+        iter::Zip<slice::Iter<'a, LinkID>, bit_vec::Iter<'a>>,
+        fn((&LinkID, bool)) -> Option<LinkID>,
+    >;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(row) = self.poly.sum.get(self.ndx) {
-            let mono: Vec<_> = self
+            fn doit((l, b): (&LinkID, bool)) -> Option<LinkID> {
+                if b {
+                    Some(*l)
+                } else {
+                    None
+                }
+            }
+
+            let mono = self
                 .poly
                 .product
                 .iter()
                 .zip(row.iter())
-                .filter_map(|(l, b)| if b { Some(l) } else { None })
-                .collect();
+                .filter_map(doit as fn((&LinkID, bool)) -> Option<LinkID>);
 
             self.ndx += 1;
             Some(mono)
