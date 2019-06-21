@@ -1,4 +1,4 @@
-use std::{slice, collections::BTreeSet, error::Error};
+use std::{slice, cmp, ops, collections::BTreeSet, error::Error};
 use bit_vec::BitVec;
 use crate::{ID, NodeID, Port, PortID, Link, LinkID, ContextHandle, node, monomial, sat, error::AcesError};
 
@@ -17,6 +17,16 @@ use crate::{ID, NodeID, Port, PortID, Link, LinkID, ContextHandle, node, monomia
 /// the weight vector.  An element in row _i_ and column _j_ of the
 /// matrix determines if node in _j_-th position in the links vector
 /// occurs in _i_-th monomial.
+///
+/// `Polynomial`s may be compared and added using traits from
+/// [`std::cmp`] and [`std::ops`] standard modules, with the obvious
+/// exception of [`std::cmp::Ord`].  Note however that, in general,
+/// preventing [`Context`] or [`Port`] mismatch between polynomials is
+/// the responsibility of the caller of an operation.  Implementation
+/// detects some, but not all, cases of mismatch and panics if it does
+/// so.
+///
+/// [`Context`]: crate::Context
 #[derive(Clone, Default, Debug)]
 pub struct Polynomial {
     product: Vec<LinkID>,
@@ -127,9 +137,9 @@ impl Polynomial {
     /// `false` if it didn't, due to idempotency of addition.
     ///
     /// Returns error if `links` aren't given in strictly increasing
-    /// order, or in case of node mismatch, or if context mismatch was
+    /// order, or in case of port mismatch, or if context mismatch was
     /// detected.
-    // FIXME more checks for node/context mismatch
+    // FIXME more checks for port/context mismatch
     pub fn add_links_sorted<'a, I>(&mut self, links: I) -> Result<bool, Box<dyn Error>>
     where
         I: IntoIterator<Item = &'a LinkID>,
@@ -247,7 +257,7 @@ impl Polynomial {
     /// On success, returns `true` if this polynomial changed or
     /// `false` if it didn't, due to idempotency of addition.
     ///
-    /// Returns error in case of node mismatch, or if context mismatch
+    /// Returns error in case of port mismatch, or if context mismatch
     /// was detected.
     pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, Box<dyn Error>> {
         // FIXME optimize.  There are two special cases: when `self`
@@ -307,6 +317,40 @@ impl Polynomial {
             clauses.push(mono)
         }
         clauses
+    }
+}
+
+impl cmp::PartialEq for Polynomial {
+    fn eq(&self, other: &Self) -> bool {
+        self.product == other.product && self.sum == other.sum
+    }
+}
+
+impl cmp::Eq for Polynomial {}
+
+impl cmp::PartialOrd for Polynomial {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        // FIXME optimize
+
+        if self.clone().add_polynomial(other) {
+            if other.clone().add_polynomial(self) {
+                None
+            } else {
+                Some(cmp::Ordering::Less)
+            }
+        } else {
+            if other.clone().add_polynomial(self) {
+                Some(cmp::Ordering::Less)
+            } else {
+                Some(cmp::Ordering::Equal)
+            }
+        }
+    }
+}
+
+impl ops::AddAssign<&Self> for Polynomial {
+    fn add_assign(&mut self, other: &Self) {
+        self.add_polynomial(other).unwrap();
     }
 }
 

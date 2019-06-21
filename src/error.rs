@@ -20,7 +20,7 @@ pub(crate) enum AcesError {
     ContextMismatch,
     LinksNotOrdered,
 
-    NodeMismatch(String),
+    PortMismatch(String),
     NodeMissingForPort(node::Face),
     CESIsIncoherent(String),
 }
@@ -30,7 +30,7 @@ impl fmt::Display for AcesError {
         use AcesError::*;
 
         match self {
-            NodeMismatch(circumstance) => write!(f, "Node mismatch {}", circumstance),
+            PortMismatch(circumstance) => write!(f, "Port mismatch {}", circumstance),
             NodeMissingForPort(face) => write!(
                 f,
                 "Missing node for {} port",
@@ -66,7 +66,7 @@ impl Error for AcesError {
             ContextMismatch => "Context mismatch",
             LinksNotOrdered => "Links have to be given in strictly increasing order",
 
-            NodeMismatch(_) => "Node mismatch",
+            PortMismatch(_) => "Port mismatch",
             NodeMissingForPort(_) => "Missing node for port",
             CESIsIncoherent(_) => "Incoherent CES",
         }
