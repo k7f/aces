@@ -1,6 +1,6 @@
-use std::{slice, collections::BTreeSet};
+use std::{slice, collections::BTreeSet, error::Error};
 use bit_vec::BitVec;
-use crate::{ID, NodeID, Port, PortID, Link, LinkID, ContextHandle, node, monomial, sat};
+use crate::{ID, NodeID, Port, PortID, Link, LinkID, ContextHandle, node, monomial, sat, error::AcesError};
 
 /// A formal polynomial.
 ///
@@ -17,7 +17,7 @@ use crate::{ID, NodeID, Port, PortID, Link, LinkID, ContextHandle, node, monomia
 /// the weight vector.  An element in row _i_ and column _j_ of the
 /// matrix determines if node in _j_-th position in the links vector
 /// occurs in _i_-th monomial.
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct Polynomial {
     product: Vec<LinkID>,
     weights: Vec<monomial::Weight>,
@@ -62,7 +62,7 @@ impl Polynomial {
 
                 mono_links.insert(link_id);
             }
-            result.add_links_sorted(&mono_links);
+            result.add_links_sorted(&mono_links).unwrap();
         }
 
         result
@@ -123,49 +123,147 @@ impl Polynomial {
     /// Adds a sequence of `links` to this polynomial as another
     /// monomial.
     ///
-    /// Panics if `links` aren't given in strictly increasing order.
-    pub fn add_links_sorted<'a, I>(&mut self, links: I)
+    /// On success, returns `true` if this polynomial changed or
+    /// `false` if it didn't, due to idempotency of addition.
+    ///
+    /// Returns error if `links` aren't given in strictly increasing
+    /// order, or in case of node mismatch, or if context mismatch was
+    /// detected.
+    // FIXME more checks for node/context mismatch
+    pub fn add_links_sorted<'a, I>(&mut self, links: I) -> Result<bool, Box<dyn Error>>
     where
         I: IntoIterator<Item = &'a LinkID>,
     {
-        let mut row = BitVec::new();
-        let mut last_num = 0;
+        if self.is_empty() {
+            let mut last_link_id = None;
+
+            for &link_id in links.into_iter() {
+                if let Some(last_id) = last_link_id {
+                    if link_id <= last_id {
+                        self.product.clear();
+
+                        return Err(Box::new(AcesError::LinksNotOrdered))
+                    }
+                }
+                last_link_id = Some(link_id);
+
+                self.product.push(link_id);
+            }
+
+            if self.product.is_empty() {
+                return Ok(false)
+            } else {
+                self.weights.push(Default::default());
+
+                let row = BitVec::from_elem(self.product.len(), true);
+                self.sum.push(row);
+
+                return Ok(true)
+            }
+        }
+
+        let mut new_row = BitVec::new();
+
+        let mut last_link_id = None;
+        let mut no_new_links = true;
+
+        // These are used for error recovery; `old_sum` also helps in
+        // the implementation of inserting extra bits into rows of the
+        // sum.
+        let mut old_product = None;
+        let mut old_sum = None;
+
         let mut ndx = 0;
 
         for &link_id in links.into_iter() {
-            let this_num = link_id.get().get();
-            assert!(
-                this_num > last_num,
-                "Argument `links` have to be given in strictly increasing order."
-            );
+            if let Some(last_id) = last_link_id {
+                if link_id <= last_id {
+                    // Error recovery.
+
+                    if let Some(old_product) = old_product {
+                        self.product = old_product;
+                    }
+
+                    if let Some(old_sum) = old_sum {
+                        self.sum = old_sum;
+                    }
+
+                    return Err(Box::new(AcesError::LinksNotOrdered))
+                }
+            }
+            last_link_id = Some(link_id);
 
             match self.product[ndx..].binary_search(&link_id) {
                 Ok(i) => {
-                    row.push(true);
-                    ndx = i + 1;
+                    new_row.push(true);
+                    ndx += i + 1;
                 }
                 Err(i) => {
-                    row.push(true);
-                    row.push(false);
-                    self.product.insert(i, link_id);
-                    ndx = i + 1;
+                    ndx += i;
+
+                    no_new_links = false;
+
+                    new_row.push(true);
+                    new_row.push(false);
+
+                    self.product.insert(ndx, link_id);
+
+                    if old_product.is_none() {
+                        old_product = Some(self.product.clone());
+                    }
+                    if old_sum.is_none() {
+                        old_sum = Some(self.sum.clone());
+                    }
+
+                    let all_rows = old_sum.as_ref().unwrap();
+
+                    for (row, tail_row) in self.sum.iter_mut().zip(all_rows.iter()) {
+                        row.truncate(ndx);
+                        row.push(false);
+                        row.extend(tail_row.iter().skip(ndx));
+                    }
+
+                    ndx += 1;
                 }
             }
+        }
 
-            last_num = this_num;
+        if no_new_links {
+            for row in self.sum.iter() {
+                if *row == new_row {
+                    return Ok(false)
+                }
+            }
         }
 
         self.weights.push(Default::default());
-        self.sum.push(row);
+        self.sum.push(new_row);
+
+        Ok(true)
     }
 
     /// Adds another `Polynomial` to this polynomial.
     ///
-    /// There are two special cases: when `self` is a superpolynomial,
-    /// and when it is a subpolynomial of `other`.  First case is a
-    /// nop; the second: clear followed by clone.
-    pub fn add_polynomial(&mut self, _other: &Self) {
-        // FIXME
+    /// On success, returns `true` if this polynomial changed or
+    /// `false` if it didn't, due to idempotency of addition.
+    ///
+    /// Returns error in case of node mismatch, or if context mismatch
+    /// was detected.
+    pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, Box<dyn Error>> {
+        // FIXME optimize.  There are two special cases: when `self`
+        // is a superpolynomial, and when it is a subpolynomial of
+        // `other`.  First case is a nop; the second: clear followed
+        // by clone.
+
+        let mut changed = false;
+
+        for mono in other.get_monomials() {
+            if self.add_links_sorted(mono)? {
+                changed = true;
+            }
+        }
+
+        Ok(changed)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -182,6 +280,10 @@ impl Polynomial {
 
     pub fn num_monomials(&self) -> usize {
         self.sum.len()
+    }
+
+    fn get_monomials(&self) -> Monomials {
+        Monomials { poly: self, ndx: 0 }
     }
 
     pub fn get_links(&self) -> slice::Iter<LinkID> {
@@ -205,5 +307,31 @@ impl Polynomial {
             clauses.push(mono)
         }
         clauses
+    }
+}
+
+struct Monomials<'a> {
+    poly: &'a Polynomial,
+    ndx:  usize,
+}
+
+impl<'a> Iterator for Monomials<'a> {
+    type Item = Vec<&'a LinkID>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(row) = self.poly.sum.get(self.ndx) {
+            let mono: Vec<_> = self
+                .poly
+                .product
+                .iter()
+                .zip(row.iter())
+                .filter_map(|(l, b)| if b { Some(l) } else { None })
+                .collect();
+
+            self.ndx += 1;
+            Some(mono)
+        } else {
+            None
+        }
     }
 }
