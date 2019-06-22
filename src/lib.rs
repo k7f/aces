@@ -15,7 +15,7 @@ mod spec;
 pub mod sat;
 pub mod cli;
 
-pub use context::{Context, ContextHandle, Contextual, WithContext};
+pub use context::{Context, ContextHandle, Contextual, InContext};
 pub use node::NodeID;
 pub use atom::{Port, Link, PortID, LinkID};
 pub use polynomial::{Polynomial, Monomials};

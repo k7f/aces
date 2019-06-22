@@ -37,6 +37,13 @@ impl From<PortID> for AtomID {
     }
 }
 
+impl Contextual for PortID {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        let port = ctx.get_port(*self).ok_or(AcesError::PortMissingForID)?;
+        port.format(ctx)
+    }
+}
+
 /// An identifier of a [`Link`], a type derived from [`AtomID`].
 ///
 /// There is a trivial bijection between values of this type and
@@ -60,6 +67,13 @@ impl LinkID {
 impl From<LinkID> for AtomID {
     fn from(id: LinkID) -> Self {
         id.0
+    }
+}
+
+impl Contextual for LinkID {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        let link = ctx.get_link(*self).ok_or(AcesError::LinkMissingForID)?;
+        link.format(ctx)
     }
 }
 
@@ -394,10 +408,10 @@ impl Contextual for Link {
     fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let tx_node_name = ctx
             .get_node_name(self.get_tx_node_id())
-            .ok_or(AcesError::NodeMissingForPort(node::Face::Tx))?;
+            .ok_or(AcesError::NodeMissingForLink(node::Face::Tx))?;
         let rx_node_name = ctx
             .get_node_name(self.get_rx_node_id())
-            .ok_or(AcesError::NodeMissingForPort(node::Face::Rx))?;
+            .ok_or(AcesError::NodeMissingForLink(node::Face::Rx))?;
 
         Ok(format!("({} > {})", tx_node_name, rx_node_name))
     }

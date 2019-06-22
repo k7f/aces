@@ -29,7 +29,7 @@ pub struct CES {
 }
 
 impl CES {
-    /// Creates an empty c-e structure within a [`Context`] given by a
+    /// Creates an empty c-e structure in a [`Context`] given by a
     /// [`ContextHandle`].
     ///
     /// [`Context`]: crate::Context
@@ -109,7 +109,7 @@ impl CES {
         self.carrier.entry(node_id).or_insert_with(Default::default);
     }
 
-    /// Creates a new c-e structure from a specification string and within
+    /// Creates a new c-e structure from a specification string and in
     /// a [`Context`] given by a [`ContextHandle`].
     ///
     /// [`Context`]: crate::Context
@@ -150,7 +150,7 @@ impl CES {
     }
 
     /// Creates a new c-e structure from a specification file to be
-    /// found along the `path` and within a [`Context`] given by a
+    /// found along the `path` and in a [`Context`] given by a
     /// [`ContextHandle`].
     ///
     /// [`Context`]: crate::Context

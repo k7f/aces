@@ -1,7 +1,7 @@
 use std::{slice, iter, cmp, ops, collections::BTreeSet, error::Error};
 use bit_vec::BitVec;
 use crate::{
-    ID, NodeID, Port, PortID, Link, LinkID, ContextHandle, node, monomial, sat, error::AcesError,
+    ID, NodeID, Port, PortID, Link, LinkID, Context, ContextHandle, Contextual, node, monomial, sat, error::AcesError,
 };
 
 /// A formal polynomial.
@@ -17,8 +17,8 @@ use crate::{
 /// the polynomial.  The order in which monomials are listed is
 /// arbitrary, but same for rows of the boolean matrix and elements of
 /// the weight vector.  An element in row _i_ and column _j_ of the
-/// matrix determines if node in _j_-th position in the links vector
-/// occurs in _i_-th monomial.
+/// matrix determines if a node in _j_-th position in the vector of
+/// [`LinkID`]s occurs in _i_-th monomial.
 ///
 /// `Polynomial`s may be compared and added using traits from
 /// [`std::cmp`] and [`std::ops`] standard modules, with the obvious
@@ -27,14 +27,13 @@ use crate::{
 /// the responsibility of the caller of an operation.  Implementation
 /// detects some, but not all, cases of mismatch and panics if it does
 /// so.
-///
-/// [`Context`]: crate::Context
 #[derive(Clone, Default, Debug)]
 pub struct Polynomial {
     product: Vec<LinkID>,
     weights: Vec<monomial::Weight>,
     // FIXME choose a better representation of a boolean matrix.
     sum: Vec<BitVec>,
+    face: Option<node::Face>,
 }
 
 impl Polynomial {
@@ -44,9 +43,7 @@ impl Polynomial {
     }
 
     /// Creates a polynomial from a sequence of vectors of node
-    /// [`ID`]s and within a [`Context`] given by a [`ContextHandle`].
-    ///
-    /// [`Context`]: crate::Context
+    /// [`ID`]s and in a [`Context`] given by a [`ContextHandle`].
     pub fn from_spec(ctx: ContextHandle, port: &Port, spec_poly: &[Vec<ID>]) -> Self {
         let mut result = Self::new();
 
@@ -57,7 +54,7 @@ impl Polynomial {
         let mut ctx = ctx.lock().unwrap();
 
         for spec_mono in spec_poly {
-            let mut mono_links = BTreeSet::new();
+            let mut mono_link_ids = BTreeSet::new();
 
             for conode_id in spec_mono {
                 let conode_id = NodeID(*conode_id);
@@ -70,9 +67,9 @@ impl Polynomial {
                 };
                 let link_id = ctx.share_link(&mut link);
 
-                mono_links.insert(link_id);
+                mono_link_ids.insert(link_id);
             }
-            result.add_links_sorted(mono_links.into_iter()).unwrap();
+            result.add_links_sorted(mono_link_ids.into_iter()).unwrap();
         }
 
         result
@@ -130,24 +127,24 @@ impl Polynomial {
         }
     }
 
-    /// Adds a sequence of `links` to this polynomial as another
+    /// Adds a sequence of `link_ids` to this polynomial as another
     /// monomial.
     ///
     /// On success, returns `true` if this polynomial changed or
     /// `false` if it didn't, due to idempotency of addition.
     ///
-    /// Returns error if `links` aren't given in strictly increasing
-    /// order, or in case of port mismatch, or if context mismatch was
-    /// detected.
+    /// Returns error if `link_ids` aren't given in strictly
+    /// increasing order, or in case of port mismatch, or if context
+    /// mismatch was detected.
     // FIXME more checks for port/context mismatch
-    pub fn add_links_sorted<I>(&mut self, links: I) -> Result<bool, Box<dyn Error>>
+    pub fn add_links_sorted<I>(&mut self, link_ids: I) -> Result<bool, Box<dyn Error>>
     where
         I: IntoIterator<Item = LinkID>,
     {
         if self.is_empty() {
             let mut last_link_id = None;
 
-            for link_id in links.into_iter() {
+            for link_id in link_ids.into_iter() {
                 if let Some(last_id) = last_link_id {
                     if link_id <= last_id {
                         self.product.clear();
@@ -185,7 +182,7 @@ impl Polynomial {
 
         let mut ndx = 0;
 
-        for link_id in links.into_iter() {
+        for link_id in link_ids.into_iter() {
             if let Some(last_id) = last_link_id {
                 if link_id <= last_id {
                     // Error recovery.
@@ -329,6 +326,7 @@ impl cmp::PartialEq for Polynomial {
 impl cmp::Eq for Polynomial {}
 
 impl cmp::PartialOrd for Polynomial {
+    #[allow(clippy::collapsible_if)]
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         // FIXME optimize
 
@@ -354,6 +352,45 @@ impl ops::AddAssign<&Self> for Polynomial {
     }
 }
 
+impl Contextual for Polynomial {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        let mut result = String::new();
+
+        let mut first_mono = true;
+
+        for mono in self.get_monomials() {
+            if first_mono {
+                first_mono = false;
+            } else {
+                result.push_str(" + ");
+            }
+
+            let mut first_id = true;
+
+            for link_id in mono {
+                if first_id {
+                    first_id = false;
+                } else {
+                    result.push('·');
+                }
+
+                let link = ctx.get_link(link_id)
+                    .ok_or(AcesError::LinkMissingForID)?;
+
+                let s = match self.face {
+                    Some(node::Face::Tx) => link.get_tx_node_id().format(ctx),
+                    Some(node::Face::Rx) => link.get_rx_node_id().format(ctx),
+                    None => link_id.format(ctx),
+                }?;
+
+                result.push_str(&s);
+            }
+        }
+
+        Ok(result)
+    }
+}
+
 /// An iterator yielding monomials of a [`Polynomial`] as sequences of
 /// [`LinkID`]s.
 ///
@@ -367,6 +404,7 @@ pub struct Monomials<'a> {
 }
 
 impl<'a> Iterator for Monomials<'a> {
+    #[allow(clippy::type_complexity)]
     type Item = iter::FilterMap<
         iter::Zip<slice::Iter<'a, LinkID>, bit_vec::Iter<'a>>,
         fn((&LinkID, bool)) -> Option<LinkID>,

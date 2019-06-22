@@ -17,7 +17,7 @@ use crate::{
 /// [`sat::Solution`].
 ///
 /// For another way of binding [`Context`] to data see [`Contextual`]
-/// trait and [`WithContext`] struct.
+/// trait and [`InContext`] struct.
 ///
 /// [`CES`]: crate::CES
 /// [`sat::Formula`]: crate::sat::Formula
@@ -32,7 +32,7 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 /// another for node names.
 ///
 /// For usage, see [`ContextHandle`] type, [`Contextual`] trait and
-/// [`WithContext`] struct.
+/// [`InContext`] struct.
 ///
 /// [`Atom`]: crate::atom::Atom
 #[derive(Debug)]
@@ -113,7 +113,7 @@ impl Context {
 /// permanently storing (and synchronizing) context references inside
 /// the objects.
 ///
-/// See [`WithContext`] for more details.
+/// See [`InContext`] for more details.
 pub trait Contextual {
     fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>>;
 }
@@ -121,20 +121,20 @@ pub trait Contextual {
 /// A short-term binding of [`Context`] and any data implementing the
 /// [`Contextual`] trait.
 ///
-/// [`Context`] can't be modified through `WithContext`.  The purpose
+/// [`Context`] can't be modified through `InContext`.  The purpose
 /// of this type is to allow a transparent read access to shared data,
 /// like names etc.
-pub struct WithContext<'a, D: Contextual>(&'a Context, &'a D);
+pub struct InContext<'a, D: Contextual>(&'a Context, &'a D);
 
-impl<'a, D: Contextual> fmt::Display for WithContext<'a, D> {
+impl<'a, D: Contextual> fmt::Display for InContext<'a, D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let WithContext(ctx, data) = *self;
+        let InContext(ctx, data) = *self;
         write!(f, "{}", data.format(ctx).expect("Can't display"))
     }
 }
 
 impl Context {
-    pub fn with<'a, T: Contextual>(&'a self, value: &'a T) -> WithContext<'a, T> {
-        WithContext(self, value)
+    pub fn with<'a, T: Contextual>(&'a self, value: &'a T) -> InContext<'a, T> {
+        InContext(self, value)
     }
 }

@@ -18,10 +18,14 @@ pub(crate) enum AcesError {
     SpecLinkList,
 
     ContextMismatch,
+    NodeMissingForID,
+    PortMissingForID,
+    LinkMissingForID,
     LinksNotOrdered,
 
     PortMismatch(String),
     NodeMissingForPort(node::Face),
+    NodeMissingForLink(node::Face),
     CESIsIncoherent(String),
 }
 
@@ -34,6 +38,11 @@ impl fmt::Display for AcesError {
             NodeMissingForPort(face) => write!(
                 f,
                 "Missing node for {} port",
+                if *face == node::Face::Tx { "sending" } else { "receiving" }
+            ),
+            NodeMissingForLink(face) => write!(
+                f,
+                "Missing {} node for link",
                 if *face == node::Face::Tx { "sending" } else { "receiving" }
             ),
             CESIsIncoherent(name) => write!(f, "Structure '{}' is incoherent", name),
@@ -64,10 +73,14 @@ impl Error for AcesError {
             SpecLinkList => "Link list is invalid in polynomial specification",
 
             ContextMismatch => "Context mismatch",
+            NodeMissingForID => "Node is missing for ID",
+            PortMissingForID => "Port is missing for ID",
+            LinkMissingForID => "Link is missing for ID",
             LinksNotOrdered => "Links have to be given in strictly increasing order",
 
             PortMismatch(_) => "Port mismatch",
             NodeMissingForPort(_) => "Missing node for port",
+            NodeMissingForLink(_) => "Missing node for link",
             CESIsIncoherent(_) => "Incoherent CES",
         }
     }

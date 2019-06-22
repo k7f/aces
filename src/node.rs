@@ -1,5 +1,5 @@
-use std::fmt;
-use crate::ID;
+use std::{fmt, error::Error};
+use crate::{ID, Context, Contextual, error::AcesError};
 
 /// An identifier of a single node used in c-e structures.
 ///
@@ -17,7 +17,6 @@ use crate::ID;
 /// [`PortID`]: crate::PortID
 /// [`LinkID`]: crate::LinkID
 /// [`CES`]: crate::CES
-/// [`Context`]: crate::Context
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[repr(transparent)]
 pub struct NodeID(pub(crate) ID);
@@ -32,6 +31,13 @@ impl NodeID {
 impl From<NodeID> for ID {
     fn from(id: NodeID) -> Self {
         id.0
+    }
+}
+
+impl Contextual for NodeID {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        let name = ctx.get_node_name(*self).ok_or(AcesError::NodeMissingForID)?;
+        Ok(name.to_owned())
     }
 }
 
