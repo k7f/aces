@@ -1,5 +1,5 @@
 use std::{cmp, collections::BTreeMap, error::Error};
-use crate::{ID, NodeID, Context, Contextual, node, sat, error::AcesError};
+use crate::{ID, NodeID, Context, Contextual, InContext, node, sat, error::AcesError};
 
 /// An abstract structural identifier serving as the common base of
 /// [`PortID`] and [`LinkID`].
@@ -24,10 +24,6 @@ impl PortID {
     #[inline]
     pub const fn get(self) -> AtomID {
         self.0
-    }
-
-    pub fn as_sat_literal(self, negated: bool) -> sat::Literal {
-        sat::Literal::from_atom_id(self.get(), negated)
     }
 }
 
@@ -57,10 +53,6 @@ impl LinkID {
     #[inline]
     pub const fn get(self) -> AtomID {
         self.0
-    }
-
-    pub fn as_sat_literal(self, negated: bool) -> sat::Literal {
-        sat::Literal::from_atom_id(self.get(), negated)
     }
 }
 
@@ -120,7 +112,7 @@ impl AtomSpace {
     }
 
     pub(crate) fn share_port(&mut self, port: &mut Port) -> PortID {
-        let node_id = port.node_id;
+        let host = port.node_id;
 
         match port.face {
             node::Face::Tx => {
@@ -128,32 +120,32 @@ impl AtomSpace {
 
                 port.atom_id = Some(atom_id);
 
-                let port_id = PortID(atom_id);
+                let pid = PortID(atom_id);
 
-                if let Some(&rx_id) = self.sink_nodes.get(&node_id) {
-                    self.sink_nodes.remove(&node_id);
-                    self.internal_nodes.insert(node_id, (port_id, rx_id));
+                if let Some(&rx_id) = self.sink_nodes.get(&host) {
+                    self.sink_nodes.remove(&host);
+                    self.internal_nodes.insert(host, (pid, rx_id));
                 } else {
-                    self.source_nodes.insert(node_id, port_id);
+                    self.source_nodes.insert(host, pid);
                 }
 
-                port_id
+                pid
             }
             node::Face::Rx => {
                 let atom_id = self.do_share_atom(Atom::Rx(port.clone()));
 
                 port.atom_id = Some(atom_id);
 
-                let port_id = PortID(atom_id);
+                let pid = PortID(atom_id);
 
-                if let Some(&tx_id) = self.source_nodes.get(&node_id) {
-                    self.source_nodes.remove(&node_id);
-                    self.internal_nodes.insert(node_id, (tx_id, port_id));
+                if let Some(&tx_id) = self.source_nodes.get(&host) {
+                    self.source_nodes.remove(&host);
+                    self.internal_nodes.insert(host, (tx_id, pid));
                 } else {
-                    self.sink_nodes.insert(node_id, port_id);
+                    self.sink_nodes.insert(host, pid);
                 }
 
-                port_id
+                pid
             }
         }
     }
@@ -186,8 +178,8 @@ impl AtomSpace {
     }
 
     #[inline]
-    pub(crate) fn get_port(&self, port_id: PortID) -> Option<&Port> {
-        match self.get_atom(port_id.into()) {
+    pub(crate) fn get_port(&self, pid: PortID) -> Option<&Port> {
+        match self.get_atom(pid.into()) {
             Some(Atom::Tx(a)) => Some(a),
             Some(Atom::Rx(a)) => Some(a),
             _ => None,
@@ -195,8 +187,8 @@ impl AtomSpace {
     }
 
     #[inline]
-    pub(crate) fn get_port_mut(&mut self, port_id: PortID) -> Option<&mut Port> {
-        match self.get_atom_mut(port_id.into()) {
+    pub(crate) fn get_port_mut(&mut self, pid: PortID) -> Option<&mut Port> {
+        match self.get_atom_mut(pid.into()) {
             Some(Atom::Tx(a)) => Some(a),
             Some(Atom::Rx(a)) => Some(a),
             _ => None,
@@ -204,34 +196,34 @@ impl AtomSpace {
     }
 
     #[inline]
-    pub(crate) fn get_link(&self, link_id: LinkID) -> Option<&Link> {
-        match self.get_atom(link_id.into()) {
+    pub(crate) fn get_link(&self, lid: LinkID) -> Option<&Link> {
+        match self.get_atom(lid.into()) {
             Some(Atom::Link(a)) => Some(a),
             _ => None,
         }
     }
 
     #[inline]
-    pub(crate) fn get_link_mut(&mut self, link_id: LinkID) -> Option<&mut Link> {
-        match self.get_atom_mut(link_id.into()) {
+    pub(crate) fn get_link_mut(&mut self, lid: LinkID) -> Option<&mut Link> {
+        match self.get_atom_mut(lid.into()) {
             Some(Atom::Link(a)) => Some(a),
             _ => None,
         }
     }
 
-    pub fn get_antiport_id(&self, port_id: PortID) -> Option<PortID> {
-        if let Some(port) = self.get_port(port_id) {
+    pub fn get_antiport_id(&self, pid: PortID) -> Option<PortID> {
+        if let Some(port) = self.get_port(pid) {
             if let Some(&(tx_id, rx_id)) = self.internal_nodes.get(&port.node_id) {
                 match port.face {
                     node::Face::Tx => {
-                        if tx_id == port_id {
+                        if tx_id == pid {
                             return Some(rx_id)
                         } else {
                             panic!("Corrupt atom space")
                         }
                     }
                     node::Face::Rx => {
-                        if rx_id == port_id {
+                        if rx_id == pid {
                             return Some(tx_id)
                         } else {
                             panic!("Corrupt atom space")
@@ -375,6 +367,22 @@ impl Link {
         LinkID(self.get_atom_id())
     }
 
+    pub fn get_port_id(&self, face: node::Face) -> PortID {
+        if face == node::Face::Rx {
+            self.rx_port_id
+        } else {
+            self.tx_port_id
+        }
+    }
+
+    pub fn get_node_id(&self, face: node::Face) -> NodeID {
+        if face == node::Face::Rx {
+            self.rx_node_id
+        } else {
+            self.tx_node_id
+        }
+    }
+
     pub fn get_tx_port_id(&self) -> PortID {
         self.tx_port_id
     }
@@ -414,5 +422,40 @@ impl Contextual for Link {
             .ok_or(AcesError::NodeMissingForLink(node::Face::Rx))?;
 
         Ok(format!("({} > {})", tx_node_name, rx_node_name))
+    }
+}
+
+/// A trait of an identifier convertible into [`NodeID`] and into
+/// [`sat::Literal`].
+pub trait Atomic: Contextual + Copy + PartialEq + Eq + PartialOrd + Ord {
+    fn into_node_id(this: InContext<Self>) -> Option<NodeID>;
+
+    fn into_sat_literal(self, negated: bool) -> sat::Literal;
+}
+
+impl Atomic for PortID {
+    fn into_node_id(this: InContext<Self>) -> Option<NodeID> {
+        let ctx = this.get_context();
+        let pid = this.get_thing();
+
+        ctx.get_port(*pid).map(|port| port.get_node_id())
+    }
+
+    fn into_sat_literal(self, negated: bool) -> sat::Literal {
+        sat::Literal::from_atom_id(self.get(), negated)
+    }
+}
+
+impl Atomic for LinkID {
+    fn into_node_id(this: InContext<Self>) -> Option<NodeID> {
+        let ctx = this.get_context();
+        let dock = this.get_dock();
+        let lid = this.get_thing();
+
+        ctx.get_link(*lid).and_then(|link| dock.map(|face| link.get_node_id(face)))
+    }
+
+    fn into_sat_literal(self, negated: bool) -> sat::Literal {
+        sat::Literal::from_atom_id(self.get(), negated)
     }
 }

@@ -201,7 +201,7 @@ impl Formula {
 
     // FIXME
     /// Adds a _polynomial_ constraint to this formula.
-    pub fn add_polynomial(&mut self, _port_id: PortID, poly: &Polynomial) {
+    pub fn add_polynomial(&mut self, _port_id: PortID, poly: &Polynomial<LinkID>) {
         // if poly.is_empty() {
         //     return
         // } else if poly.is_single_link() {

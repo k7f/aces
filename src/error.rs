@@ -34,7 +34,7 @@ impl fmt::Display for AcesError {
         use AcesError::*;
 
         match self {
-            PortMismatch(circumstance) => write!(f, "Port mismatch {}", circumstance),
+            PortMismatch(circumstances) => write!(f, "Port mismatch {}", circumstances),
             NodeMissingForPort(face) => write!(
                 f,
                 "Missing node for {} port",

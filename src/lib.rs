@@ -17,7 +17,7 @@ pub mod cli;
 
 pub use context::{Context, ContextHandle, Contextual, InContext};
 pub use node::NodeID;
-pub use atom::{Port, Link, PortID, LinkID};
+pub use atom::{Port, Link, PortID, LinkID, Atomic};
 pub use polynomial::{Polynomial, Monomials};
 pub use ces::CES;
 

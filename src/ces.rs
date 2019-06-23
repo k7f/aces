@@ -21,8 +21,8 @@ use crate::{
 pub struct CES {
     context:          ContextHandle,
     spec:             Option<Box<dyn CESSpec>>,
-    causes:           BTreeMap<PortID, Polynomial>,
-    effects:          BTreeMap<PortID, Polynomial>,
+    causes:           BTreeMap<PortID, Polynomial<LinkID>>,
+    effects:          BTreeMap<PortID, Polynomial<LinkID>>,
     links:            BTreeMap<LinkID, Option<node::Face>>,
     carrier:          BTreeMap<NodeID, node::Capacity>,
     num_broken_links: u32,
@@ -45,30 +45,7 @@ impl CES {
         }
     }
 
-    fn add_effect_polynomial(&mut self, port_id: PortID, poly: Polynomial) {
-        for &link_id in poly.get_links() {
-            if let Some(what_missing) = self.links.get_mut(&link_id) {
-                if *what_missing == Some(node::Face::Tx) {
-                    // Link occurs in causes and effects:
-                    // nothing misses, link not broken.
-                    *what_missing = None;
-                    self.num_broken_links -= 1;
-                } else {
-                    // Link reoccurrence in effects.
-                }
-            } else {
-                // Link occurs in effects, but its occurence
-                // in causes is missing: link is broken.
-                self.links.insert(link_id, Some(node::Face::Rx));
-                self.num_broken_links += 1;
-            }
-        }
-
-        // FIXME add to old if any
-        self.effects.insert(port_id, poly);
-    }
-
-    fn add_cause_polynomial(&mut self, port_id: PortID, poly: Polynomial) {
+    fn add_cause_polynomial(&mut self, port_id: PortID, poly: Polynomial<LinkID>) {
         for &link_id in poly.get_links() {
             if let Some(what_missing) = self.links.get_mut(&link_id) {
                 if *what_missing == Some(node::Face::Rx) {
@@ -91,13 +68,36 @@ impl CES {
         self.causes.insert(port_id, poly);
     }
 
+    fn add_effect_polynomial(&mut self, port_id: PortID, poly: Polynomial<LinkID>) {
+        for &link_id in poly.get_links() {
+            if let Some(what_missing) = self.links.get_mut(&link_id) {
+                if *what_missing == Some(node::Face::Tx) {
+                    // Link occurs in causes and effects:
+                    // nothing misses, link not broken.
+                    *what_missing = None;
+                    self.num_broken_links -= 1;
+                } else {
+                    // Link reoccurrence in effects.
+                }
+            } else {
+                // Link occurs in effects, but its occurence
+                // in causes is missing: link is broken.
+                self.links.insert(link_id, Some(node::Face::Rx));
+                self.num_broken_links += 1;
+            }
+        }
+
+        // FIXME add to old if any
+        self.effects.insert(port_id, poly);
+    }
+
     /// Adds a [`Polynomial`] to this `CES` at a given `face` (cause
     /// or effect) of a node.
     ///
     /// The polynomial `poly` is added to another polynomial which is
     /// already, explicitly or implicitly (as the default _&theta;_),
     /// attached to a `node_id` at a given `face`.
-    pub fn add_polynomial(&mut self, node_id: NodeID, face: node::Face, poly: Polynomial) {
+    pub fn add_polynomial(&mut self, node_id: NodeID, face: node::Face, poly: Polynomial<LinkID>) {
         let mut port = Port::new(face, node_id);
         let port_id = self.context.lock().unwrap().share_port(&mut port);
 

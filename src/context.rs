@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use crate::{
-    Port, Link, NodeID, PortID, LinkID,
+    Port, Link, NodeID, PortID, LinkID, node,
     name::NameSpace,
     atom::{AtomSpace, AtomID},
 };
@@ -124,17 +124,41 @@ pub trait Contextual {
 /// [`Context`] can't be modified through `InContext`.  The purpose
 /// of this type is to allow a transparent read access to shared data,
 /// like names etc.
-pub struct InContext<'a, D: Contextual>(&'a Context, &'a D);
+pub struct InContext<'a, D: Contextual> {
+    context: &'a Context,
+    dock: Option<node::Face>,
+    thing: &'a D,
+}
+
+impl<D: Contextual> InContext<'_, D> {
+    #[inline]
+    pub fn get_context(&self) -> &Context {
+        self.context
+    }
+
+    #[inline]
+    pub fn get_dock(&self) -> Option<node::Face> {
+        self.dock
+    }
+
+    #[inline]
+    pub fn get_thing(&self) -> &D {
+        self.thing
+    }
+}
 
 impl<'a, D: Contextual> fmt::Display for InContext<'a, D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let InContext(ctx, data) = *self;
-        write!(f, "{}", data.format(ctx).expect("Can't display"))
+        write!(f, "{}", self.thing.format(self.context).expect("Can't display"))
     }
 }
 
 impl Context {
-    pub fn with<'a, T: Contextual>(&'a self, value: &'a T) -> InContext<'a, T> {
-        InContext(self, value)
+    pub fn with<'a, T: Contextual>(&'a self, thing: &'a T) -> InContext<'a, T> {
+        InContext { context: self, dock: None, thing }
+    }
+
+    pub fn with_docked<'a, T: Contextual>(&'a self, face: node::Face, thing: &'a T) -> InContext<'a, T> {
+        InContext { context: self, dock: Some(face), thing }
     }
 }
