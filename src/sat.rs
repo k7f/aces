@@ -40,14 +40,14 @@ impl Variable {
 }
 
 impl Contextual for Variable {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
         let mut result = String::new();
         let atom_id = self.into_atom_id();
 
         if let Some(port) = ctx.get_port(PortID(atom_id)) {
-            result.write_fmt(format_args!("{}", port.format(ctx)?))?;
+            result.write_fmt(format_args!("{}", port.format(ctx, dock)?))?;
         } else if let Some(link) = ctx.get_link(LinkID(atom_id)) {
-            result.write_fmt(format_args!("{}", link.format(ctx)?))?;
+            result.write_fmt(format_args!("{}", link.format(ctx, dock)?))?;
         } else {
             result.push_str("???");
         }
@@ -112,11 +112,11 @@ impl ops::BitXor<bool> for Literal {
 }
 
 impl Contextual for Literal {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
         if self.is_negative() {
-            Ok(format!("~{}", Variable(self.0.var()).format(ctx)?))
+            Ok(format!("~{}", Variable(self.0.var()).format(ctx, dock)?))
         } else {
-            Variable(self.0.var()).format(ctx)
+            Variable(self.0.var()).format(ctx, dock)
         }
     }
 }

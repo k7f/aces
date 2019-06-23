@@ -1,5 +1,5 @@
 use std::{
-    fmt,
+    cmp, fmt,
     error::Error,
     sync::{Arc, Mutex},
 };
@@ -37,6 +37,7 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 /// [`Atom`]: crate::atom::Atom
 #[derive(Debug)]
 pub struct Context {
+    id: usize,  // FIXME
     pub(crate) globals: NameSpace,
     pub(crate) nodes:   NameSpace,
     pub(crate) atoms:   AtomSpace,
@@ -45,6 +46,7 @@ pub struct Context {
 impl Context {
     fn new() -> Self {
         Self {
+            id: rand::random(), // FIXME
             globals: Default::default(),
             nodes:   Default::default(),
             atoms:   Default::default(),
@@ -109,25 +111,33 @@ impl Context {
     }
 }
 
+impl cmp::PartialEq for Context {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl cmp::Eq for Context {}
+
 /// A trait for binding objects to [`Context`] temporarily, without
 /// permanently storing (and synchronizing) context references inside
 /// the objects.
 ///
 /// See [`InContext`] for more details.
 pub trait Contextual {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>>;
+    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>>;
 }
 
-/// A short-term binding of [`Context`] and any data implementing the
-/// [`Contextual`] trait.
+/// A short-term binding of [`Context`] and any immutable data
+/// implementing the [`Contextual`] trait.
 ///
 /// [`Context`] can't be modified through `InContext`.  The purpose
 /// of this type is to allow a transparent read access to shared data,
 /// like names etc.
 pub struct InContext<'a, D: Contextual> {
     context: &'a Context,
-    dock: Option<node::Face>,
-    thing: &'a D,
+    dock:    Option<node::Face>,
+    thing:   &'a D,
 }
 
 impl<D: Contextual> InContext<'_, D> {
@@ -149,7 +159,47 @@ impl<D: Contextual> InContext<'_, D> {
 
 impl<'a, D: Contextual> fmt::Display for InContext<'a, D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.thing.format(self.context).expect("Can't display"))
+        write!(f, "{}", self.thing.format(self.context, self.dock).expect("Can't display"))
+    }
+}
+
+/// A short-term binding of [`Context`] and any mutable data
+/// implementing the [`Contextual`] trait.
+///
+/// [`Context`] can't be modified through `InContext`.  The purpose
+/// of this type is to allow a transparent read access to shared data,
+/// like names etc.
+pub struct InContextMut<'a, D: Contextual> {
+    context: &'a Context,
+    dock:    Option<node::Face>,
+    thing:   &'a mut D,
+}
+
+impl<D: Contextual> InContextMut<'_, D> {
+    #[inline]
+    pub fn get_context(&self) -> &Context {
+        self.context
+    }
+
+    #[inline]
+    pub fn get_dock(&self) -> Option<node::Face> {
+        self.dock
+    }
+
+    #[inline]
+    pub fn get_thing(&self) -> &D {
+        self.thing
+    }
+
+    #[inline]
+    pub fn get_thing_mut(&mut self) -> &mut D {
+        self.thing
+    }
+}
+
+impl<'a, D: Contextual> fmt::Display for InContextMut<'a, D> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.thing.format(self.context, self.dock).expect("Can't display"))
     }
 }
 
@@ -158,7 +208,23 @@ impl Context {
         InContext { context: self, dock: None, thing }
     }
 
-    pub fn with_docked<'a, T: Contextual>(&'a self, face: node::Face, thing: &'a T) -> InContext<'a, T> {
+    pub fn with_mut<'a, T: Contextual>(&'a self, thing: &'a mut T) -> InContextMut<'a, T> {
+        InContextMut { context: self, dock: None, thing }
+    }
+
+    pub fn with_docked<'a, T: Contextual>(
+        &'a self,
+        face: node::Face,
+        thing: &'a T,
+    ) -> InContext<'a, T> {
         InContext { context: self, dock: Some(face), thing }
+    }
+
+    pub fn with_docked_mut<'a, T: Contextual>(
+        &'a self,
+        face: node::Face,
+        thing: &'a mut T,
+    ) -> InContextMut<'a, T> {
+        InContextMut { context: self, dock: Some(face), thing }
     }
 }

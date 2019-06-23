@@ -1,16 +1,9 @@
 use std::{slice, iter, cmp, ops, collections::BTreeSet, error::Error};
 use bit_vec::BitVec;
 use crate::{
-    ID, NodeID, Port, PortID, Link, LinkID, Context, ContextHandle, Contextual, Atomic, node, monomial, sat, error::AcesError,
+    ID, NodeID, Port, PortID, Link, LinkID, Context, ContextHandle, Contextual, InContextMut, Atomic, node,
+    monomial, sat, error::AcesError,
 };
-
-// FIXME remove: to be used only during refactoring.
-#[derive(Clone, Debug)]
-struct Anchor {
-    pid: PortID,
-    host: NodeID,
-    face: node::Face,
-}
 
 /// A formal polynomial.
 ///
@@ -41,7 +34,6 @@ pub struct Polynomial<T: Atomic> {
     weights: Vec<monomial::Weight>,
     // FIXME choose a better representation of a boolean matrix.
     sum: Vec<BitVec>,
-    anchor: Option<Anchor>,
 }
 
 impl Polynomial<LinkID> {
@@ -53,10 +45,6 @@ impl Polynomial<LinkID> {
         let pid = PortID(port.get_atom_id());
         let host = port.get_node_id();
         let face = port.get_face();
-
-        result.anchor = Some(Anchor {
-            pid, host, face,
-        });
 
         let mut ctx = ctx.lock().unwrap();
 
@@ -76,7 +64,7 @@ impl Polynomial<LinkID> {
 
                 mono_ids.insert(id);
             }
-            result.add_links_sorted(mono_ids.into_iter()).unwrap();
+            result.add_atomics_sorted(mono_ids.into_iter()).unwrap();
         }
 
         result
@@ -85,12 +73,12 @@ impl Polynomial<LinkID> {
 
 impl<T: Atomic> Polynomial<T> {
     /// Creates an empty polynomial, _&theta;_.
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             product: Default::default(),
             weights: Default::default(),
-            sum: Default::default(),
-            anchor: Default::default(),
+            sum:     Default::default(),
         }
     }
 
@@ -103,22 +91,22 @@ impl<T: Atomic> Polynomial<T> {
 
     /// Multiplies this polynomial (all its monomials) by a
     /// single-element monomial.
-    pub fn multiply_by_link(&mut self, id: T) {
+    pub fn atomic_multiply(&mut self, atomic: T) {
         if self.is_empty() {
-            self.product.push(id);
+            self.product.push(atomic);
             self.weights.push(Default::default());
 
             let mut row = BitVec::new();
             row.push(true);
             self.sum.push(row);
-        } else if id > *self.product.last().unwrap() {
-            self.product.push(id);
+        } else if atomic > *self.product.last().unwrap() {
+            self.product.push(atomic);
 
             for row in self.sum.iter_mut() {
                 row.push(true);
             }
         } else {
-            match self.product.binary_search(&id) {
+            match self.product.binary_search(&atomic) {
                 Ok(ndx) => {
                     if !self.is_monomial() {
                         for row in self.sum.iter_mut() {
@@ -129,7 +117,7 @@ impl<T: Atomic> Polynomial<T> {
                 Err(ndx) => {
                     let old_len = self.product.len();
 
-                    self.product.insert(ndx, id);
+                    self.product.insert(ndx, atomic);
 
                     for row in self.sum.iter_mut() {
                         row.push(false);
@@ -155,24 +143,24 @@ impl<T: Atomic> Polynomial<T> {
     /// Returns error if `ids` aren't given in strictly increasing
     /// order, or in case of port mismatch, or if context mismatch
     /// was detected.
-    pub fn add_links_sorted<I>(&mut self, ids: I) -> Result<bool, Box<dyn Error>>
+    pub fn add_atomics_sorted<I>(&mut self, atomics: I) -> Result<bool, Box<dyn Error>>
     where
         I: IntoIterator<Item = T>,
     {
         if self.is_empty() {
-            let mut last_lid = None;
+            let mut prev_thing = None;
 
-            for lid in ids.into_iter() {
-                if let Some(last_id) = last_lid {
-                    if lid <= last_id {
+            for thing in atomics.into_iter() {
+                if let Some(prev) = prev_thing {
+                    if thing <= prev {
                         self.product.clear();
 
-                        return Err(Box::new(AcesError::LinksNotOrdered))
+                        return Err(Box::new(AcesError::AtomicsNotOrdered))
                     }
                 }
-                last_lid = Some(lid);
+                prev_thing = Some(thing);
 
-                self.product.push(lid);
+                self.product.push(thing);
             }
 
             if self.product.is_empty() {
@@ -189,8 +177,8 @@ impl<T: Atomic> Polynomial<T> {
 
         let mut new_row = BitVec::from_elem(self.product.len(), false);
 
-        let mut last_id = None;
-        let mut no_new_links = true;
+        let mut prev_thing = None;
+        let mut no_new_things = true;
 
         // These are used for error recovery; `old_sum` also helps in
         // the implementation of inserting extra bits into rows of the
@@ -200,9 +188,9 @@ impl<T: Atomic> Polynomial<T> {
 
         let mut ndx = 0;
 
-        for id in ids.into_iter() {
-            if let Some(last_id) = last_id {
-                if id <= last_id {
+        for thing in atomics.into_iter() {
+            if let Some(prev) = prev_thing {
+                if thing <= prev {
                     // Error recovery.
 
                     if let Some(old_product) = old_product {
@@ -213,12 +201,12 @@ impl<T: Atomic> Polynomial<T> {
                         self.sum = old_sum;
                     }
 
-                    return Err(Box::new(AcesError::LinksNotOrdered))
+                    return Err(Box::new(AcesError::AtomicsNotOrdered))
                 }
             }
-            last_id = Some(id);
+            prev_thing = Some(thing);
 
-            match self.product[ndx..].binary_search(&id) {
+            match self.product[ndx..].binary_search(&thing) {
                 Ok(i) => {
                     new_row.push(true);
                     ndx += i + 1;
@@ -226,12 +214,12 @@ impl<T: Atomic> Polynomial<T> {
                 Err(i) => {
                     ndx += i;
 
-                    no_new_links = false;
+                    no_new_things = false;
 
                     new_row.push(true);
                     new_row.push(false);
 
-                    self.product.insert(ndx, id);
+                    self.product.insert(ndx, thing);
 
                     if old_product.is_none() {
                         old_product = Some(self.product.clone());
@@ -253,7 +241,7 @@ impl<T: Atomic> Polynomial<T> {
             }
         }
 
-        if no_new_links {
+        if no_new_things {
             for row in self.sum.iter() {
                 if *row == new_row {
                     return Ok(false)
@@ -283,7 +271,7 @@ impl<T: Atomic> Polynomial<T> {
         let mut changed = false;
 
         for mono in other.get_monomials() {
-            if self.add_links_sorted(mono)? {
+            if self.add_atomics_sorted(mono)? {
                 changed = true;
             }
         }
@@ -295,7 +283,7 @@ impl<T: Atomic> Polynomial<T> {
         self.sum.is_empty()
     }
 
-    pub fn is_single_link(&self) -> bool {
+    pub fn is_atomic(&self) -> bool {
         self.product.len() == 1
     }
 
@@ -311,7 +299,7 @@ impl<T: Atomic> Polynomial<T> {
         Monomials { poly: self, ndx: 0 }
     }
 
-    pub fn get_links(&self) -> slice::Iter<T> {
+    pub fn get_atomics(&self) -> slice::Iter<T> {
         self.product.iter()
     }
 
@@ -364,14 +352,28 @@ impl<T: Atomic> cmp::PartialOrd for Polynomial<T> {
     }
 }
 
-impl<T: Atomic> ops::AddAssign<&Self> for Polynomial<T> {
+impl<'a> InContextMut<'a, Polynomial<LinkID>> {
+    pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, Box<dyn Error>> {
+        if self.get_context() == other.get_context() {
+            if self.get_dock() == other.get_dock() {
+                self.get_thing_mut().add_polynomial(other.get_thing())
+            } else {
+                Err(Box::new(AcesError::PortMismatch))
+            }
+        } else {
+            Err(Box::new(AcesError::ContextMismatch))
+        }
+    }
+}
+
+impl<'a> ops::AddAssign<&Self> for InContextMut<'a, Polynomial<LinkID>> {
     fn add_assign(&mut self, other: &Self) {
         self.add_polynomial(other).unwrap();
     }
 }
 
 impl Contextual for Polynomial<LinkID> {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
         let mut result = String::new();
 
         let mut first_mono = true;
@@ -392,16 +394,15 @@ impl Contextual for Polynomial<LinkID> {
                     result.push('·');
                 }
 
-                let link = ctx.get_link(id)
-                    .ok_or(AcesError::LinkMissingForID)?;
+                let link = ctx.get_link(id).ok_or(AcesError::LinkMissingForID)?;
 
-                let s = if let Some(ref anchor) = self.anchor {
-                    match anchor.face {
-                        node::Face::Tx => link.get_rx_node_id().format(ctx),
-                        node::Face::Rx => link.get_tx_node_id().format(ctx),
+                let s = if let Some(face) = dock {
+                    match face {
+                        node::Face::Tx => link.get_rx_node_id().format(ctx, dock),
+                        node::Face::Rx => link.get_tx_node_id().format(ctx, dock),
                     }
                 } else {
-                    id.format(ctx)
+                    id.format(ctx, dock)
                 }?;
 
                 result.push_str(&s);

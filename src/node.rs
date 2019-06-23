@@ -35,7 +35,7 @@ impl From<NodeID> for ID {
 }
 
 impl Contextual for NodeID {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &Context, _dock: Option<Face>) -> Result<String, Box<dyn Error>> {
         let name = ctx.get_node_name(*self).ok_or(AcesError::NodeMissingForID)?;
         Ok(name.to_owned())
     }

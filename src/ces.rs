@@ -46,8 +46,8 @@ impl CES {
     }
 
     fn add_cause_polynomial(&mut self, port_id: PortID, poly: Polynomial<LinkID>) {
-        for &link_id in poly.get_links() {
-            if let Some(what_missing) = self.links.get_mut(&link_id) {
+        for &lid in poly.get_atomics() {
+            if let Some(what_missing) = self.links.get_mut(&lid) {
                 if *what_missing == Some(node::Face::Rx) {
                     // Link occurs in causes and effects:
                     // nothing misses, link not broken.
@@ -59,7 +59,7 @@ impl CES {
             } else {
                 // Link occurs in causes, but its occurence
                 // in effects is missing: link is broken.
-                self.links.insert(link_id, Some(node::Face::Tx));
+                self.links.insert(lid, Some(node::Face::Tx));
                 self.num_broken_links += 1;
             }
         }
@@ -69,8 +69,8 @@ impl CES {
     }
 
     fn add_effect_polynomial(&mut self, port_id: PortID, poly: Polynomial<LinkID>) {
-        for &link_id in poly.get_links() {
-            if let Some(what_missing) = self.links.get_mut(&link_id) {
+        for &lid in poly.get_atomics() {
+            if let Some(what_missing) = self.links.get_mut(&lid) {
                 if *what_missing == Some(node::Face::Tx) {
                     // Link occurs in causes and effects:
                     // nothing misses, link not broken.
@@ -82,7 +82,7 @@ impl CES {
             } else {
                 // Link occurs in effects, but its occurence
                 // in causes is missing: link is broken.
-                self.links.insert(link_id, Some(node::Face::Rx));
+                self.links.insert(lid, Some(node::Face::Rx));
                 self.num_broken_links += 1;
             }
         }
@@ -99,11 +99,11 @@ impl CES {
     /// attached to a `node_id` at a given `face`.
     pub fn add_polynomial(&mut self, node_id: NodeID, face: node::Face, poly: Polynomial<LinkID>) {
         let mut port = Port::new(face, node_id);
-        let port_id = self.context.lock().unwrap().share_port(&mut port);
+        let pid = self.context.lock().unwrap().share_port(&mut port);
 
         match face {
-            node::Face::Rx => self.add_cause_polynomial(port_id, poly),
-            node::Face::Tx => self.add_effect_polynomial(port_id, poly),
+            node::Face::Rx => self.add_cause_polynomial(pid, poly),
+            node::Face::Tx => self.add_effect_polynomial(pid, poly),
         }
 
         self.carrier.entry(node_id).or_insert_with(Default::default);
@@ -126,21 +126,21 @@ impl CES {
 
             if let Some(ref spec_poly) = spec.get_causes_by_id(id) {
                 let mut port = Port::new(node::Face::Rx, node_id);
-                let port_id = ces.context.lock().unwrap().share_port(&mut port);
+                let pid = ces.context.lock().unwrap().share_port(&mut port);
 
                 let poly = Polynomial::from_spec(ces.context.clone(), &port, spec_poly);
 
-                ces.add_cause_polynomial(port_id, poly);
+                ces.add_cause_polynomial(pid, poly);
                 ces.carrier.entry(node_id).or_insert_with(Default::default);
             }
 
             if let Some(ref spec_poly) = spec.get_effects_by_id(id) {
                 let mut port = Port::new(node::Face::Tx, node_id);
-                let port_id = ces.context.lock().unwrap().share_port(&mut port);
+                let pid = ces.context.lock().unwrap().share_port(&mut port);
 
                 let poly = Polynomial::from_spec(ces.context.clone(), &port, spec_poly);
 
-                ces.add_effect_polynomial(port_id, poly);
+                ces.add_effect_polynomial(pid, poly);
                 ces.carrier.entry(node_id).or_insert_with(Default::default);
             }
         }
@@ -185,17 +185,17 @@ impl CES {
     pub fn get_formula(&self) -> sat::Formula {
         let mut formula = sat::Formula::new(self.context.clone());
 
-        for (&port_id, poly) in self.causes.iter() {
-            formula.add_polynomial(port_id, poly);
-            formula.add_antiport(port_id);
+        for (&pid, poly) in self.causes.iter() {
+            formula.add_polynomial(pid, poly);
+            formula.add_antiport(pid);
         }
 
-        for (&port_id, poly) in self.effects.iter() {
-            formula.add_polynomial(port_id, poly);
+        for (&pid, poly) in self.effects.iter() {
+            formula.add_polynomial(pid, poly);
         }
 
-        for (&link_id, _) in self.links.iter() {
-            formula.add_link_coherence(link_id);
+        for (&lid, _) in self.links.iter() {
+            formula.add_link_coherence(lid);
         }
 
         formula
