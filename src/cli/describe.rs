@@ -14,16 +14,18 @@ impl Command for Describe {
 
         let ces = CES::from_file(ctx.clone(), main_path)?;
 
-        if verbosity >= 1 {
-            if verbosity >= 2 {
+        if verbosity >= 2 {
+            if verbosity >= 3 {
                 println!("{:?}", ctx.lock().unwrap());
             } else {
                 println!("{:?}", ctx.lock().unwrap().nodes);
             }
         }
 
-        // FIXME display not debug
-        println!("{:?}", ces);
+        if verbosity >= 1 {
+            // FIXME display not debug
+            println!("{:?}", ces);
+        }
 
         if !ces.is_coherent() {
             Err(Box::new(AcesError::CESIsIncoherent(
@@ -31,9 +33,14 @@ impl Command for Describe {
             )))
         } else {
             let formula = ces.get_formula();
-            println!("\nRaw {:?}", formula);
 
-            println!("Formula: {}", formula);
+            if verbosity >= 1 {
+                println!("\nRaw {:?}", formula);
+
+                if verbosity >= 2 {
+                    println!("Formula: {}", formula);
+                }
+            }
 
             let mut solver = sat::Solver::new(ctx.clone());
             solver.add_formula(&formula);
@@ -42,7 +49,9 @@ impl Command for Describe {
             match solver.solve() {
                 Ok(true) => {
                     if let Some(solution) = solver.get_solution() {
-                        println!("\nRaw {:?}", solution);
+                        if verbosity >= 1 {
+                            println!("\nRaw {:?}", solution);
+                        }
 
                         println!("Solution: {}", solution);
                     }

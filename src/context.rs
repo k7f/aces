@@ -37,7 +37,7 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 /// [`Atom`]: crate::atom::Atom
 #[derive(Debug)]
 pub struct Context {
-    id: usize,  // FIXME
+    id:                 usize, // FIXME
     pub(crate) globals: NameSpace,
     pub(crate) nodes:   NameSpace,
     pub(crate) atoms:   AtomSpace,
@@ -46,7 +46,7 @@ pub struct Context {
 impl Context {
     fn new() -> Self {
         Self {
-            id: rand::random(), // FIXME
+            id:      rand::random(), // FIXME
             globals: Default::default(),
             nodes:   Default::default(),
             atoms:   Default::default(),
@@ -128,8 +128,8 @@ pub trait Contextual {
     fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>>;
 }
 
-/// A short-term binding of [`Context`] and any immutable data
-/// implementing the [`Contextual`] trait.
+/// A short-term binding of [`Context`] and any immutable object of a
+/// type that implements the [`Contextual`] trait.
 ///
 /// [`Context`] can't be modified through `InContext`.  The purpose
 /// of this type is to allow a transparent read access to shared data,
@@ -163,10 +163,10 @@ impl<'a, D: Contextual> fmt::Display for InContext<'a, D> {
     }
 }
 
-/// A short-term binding of [`Context`] and any mutable data
-/// implementing the [`Contextual`] trait.
+/// A short-term binding of [`Context`] and any mutable object of a
+/// type that implements the [`Contextual`] trait.
 ///
-/// [`Context`] can't be modified through `InContext`.  The purpose
+/// [`Context`] can't be modified through `InContextMut`.  The purpose
 /// of this type is to allow a transparent read access to shared data,
 /// like names etc.
 pub struct InContextMut<'a, D: Contextual> {

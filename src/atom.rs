@@ -316,10 +316,6 @@ impl Port {
     pub fn get_node_id(&self) -> NodeID {
         self.node_id
     }
-
-    pub fn as_sat_literal(&self, negated: bool) -> sat::Literal {
-        sat::Literal::from_atom_id(self.get_atom_id(), negated)
-    }
 }
 
 impl cmp::PartialEq for Port {
@@ -334,7 +330,7 @@ impl Contextual for Port {
     fn format(&self, ctx: &Context, _dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
         let node_name = ctx
             .get_node_name(self.get_node_id())
-            .ok_or(AcesError::NodeMissingForPort(self.get_face()))?;
+            .ok_or_else(|| AcesError::NodeMissingForPort(self.get_face()))?;
 
         Ok(format!("[{} {}]", node_name, self.get_face()))
     }
@@ -397,10 +393,6 @@ impl Link {
 
     pub fn get_rx_node_id(&self) -> NodeID {
         self.rx_node_id
-    }
-
-    pub fn as_sat_literal(&self, negated: bool) -> sat::Literal {
-        sat::Literal::from_atom_id(self.get_atom_id(), negated)
     }
 }
 

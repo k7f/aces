@@ -6,7 +6,9 @@ use std::{
     error::Error,
 };
 use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
-use crate::{Context, ContextHandle, Contextual, Polynomial, PortID, LinkID, node, atom::AtomID};
+use crate::{
+    Atomic, Context, ContextHandle, Contextual, Polynomial, PortID, LinkID, node, atom::AtomID,
+};
 
 trait CESVar {
     fn from_atom_id(atom_id: AtomID) -> Self;
@@ -133,14 +135,15 @@ impl Formula {
     }
 
     // FIXME define `Clause` type
-    fn add_clause<'a, I, S>(&mut self, clause: I, info: S)
+    fn add_clause<'a, I, S>(&mut self, clause: I, _info: S)
     where
         I: IntoIterator<Item = &'a Literal>,
         S: AsRef<str>,
     {
         let vc: Vec<_> = clause.into_iter().map(|lit| lit.0).collect();
 
-        println!("Add (to formula) {} clause: {:?}.", info.as_ref(), vc);
+        // FIXME log
+        // println!("Add (to formula) {} clause: {:?}.", info.as_ref(), vc);
         self.cnf.add_clause(vc.as_slice());
         self.variables.extend(vc.iter().map(|lit| lit.var()));
     }
@@ -199,25 +202,14 @@ impl Formula {
         self.add_clause(&[link_lit, rx_port_lit], "link coherence (Rx side)");
     }
 
-    // FIXME
     /// Adds a _polynomial_ constraint to this formula.
-    pub fn add_polynomial(&mut self, _port_id: PortID, poly: &Polynomial<LinkID>) {
-        // if poly.is_empty() {
-        //     return
-        // } else if poly.is_single_link() {
-        //     // Consequence is a single positive link literal.  The
-        //     // constraint is a single clause:  &[port_lit, link_lit]
-        // } else if poly.is_monomial() {
-        //     // Consequence is a conjunction of at least two positive
-        //     // link literals.  The constraint is a sequence of clauses.
-        // } else {
-        //     // Consequence consists of at least two clauses, each
-        //     // being a conjunction of the same number of positive and
-        //     // negative (at least one of each) link literals.
-        // }
+    pub fn add_polynomial(&mut self, port_id: PortID, poly: &Polynomial<LinkID>) {
+        if !poly.is_empty() {
+            let port_lit = port_id.into_sat_literal(true);
 
-        for clause in poly.as_sat_clauses() {
-            self.add_clause(&clause, "monomial");
+            for clause in poly.as_sat_clauses(port_lit) {
+                self.add_clause(clause.iter(), "monomial");
+            }
         }
     }
 
@@ -274,8 +266,9 @@ impl<'a> Solver<'a> {
         Self { context: ctx, engine: Default::default(), port_vars: Default::default() }
     }
 
-    fn add_clause<S: AsRef<str>>(&mut self, clause: &[Lit], info: S) {
-        println!("Add (to solver) {} clause: {:?}.", info.as_ref(), clause);
+    fn add_clause<S: AsRef<str>>(&mut self, clause: &[Lit], _info: S) {
+        // FIXME log
+        // println!("Add (to solver) {} clause: {:?}.", info.as_ref(), clause);
         self.engine.add_clause(clause);
     }
 

@@ -1,8 +1,8 @@
 use std::{slice, iter, cmp, ops, collections::BTreeSet, error::Error};
 use bit_vec::BitVec;
 use crate::{
-    ID, NodeID, Port, PortID, Link, LinkID, Context, ContextHandle, Contextual, InContextMut, Atomic, node,
-    monomial, sat, error::AcesError,
+    ID, NodeID, Port, PortID, Link, LinkID, Context, ContextHandle, Contextual, InContextMut,
+    Atomic, node, monomial, sat, error::AcesError,
 };
 
 /// A formal polynomial.
@@ -303,23 +303,85 @@ impl<T: Atomic> Polynomial<T> {
         self.product.iter()
     }
 
-    pub fn as_sat_clauses(&self) -> Vec<Vec<sat::Literal>> {
-        let mut clauses = Vec::new();
+    /// Constructs the constraint that this polynomial imposes on
+    /// firing components when it is attached to the node and face
+    /// represented by `port_lit`.  The constraint is transformed into
+    /// a CNF formula, a conjunction of disjunctions of
+    /// [`sat::Literal`]s (a sequence of clauses).
+    ///
+    /// Returns a sequence of clauses in the form of vector of vectors
+    /// of [`sat::Literal`]s.
+    pub fn as_sat_clauses(&self, port_lit: sat::Literal) -> Vec<Vec<sat::Literal>> {
+        if self.is_atomic() {
+            // Consequence is a single positive link literal.  The
+            // constraint is a single two-literal port-link clause.
 
-        let mono_template: Vec<_> =
-            self.product.iter().map(|id| id.into_sat_literal(true)).collect();
+            vec![vec![self.product[0].into_sat_literal(false), port_lit]]
+        } else if self.is_monomial() {
+            // Consequence is a conjunction of _N_ >= 2 positive link
+            // literals.  The constraint is a sequence of _N_
+            // two-literal port-link clauses.
 
-        for row in self.sum.iter() {
-            let mut mono = mono_template.clone();
+            self.product.iter().map(|id| vec![id.into_sat_literal(false), port_lit]).collect()
+        } else {
+            // Consequence is a disjunction of _M_ >= 2 statements,
+            // each being a conjunction of _N_ >= 2 positive and
+            // negative (at least one of each) link literals.  The
+            // constraint (after being expanded to CNF by
+            // distribution) is a sequence of _N_^_M_ port-link
+            // clauses, each consisting of the `port_lit` and _M_ link
+            // literals.
 
-            for (i, lit) in mono.iter_mut().enumerate() {
-                if row[i] {
-                    *lit = !*lit
+            let mut clauses = Vec::new();
+
+            let num_monos = self.sum.len();
+            let num_nodes = self.product.len();
+
+            let clause_table_row = self.product.iter().map(|id| id.into_sat_literal(false));
+
+            let mut clause_table: Vec<_> = self
+                .sum
+                .iter()
+                .map(|mono| {
+                    mono.iter()
+                        .zip(clause_table_row.clone())
+                        .map(|(bit, lit)| if bit { lit } else { !lit })
+                        .collect()
+                })
+                .collect();
+
+            clause_table.push(vec![port_lit]);
+
+            let mut cursors = vec![0; num_monos + 1];
+            let mut mono_ndx = 0;
+
+            'outer: loop {
+                let clause: Vec<_> = cursors.iter().enumerate().map(|(row, &col)| clause_table[row][col]).collect();
+
+                clauses.push(clause);
+
+                'inner: loop {
+                    if cursors[mono_ndx] < num_nodes - 1 {
+                        cursors[mono_ndx] += 1;
+
+                        for ndx in 0..mono_ndx {
+                            cursors[ndx] = 0;
+                        }
+                        mono_ndx = 0;
+                        
+                        break 'inner
+
+                    } else if mono_ndx < num_monos - 1 {
+                        cursors[mono_ndx] = 0;
+                        mono_ndx += 1;
+
+                    } else {
+                        break 'outer
+                    }
                 }
             }
-            clauses.push(mono)
+            clauses
         }
-        clauses
     }
 }
 

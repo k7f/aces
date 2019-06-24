@@ -8,10 +8,6 @@ aces
 Algebra of [Cause-Effect
 Structures](https://link.springer.com/book/10.1007/978-3-030-20461-7).
 
-## Features
-
-Building c-e structures from `.ces` files, checking link coherence...
-
 ## Prerequisites
 
 In principle, `aces` should build wherever `rustc` and `cargo` runs.
@@ -19,10 +15,36 @@ Its executables should run on any
 [platform](https://forge.rust-lang.org/platform-support.html)
 supporting Rust `std` library.
 
-Be aware, though, that the project is very much WIP.  Currently, the
+Be aware, though, that the project is very much a WIP.  Currently, the
 main toolchain used in development is nightly channel of Rust 1.37.
 
-## Installation
+## Library
+
+To use `aces` as a library in a Rust project, include these lines in
+the `Cargo.toml` file:
+
+```toml
+[dependencies]
+aces = "0.0.3"
+```
+
+See [API documentation](https://docs.rs/aces) for information on the
+public interface of the library.
+
+## Command line interface
+
+### Features
+
+Loading c-e structures from `.ces` files and analysing them: checking
+link coherence and printing firing components (if there are any).  Run
+
+```bash
+$ aces --help
+```
+
+to see a list of available subcommands and options.
+
+### Installation
 
 Having [Rust](https://www.rust-lang.org/downloads.html) installed,
 ensure its version is at least 1.37: check with `cargo version` and
