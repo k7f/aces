@@ -47,13 +47,13 @@ release on [crates.io](https://crates.io/crates/aces).
 
 ### Features
 
-C-e structures may be defined in `.ces` files.  However, the
-specification format isn't documented and is very likely to change.
-There are some, perhaps self-explanatory, [examples](data/).
+C-e structures may be defined in `.ces` files.  The specification
+format, however, isn't documented and is very likely to change (there
+are some, perhaps self-explanatory, [examples](data/)).
 
-Run `aces` command to load c-e structures from `.ces` files and
-analyse them.  By default, this will check link coherence and print
-firing components, if there are any, or inform about structural
+Run `aces` executable to load c-e structures from `.ces` files and
+analyse them.  By default, the program will check link coherence and
+print firing components, if there are any, or inform about structural
 deadlock.  To see the list of available subcommands and options run
 
 ```bash

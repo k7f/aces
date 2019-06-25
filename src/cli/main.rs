@@ -6,7 +6,7 @@ extern crate log;
 use std::{path::PathBuf, error::Error};
 use aces::cli::{App, Command, Describe, Validate};
 
-fn setup_logger(with_file: Option<&str>, verbosity: u64) {
+fn setup_logger(with_file: Option<&str>, with_dir: Option<&str>, verbosity: u64) {
     use fern::{
         Dispatch,
         colors::{Color, ColoredLevelConfig},
@@ -51,11 +51,58 @@ fn setup_logger(with_file: Option<&str>, verbosity: u64) {
             .chain(std::io::stdout()),
     );
 
-    if let Some(filename) = with_file {
-        let mut path = PathBuf::from("log");
+    let dir_path = match with_dir {
+        Some(dirname) => {
+            let path = PathBuf::from(dirname);
 
-        if path.exists() {
-            path.set_file_name(filename);
+            if path.is_dir() {
+                Some(path)
+
+            } else if path.exists() {
+                eprintln!(
+                    "{}\tCan't use \"{}\" as a logging directory, because it exists and isn't a directory.{}",
+                    error_prefix, path.display(), error_suffix
+                );
+                None
+
+            } else if let Err(err) = std::fs::create_dir(&path) {
+                eprintln!(
+                    "{}\tCan't create \"{}\" directory: {}.{}",
+                    error_prefix, path.display(), err, error_suffix
+                );
+                None
+
+            } else {
+                Some(path)
+            }
+        }
+        None => {
+            if with_file.is_some() {
+
+                let path = PathBuf::from("log");
+
+                if path.is_dir() {
+                    Some(path)
+
+                } else {
+                    eprintln!(
+                        "{}\tLogging to file is disabled, because directory \"log\" doesn't \
+                         exist...\n\tCreate this directory or run '{} --log-dir <LOG_DIR> ...'.{}",
+                        error_prefix, env!("CARGO_PKG_NAME"), error_suffix
+                    );
+
+                    None
+                }
+            } else {
+                None
+            }
+        }
+    };
+
+    if let Some(filename) = with_file {
+        if let Some(path) = dir_path {
+
+            let path = path.join(filename);
 
             let log_file =
                 std::fs::OpenOptions::new().write(true).create(true).append(false).open(path);
@@ -80,11 +127,6 @@ fn setup_logger(with_file: Option<&str>, verbosity: u64) {
                     eprintln!("{}\t{}.{}", err, error_prefix, error_suffix);
                 }
             }
-        } else {
-            eprintln!(
-                "{}\tLogging to file disabled, because directory \"log\" doesn't exist.{}",
-                error_prefix, error_suffix
-            );
         }
     }
 
@@ -101,9 +143,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let app = App::from_clap(cli_matches);
 
     let verbosity = app.occurrences_of("verbose");
-    let filename_to_log = if app.is_present("log") { Some("aces.log") } else { None };
+    let dirname_to_log = app.value_of("LOG_DIR");
+    let filename_to_log = if dirname_to_log.is_some() || app.is_present("log") { Some("aces.log") } else { None };
 
-    setup_logger(filename_to_log, verbosity);
+    setup_logger(filename_to_log, dirname_to_log, verbosity);
 
     let result = match app.subcommand_name().unwrap_or("describe") {
         "validate" => Validate::run(&app),

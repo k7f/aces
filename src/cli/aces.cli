@@ -6,15 +6,22 @@ args:
         default_value: data/arrow.ces
         index: 1
     - log:
-        help: Turn on file logging
+        help: Turn on logging to file
         long: log
         short: l
         multiple: false
+        global: true
+    - LOG_DIR:
+        help: Specify a directory for log files (and force its creation)
+        long: log-dir
+        takes_value: true
+        global: true
     - verbose:
         help: Increase verbosity level
         long: verbose
         short: v
         multiple: true
+        global: true
 
 subcommands:
 
@@ -37,13 +44,3 @@ subcommands:
             - syntax:
                 help: Reports syntax errors only
                 long: syntax
-            - log:
-                help: Turn on file logging
-                long: log
-                short: l
-                multiple: false
-            - verbose:
-                help: Informs about each file being processed
-                long: verbose
-                short: v
-                multiple: true

@@ -36,7 +36,7 @@ impl Command for Validate {
                             match result {
                                 Ok(ces) => {
                                     if verbosity >= 2 {
-                                        debug!("+++ {:?}", ces);
+                                        debug!("{:?}", ces);
                                     }
 
                                     if !syntax_only && !ces.is_coherent() {
@@ -49,7 +49,7 @@ impl Command for Validate {
                                             return Err(Box::new(err))
                                         } else {
                                             error!(
-                                                "!!! Structural error in file '{}'...\n\t{}",
+                                                "Structural error in file '{}'...\n\t{}",
                                                 path.display(),
                                                 err
                                             );
@@ -63,7 +63,7 @@ impl Command for Validate {
                                         return Err(err)
                                     } else {
                                         error!(
-                                            "!!! Syntax error in file '{}'...\n\t{}",
+                                            "Syntax error in file '{}'...\n\t{}",
                                             path.display(),
                                             err
                                         );
@@ -73,7 +73,7 @@ impl Command for Validate {
                             }
                         }
                         Err(err) => {
-                            error!("??? Bad entry in path list: {}", err);
+                            error!("Bad entry in path list: {}", err);
                         }
                     }
                 }
