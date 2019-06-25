@@ -5,8 +5,13 @@ args:
         required: false
         default_value: data/arrow.ces
         index: 1
+    - log:
+        help: Turn on file logging
+        long: log
+        short: l
+        multiple: false
     - verbose:
-        help: Prints more information
+        help: Increase verbosity level
         long: verbose
         short: v
         multiple: true
@@ -32,6 +37,11 @@ subcommands:
             - syntax:
                 help: Reports syntax errors only
                 long: syntax
+            - log:
+                help: Turn on file logging
+                long: log
+                short: l
+                multiple: false
             - verbose:
                 help: Informs about each file being processed
                 long: verbose

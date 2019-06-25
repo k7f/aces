@@ -30,75 +30,69 @@ impl Command for Validate {
                     match entry {
                         Ok(ref path) => {
                             if verbosity >= 1 {
-                                println!("> {}", path.display());
+                                info!("> {}", path.display());
                             }
                             let result = CES::from_file(ctx.clone(), path);
                             match result {
                                 Ok(ces) => {
                                     if verbosity >= 2 {
-                                        println!("+++ {:?}", ces);
+                                        debug!("+++ {:?}", ces);
                                     }
 
                                     if !syntax_only && !ces.is_coherent() {
-                                        if do_abort {
-                                            println!("... Aborting on structural error.");
-                                        }
-
-                                        eprintln!(
-                                            "!!! Structural error in file '{}'...",
-                                            path.display()
-                                        );
-
                                         let err = AcesError::CESIsIncoherent(
                                             ces.get_name().unwrap_or("anonymous").to_owned(),
                                         );
 
                                         if do_abort {
+                                            warn!("Aborting on structural error");
                                             return Err(Box::new(err))
                                         } else {
-                                            eprintln!("[ERROR] {}.", err);
+                                            error!(
+                                                "!!! Structural error in file '{}'...\n\t{}",
+                                                path.display(),
+                                                err
+                                            );
                                             num_bad_files += 1;
                                         }
                                     }
                                 }
                                 Err(err) => {
                                     if do_abort {
-                                        println!("... Aborting on syntax error.");
-                                    }
-
-                                    eprintln!("!!! Syntax error in file '{}'...", path.display());
-
-                                    if do_abort {
+                                        warn!("Aborting on syntax error");
                                         return Err(err)
                                     } else {
-                                        eprintln!("[ERROR] {}.", err);
+                                        error!(
+                                            "!!! Syntax error in file '{}'...\n\t{}",
+                                            path.display(),
+                                            err
+                                        );
                                         num_bad_files += 1;
                                     }
                                 }
                             }
                         }
                         Err(err) => {
-                            eprintln!("??? Bad entry in path list: {}", err);
+                            error!("??? Bad entry in path list: {}", err);
                         }
                     }
                 }
 
-                print!("... Done ");
                 if num_bad_files > 0 {
                     println!(
-                        "({} bad file{}).",
+                        "... Done ({} bad file{}).",
                         num_bad_files,
                         if num_bad_files == 1 { "" } else { "s" },
                     );
                 } else {
-                    println!("(no bad files).");
+                    println!("... Done (no bad files).");
                 }
 
                 if verbosity >= 3 {
                     if verbosity >= 4 {
-                        println!("{:?}", ctx.lock().unwrap());
+                        trace!("{:?}", ctx.lock().unwrap());
                     } else {
-                        println!("{:?}", ctx.lock().unwrap().nodes);
+                        trace!("{:?}", ctx.lock().unwrap().nodes);
                     }
                 }
 

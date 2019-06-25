@@ -14,7 +14,7 @@ readme = "README.md"
 [dependencies]
 
 log = "0.4"
-fern = "0.5"
+fern = { version = "0.5", features = ["colored"] }
 clap = { version = "2.33", features = ["yaml"] }
 yaml-rust = "0.4"
 regex = "1.1"

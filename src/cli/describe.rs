@@ -14,18 +14,14 @@ impl Command for Describe {
 
         let ces = CES::from_file(ctx.clone(), main_path)?;
 
-        if verbosity >= 2 {
-            if verbosity >= 3 {
-                println!("{:?}", ctx.lock().unwrap());
-            } else {
-                println!("{:?}", ctx.lock().unwrap().nodes);
-            }
+        if verbosity >= 3 {
+            trace!("{:?}", ctx.lock().unwrap());
+        } else {
+            debug!("{:?}", ctx.lock().unwrap().nodes);
         }
 
-        if verbosity >= 1 {
-            // FIXME display not debug
-            println!("{:?}", ces);
-        }
+        // FIXME display not debug
+        info!("{:?}", ces);
 
         if !ces.is_coherent() {
             Err(Box::new(AcesError::CESIsIncoherent(
@@ -34,13 +30,8 @@ impl Command for Describe {
         } else {
             let formula = ces.get_formula();
 
-            if verbosity >= 1 {
-                println!("\nRaw {:?}", formula);
-
-                if verbosity >= 2 {
-                    println!("Formula: {}", formula);
-                }
-            }
+            debug!("Raw {:?}", formula);
+            info!("Formula: {}", formula);
 
             let mut solver = sat::Solver::new(ctx.clone());
             solver.add_formula(&formula);
@@ -49,15 +40,12 @@ impl Command for Describe {
             match solver.solve() {
                 Ok(true) => {
                     if let Some(solution) = solver.get_solution() {
-                        if verbosity >= 1 {
-                            println!("\nRaw {:?}", solution);
-                        }
-
+                        debug!("Raw {:?}", solution);
                         println!("Solution: {}", solution);
                     }
                 }
                 Ok(false) => {
-                    println!("\nFound no solutions...");
+                    println!("\nStructural deadlock (found no solutions).");
                 }
                 _ => {} // FIXME
             }
