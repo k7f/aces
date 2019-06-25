@@ -15,8 +15,8 @@ Its executables should run on any
 [platform](https://forge.rust-lang.org/platform-support.html)
 supporting Rust `std` library.
 
-Be aware, though, that the project is very much a WIP.  Currently, the
-main toolchain used in development is nightly channel of Rust 1.37.
+Be aware, though, that the project is very much a WIP.  The main
+toolchain used in development is nightly channel of Rust 1.37.
 
 ## Library
 
@@ -29,7 +29,7 @@ aces = "0.0.3"
 ```
 
 See [API documentation](https://docs.rs/aces) for information on the
-public interface of the library.
+public interface to the library.
 
 ## Command line interface
 

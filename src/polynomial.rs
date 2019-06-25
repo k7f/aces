@@ -1,4 +1,8 @@
-use std::{slice, iter, cmp, ops, collections::BTreeSet, error::Error};
+use std::{
+    slice, iter, cmp, ops,
+    collections::{BTreeSet, HashSet},
+    error::Error,
+};
 use bit_vec::BitVec;
 use crate::{
     ID, NodeID, Port, PortID, Link, LinkID, Context, ContextHandle, Contextual, InContextMut,
@@ -355,31 +359,60 @@ impl<T: Atomic> Polynomial<T> {
             let mut cursors = vec![0; num_monos + 1];
             let mut mono_ndx = 0;
 
-            'outer: loop {
-                let clause: Vec<_> = cursors.iter().enumerate().map(|(row, &col)| clause_table[row][col]).collect();
+            let mut num_tautologies = 0;
+            let mut num_repeated_literals = 0;
 
-                clauses.push(clause);
+            'outer: loop {
+                let clause = cursors.iter().enumerate().map(|(row, &col)| clause_table[row][col]);
+
+                let positives: HashSet<_> =
+                    clause.clone().filter_map(|lit| lit.into_variable_if_positive()).collect();
+                let negatives: HashSet<_> =
+                    clause.filter_map(|lit| lit.into_variable_if_negative()).collect();
+
+                if positives.is_disjoint(&negatives) {
+                    let clause: Vec<_> = positives
+                        .into_iter()
+                        .map(|var| sat::Literal::from_variable(var, false))
+                        .chain(
+                            negatives.into_iter().map(|var| sat::Literal::from_variable(var, true)),
+                        )
+                        .collect();
+
+                    num_repeated_literals += num_monos + 1 - clause.len();
+
+                    clauses.push(clause);
+                } else {
+                    num_tautologies += 1;
+                }
 
                 'inner: loop {
                     if cursors[mono_ndx] < num_nodes - 1 {
                         cursors[mono_ndx] += 1;
 
-                        for ndx in 0..mono_ndx {
-                            cursors[ndx] = 0;
+                        for cursor in cursors.iter_mut().take(mono_ndx) {
+                            *cursor = 0;
                         }
                         mono_ndx = 0;
-                        
-                        break 'inner
 
+                        break 'inner
                     } else if mono_ndx < num_monos - 1 {
                         cursors[mono_ndx] = 0;
                         mono_ndx += 1;
-
                     } else {
                         break 'outer
                     }
                 }
             }
+
+            // FIXME log
+            println!(
+                "pushed {} clauses, removed {} tautologies and {} repeated literals",
+                clauses.len(),
+                num_tautologies,
+                num_repeated_literals,
+            );
+
             clauses
         }
     }
@@ -411,26 +444,6 @@ impl<T: Atomic> cmp::PartialOrd for Polynomial<T> {
                 Some(cmp::Ordering::Equal)
             }
         }
-    }
-}
-
-impl<'a> InContextMut<'a, Polynomial<LinkID>> {
-    pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, Box<dyn Error>> {
-        if self.get_context() == other.get_context() {
-            if self.get_dock() == other.get_dock() {
-                self.get_thing_mut().add_polynomial(other.get_thing())
-            } else {
-                Err(Box::new(AcesError::PortMismatch))
-            }
-        } else {
-            Err(Box::new(AcesError::ContextMismatch))
-        }
-    }
-}
-
-impl<'a> ops::AddAssign<&Self> for InContextMut<'a, Polynomial<LinkID>> {
-    fn add_assign(&mut self, other: &Self) {
-        self.add_polynomial(other).unwrap();
     }
 }
 
@@ -472,6 +485,26 @@ impl Contextual for Polynomial<LinkID> {
         }
 
         Ok(result)
+    }
+}
+
+impl<'a> InContextMut<'a, Polynomial<LinkID>> {
+    pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, Box<dyn Error>> {
+        if self.get_context() == other.get_context() {
+            if self.get_dock() == other.get_dock() {
+                self.get_thing_mut().add_polynomial(other.get_thing())
+            } else {
+                Err(Box::new(AcesError::PortMismatch))
+            }
+        } else {
+            Err(Box::new(AcesError::ContextMismatch))
+        }
+    }
+}
+
+impl<'a> ops::AddAssign<&Self> for InContextMut<'a, Polynomial<LinkID>> {
+    fn add_assign(&mut self, other: &Self) {
+        self.add_polynomial(other).unwrap();
     }
 }
 

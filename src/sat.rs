@@ -79,6 +79,10 @@ impl CESLit for Lit {
 pub struct Literal(pub(crate) Lit);
 
 impl Literal {
+    pub(crate) fn from_variable(var: Variable, negated: bool) -> Self {
+        Literal(Lit::from_var(var.0, !negated))
+    }
+
     pub(crate) fn from_atom_id(atom_id: AtomID, negated: bool) -> Self {
         Self(Lit::from_atom_id(atom_id, negated))
     }
@@ -94,6 +98,22 @@ impl Literal {
 
     pub fn is_positive(self) -> bool {
         self.0.is_positive()
+    }
+
+    pub(crate) fn into_variable_if_positive(self) -> Option<Variable> {
+        if self.is_positive() {
+            Some(Variable(self.0.var()))
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn into_variable_if_negative(self) -> Option<Variable> {
+        if self.is_negative() {
+            Some(Variable(self.0.var()))
+        } else {
+            None
+        }
     }
 }
 
