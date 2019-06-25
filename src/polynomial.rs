@@ -405,9 +405,8 @@ impl<T: Atomic> Polynomial<T> {
                 }
             }
 
-            // FIXME log
-            println!(
-                "pushed {} clauses, removed {} tautologies and {} repeated literals",
+            info!(
+                "Pushed {} clauses, removed {} tautologies and {} repeated literals",
                 clauses.len(),
                 num_tautologies,
                 num_repeated_literals,

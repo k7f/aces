@@ -155,15 +155,15 @@ impl Formula {
     }
 
     // FIXME define `Clause` type
-    fn add_clause<'a, I, S>(&mut self, clause: I, _info: S)
+    fn add_clause<'a, I, S>(&mut self, clause: I, info: S)
     where
         I: IntoIterator<Item = &'a Literal>,
         S: AsRef<str>,
     {
         let vc: Vec<_> = clause.into_iter().map(|lit| lit.0).collect();
 
-        // FIXME log
-        // println!("Add (to formula) {} clause: {:?}.", info.as_ref(), vc);
+        debug!("Add (to formula) {} clause: {:?}", info.as_ref(), vc);
+
         self.cnf.add_clause(vc.as_slice());
         self.variables.extend(vc.iter().map(|lit| lit.var()));
     }
@@ -286,9 +286,9 @@ impl<'a> Solver<'a> {
         Self { context: ctx, engine: Default::default(), port_vars: Default::default() }
     }
 
-    fn add_clause<S: AsRef<str>>(&mut self, clause: &[Lit], _info: S) {
-        // FIXME log
-        // println!("Add (to solver) {} clause: {:?}.", info.as_ref(), clause);
+    fn add_clause<S: AsRef<str>>(&mut self, clause: &[Lit], info: S) {
+        debug!("Add (to solver) {} clause: {:?}", info.as_ref(), clause);
+
         self.engine.add_clause(clause);
     }
 

@@ -56,7 +56,7 @@ impl Command for Validate {
                                         if do_abort {
                                             return Err(Box::new(err))
                                         } else {
-                                            eprintln!("[Error] {}.", err);
+                                            eprintln!("[ERROR] {}.", err);
                                             num_bad_files += 1;
                                         }
                                     }
@@ -71,7 +71,7 @@ impl Command for Validate {
                                     if do_abort {
                                         return Err(err)
                                     } else {
-                                        eprintln!("[Error] {}.", err);
+                                        eprintln!("[ERROR] {}.", err);
                                         num_bad_files += 1;
                                     }
                                 }

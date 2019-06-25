@@ -13,10 +13,9 @@ Structures](https://link.springer.com/book/10.1007/978-3-030-20461-7).
 In principle, `aces` should build wherever `rustc` and `cargo` runs.
 Its executables should run on any
 [platform](https://forge.rust-lang.org/platform-support.html)
-supporting Rust `std` library.
-
-Be aware, though, that the project is very much a WIP.  The main
-toolchain used in development is nightly channel of Rust 1.37.
+supporting the Rust `std` library.  Be aware, though, that the project
+is very much a WIP.  The main toolchain used in development is nightly
+channel of Rust 1.37.
 
 ## Library
 
@@ -28,21 +27,10 @@ the `Cargo.toml` file:
 aces = "0.0.3"
 ```
 
-See [API documentation](https://docs.rs/aces) for information on the
+See [API documentation](https://docs.rs/aces) for information on
 public interface to the library.
 
 ## Command line interface
-
-### Features
-
-Loading c-e structures from `.ces` files and analysing them: checking
-link coherence and printing firing components (if there are any).  Run
-
-```bash
-$ aces --help
-```
-
-to see a list of available subcommands and options.
 
 ### Installation
 
@@ -56,6 +44,22 @@ $ cargo install aces
 
 will automatically download, build, and install the latest `aces`
 release on [crates.io](https://crates.io/crates/aces).
+
+### Features
+
+C-e structures may be defined in `.ces` files.  However, the
+specification format isn't documented and is very likely to change.
+There are some, perhaps self-explanatory, [examples](data/).
+
+Run `aces` command for loading c-e structures from `.ces` files and
+analysing them.  By default, the command checks link coherence and
+prints firing components, if there are any, or informs about
+structural deadlock.  To see the list of available subcommands and
+options run
+
+```bash
+$ aces --help
+```
 
 ## License
 
