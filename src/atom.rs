@@ -451,3 +451,45 @@ impl Atomic for LinkID {
         sat::Literal::from_atom_id(self.get(), negated)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn new_tx_port(id: usize) -> Port {
+        Port::new(node::Face::Tx, NodeID(unsafe { ID::new_unchecked(id) }))
+    }
+
+    #[test]
+    #[should_panic(expected = "uninitialized")]
+    fn test_atom_uninitialized() {
+        let atom = Atom::Tx(new_tx_port(1));
+        let _ = atom.get_atom_id();
+    }
+
+    #[test]
+    #[should_panic(expected = "bottom")]
+    fn test_atom_bottom() {
+        let mut atoms = AtomSpace::default();
+        let atom = Atom::Bottom;
+        let _ = atoms.do_share_atom(atom);
+    }
+
+    #[test]
+    #[should_panic(expected = "reset")]
+    fn test_atom_reset_id() {
+        let mut atoms = AtomSpace::default();
+        let mut atom = Atom::Tx(new_tx_port(1));
+        atom.set_atom_id(unsafe { AtomID::new_unchecked(1) });
+        let _ = atoms.do_share_atom(atom);
+    }
+
+    #[test]
+    fn test_atom_id() {
+        let mut atoms = AtomSpace::default();
+        let atom = Atom::Tx(new_tx_port(1));
+        let atom_id = atoms.do_share_atom(atom);
+        let atom = atoms.get_atom(atom_id).unwrap();
+        assert_eq!(atom.get_atom_id(), atom_id);
+    }
+}
