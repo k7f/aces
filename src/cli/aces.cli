@@ -9,7 +9,7 @@ args:
         help: Turn on logging to file
         long: log
         short: l
-        multiple: false
+        multiple: true
         global: true
     - LOG_DIR:
         help: Specify a directory for log files (and force its creation)

@@ -1,20 +1,43 @@
-use std::error::Error;
+use std::{str::FromStr, error::Error};
 use crate::{Context, CES, sat, error::AcesError};
 use super::{App, Command};
 
-pub struct Describe;
+pub struct Describe {
+    main_path: String,
+    verbosity: u64,
+}
+
+impl Describe {
+    pub fn new_command(app: &App) -> Box<dyn Command> {
+        let main_path = app.value_of("MAIN_PATH").unwrap_or_else(|| unreachable!()).to_owned();
+        let verbosity = app.occurrences_of("verbose").max(app.occurrences_of("log"));
+
+        Box::new(Self { main_path, verbosity })
+    }
+}
 
 impl Command for Describe {
-    fn run(app: &App) -> Result<(), Box<dyn Error>> {
-        let main_path = app.value_of("MAIN_PATH").unwrap_or_else(|| unreachable!());
+    fn name_of_log_file(&self) -> String {
+        if let Ok(mut path) = std::path::PathBuf::from_str(&self.main_path) {
+            if path.set_extension("log") {
+                if let Some(file_name) = path.file_name() {
+                    return file_name.to_str().unwrap().to_owned()
+                } else {
+                }
+            } else {
+            }
+        } else {
+        }
 
-        let verbosity = app.occurrences_of("verbose");
+        "aces.log".to_owned()
+    }
 
+    fn run(&self) -> Result<(), Box<dyn Error>> {
         let ctx = Context::new_as_handle();
 
-        let ces = CES::from_file(ctx.clone(), main_path)?;
+        let ces = CES::from_file(ctx.clone(), &self.main_path)?;
 
-        if verbosity >= 3 {
+        if self.verbosity >= 3 {
             trace!("{:?}", ctx.lock().unwrap());
         } else {
             debug!("{:?}", ctx.lock().unwrap().nodes);

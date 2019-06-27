@@ -15,6 +15,7 @@ mod context;
 mod ces;
 mod spec;
 pub mod sat;
+mod logging;
 pub mod cli;
 
 pub use context::{Context, ContextHandle, Contextual, InContext, InContextMut};
@@ -22,6 +23,7 @@ pub use node::NodeID;
 pub use atom::{Port, Link, PortID, LinkID, Atomic};
 pub use polynomial::{Polynomial, Monomials};
 pub use ces::CES;
+pub use logging::Logger;
 
 use std::num::NonZeroUsize;
 

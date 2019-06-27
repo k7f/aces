@@ -2,25 +2,40 @@ use std::error::Error;
 use crate::{Context, CES, error::AcesError};
 use super::{App, Command};
 
-pub struct Validate;
+pub struct Validate {
+    glob_path:    String,
+    do_abort:     bool,
+    syntax_only:  bool,
+    is_recursive: bool,
+    verbosity:    u64,
+}
 
-impl Command for Validate {
-    fn run(app: &App) -> Result<(), Box<dyn Error>> {
-        let glob_path = app.value_of("GLOB_PATH").unwrap_or_else(|| unreachable!());
-
+impl Validate {
+    pub fn new_command(app: &App) -> Box<dyn Command> {
+        let glob_path = app.value_of("GLOB_PATH").unwrap_or_else(|| unreachable!()).to_owned();
         let do_abort = app.is_present("abort");
         let syntax_only = app.is_present("syntax");
-        let recursive = app.is_present("recursive");
-        let verbosity = app.occurrences_of("verbose");
+        let is_recursive = app.is_present("recursive");
+        let verbosity = app.occurrences_of("verbose").max(app.occurrences_of("log"));
 
+        Box::new(Self { glob_path, do_abort, syntax_only, is_recursive, verbosity })
+    }
+}
+
+impl Command for Validate {
+    fn name_of_log_file(&self) -> String {
+        "aces-validation.log".to_owned()
+    }
+
+    fn run(&self) -> Result<(), Box<dyn Error>> {
         // FIXME
-        let ref glob_path = format!("{}/*.ces", glob_path);
+        let ref glob_path = format!("{}/*.ces", self.glob_path);
 
         let mut num_bad_files = 0;
 
         let ctx = Context::new_as_handle();
 
-        if recursive {
+        if self.is_recursive {
             // FIXME
         }
 
@@ -29,22 +44,22 @@ impl Command for Validate {
                 for entry in path_list {
                     match entry {
                         Ok(ref path) => {
-                            if verbosity >= 1 {
+                            if self.verbosity >= 1 {
                                 info!("> {}", path.display());
                             }
                             let result = CES::from_file(ctx.clone(), path);
                             match result {
                                 Ok(ces) => {
-                                    if verbosity >= 2 {
+                                    if self.verbosity >= 2 {
                                         debug!("{:?}", ces);
                                     }
 
-                                    if !syntax_only && !ces.is_coherent() {
+                                    if !self.syntax_only && !ces.is_coherent() {
                                         let err = AcesError::CESIsIncoherent(
                                             ces.get_name().unwrap_or("anonymous").to_owned(),
                                         );
 
-                                        if do_abort {
+                                        if self.do_abort {
                                             warn!("Aborting on structural error");
                                             return Err(Box::new(err))
                                         } else {
@@ -58,7 +73,7 @@ impl Command for Validate {
                                     }
                                 }
                                 Err(err) => {
-                                    if do_abort {
+                                    if self.do_abort {
                                         warn!("Aborting on syntax error");
                                         return Err(err)
                                     } else {
@@ -88,8 +103,8 @@ impl Command for Validate {
                     println!("... Done (no bad files).");
                 }
 
-                if verbosity >= 3 {
-                    if verbosity >= 4 {
+                if self.verbosity >= 3 {
+                    if self.verbosity >= 4 {
                         trace!("{:?}", ctx.lock().unwrap());
                     } else {
                         trace!("{:?}", ctx.lock().unwrap().nodes);
