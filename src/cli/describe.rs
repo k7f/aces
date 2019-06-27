@@ -60,17 +60,20 @@ impl Command for Describe {
             solver.add_formula(&formula);
             solver.inhibit_empty_solution();
 
-            match solver.solve() {
-                Ok(true) => {
-                    if let Some(solution) = solver.get_solution() {
-                        debug!("Raw {:?}", solution);
-                        println!("Solution: {}", solution);
-                    }
+            if let Some(first_solution) = solver.next() {
+                debug!("1. Raw {:?}", first_solution);
+                println!("1. Solution: {}", first_solution);
+
+                for (count, solution) in solver.enumerate() {
+                    debug!("{}. Raw {:?}", count + 2, solution);
+                    println!("{}. Solution: {}", count + 2, solution);
                 }
-                Ok(false) => {
-                    println!("\nStructural deadlock (found no solutions).");
-                }
-                _ => {} // FIXME
+            } else if let Some(_) = solver.is_sat() {
+                println!("\nStructural deadlock (found no solutions).");
+            } else if solver.was_interrupted() {
+                warn!("Solving was interrupted");
+            } else {
+                // FIXME error!("{}", err);
             }
 
             Ok(())

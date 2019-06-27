@@ -307,34 +307,33 @@ impl<T: Atomic> Polynomial<T> {
         self.product.iter()
     }
 
-    /// Constructs the constraint that this polynomial imposes on
-    /// firing components when it is attached to the node and face
-    /// represented by `port_lit`.  The constraint is transformed into
-    /// a CNF formula, a conjunction of disjunctions of
-    /// [`sat::Literal`]s (a sequence of clauses).
+    /// Constructs the firing rule of this polynomial, the logical
+    /// constraint imposed on firing components, if the polynomial is
+    /// attached to the node and face represented by `port_lit`.  The
+    /// rule is transformed into a CNF formula, a conjunction of
+    /// disjunctions of [`sat::Literal`]s (a sequence of clauses).
     ///
     /// Returns a sequence of clauses in the form of vector of vectors
     /// of [`sat::Literal`]s.
     pub fn as_sat_clauses(&self, port_lit: sat::Literal) -> Vec<Vec<sat::Literal>> {
         if self.is_atomic() {
             // Consequence is a single positive link literal.  The
-            // constraint is a single two-literal port-link clause.
+            // rule is a single two-literal port-link clause.
 
             vec![vec![self.product[0].into_sat_literal(false), port_lit]]
         } else if self.is_monomial() {
             // Consequence is a conjunction of _N_ >= 2 positive link
-            // literals.  The constraint is a sequence of _N_
-            // two-literal port-link clauses.
+            // literals.  The rule is a sequence of _N_ two-literal
+            // port-link clauses.
 
             self.product.iter().map(|id| vec![id.into_sat_literal(false), port_lit]).collect()
         } else {
             // Consequence is a disjunction of _M_ >= 2 statements,
             // each being a conjunction of _N_ >= 2 positive and
             // negative (at least one of each) link literals.  The
-            // constraint (after being expanded to CNF by
-            // distribution) is a sequence of _N_^_M_ port-link
-            // clauses, each consisting of the `port_lit` and _M_ link
-            // literals.
+            // rule (after being expanded to CNF by distribution) is a
+            // sequence of _N_^_M_ port-link clauses, each consisting
+            // of the `port_lit` and _M_ link literals.
 
             let mut clauses = Vec::new();
 

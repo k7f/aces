@@ -98,8 +98,12 @@ impl Logger {
         if let Some(ref mut path) = self.directory {
             let path = path.join(filename.as_ref());
 
-            let log_file =
-                std::fs::OpenOptions::new().write(true).create(true).truncate(true).append(false).open(path);
+            let log_file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .append(false)
+                .open(path);
 
             match log_file {
                 Ok(log_file) => {

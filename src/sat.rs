@@ -168,7 +168,7 @@ impl Formula {
         self.variables.extend(vc.iter().map(|lit| lit.var()));
     }
 
-    /// Adds an _antiport_ constraint to this `Formula`.
+    /// Adds an _antiport_ rule to this `Formula`.
     ///
     /// This clause constrains nodes to a single part of a firing
     /// component, source or sink, so that the induced graph of any
@@ -190,13 +190,13 @@ impl Formula {
         self.add_clause(&[port_lit, antiport_lit], "internal node");
     }
 
-    /// Adds a _link coherence_ constraint to this `Formula`.
+    /// Adds a _link coherence_ rule to this `Formula`.
     ///
-    /// This constraint consists of two clauses which are added in
+    /// This firing rule consists of two clauses which are added in
     /// order to maintain link coherence, so that any firing component
     /// of a c-e structure is itself a proper c-e structure.  The
-    /// `Formula` should contain one such constraint for each link of
-    /// the c-e structure under analysis.
+    /// `Formula` should contain one such rule for each link of the
+    /// c-e structure under analysis.
     ///
     /// Panics if `link_id` doesn't identify any `Link` in the
     /// `Context` of this `Formula`.
@@ -222,7 +222,7 @@ impl Formula {
         self.add_clause(&[link_lit, rx_port_lit], "link coherence (Rx side)");
     }
 
-    /// Adds a _polynomial_ constraint to this formula.
+    /// Adds a _polynomial_ rule to this formula.
     pub fn add_polynomial(&mut self, port_id: PortID, poly: &Polynomial<LinkID>) {
         if !poly.is_empty() {
             let port_lit = port_id.into_sat_literal(true);
@@ -276,14 +276,22 @@ impl fmt::Display for Formula {
 }
 
 pub struct Solver<'a> {
-    context:   ContextHandle,
-    engine:    varisat::Solver<'a>,
-    port_vars: BTreeSet<Var>,
+    context:     ContextHandle,
+    engine:      varisat::Solver<'a>,
+    port_vars:   BTreeSet<Var>,
+    is_sat:      Option<bool>,
+    last_result: Option<Result<bool, SolverError>>,
 }
 
 impl<'a> Solver<'a> {
     pub fn new(ctx: ContextHandle) -> Self {
-        Self { context: ctx, engine: Default::default(), port_vars: Default::default() }
+        Self {
+            context:     ctx,
+            engine:      Default::default(),
+            port_vars:   Default::default(),
+            is_sat:      None,
+            last_result: None,
+        }
     }
 
     fn add_clause<S: AsRef<str>>(&mut self, clause: &[Lit], info: S) {
@@ -317,20 +325,57 @@ impl<'a> Solver<'a> {
         self.add_clause(&clause, "void inhibition");
     }
 
-    pub fn solve(&mut self) -> Result<bool, SolverError> {
-        self.engine.solve()
-    }
-
     // fn assume(&mut self, assumptions: &[Lit]) {
     //     self.engine.assume(assumptions);
     // }
 
-    pub fn get_solution(&self) -> Option<Solution> {
-        if let Some(model) = self.engine.model() {
-            Some(Solution::from_model(self.context.clone(), model))
-        } else {
-            None
+    pub fn solve(&mut self) -> Option<bool> {
+        let result = self.engine.solve();
+
+        let is_sat = result.as_ref().ok().copied();
+
+        if self.is_sat.is_none() {
+            self.is_sat = is_sat;
         }
+        self.last_result = Some(result);
+
+        is_sat
+    }
+
+    pub fn is_sat(&self) -> Option<bool> {
+        self.is_sat
+    }
+
+    pub fn was_interrupted(&self) -> bool {
+        if let Some(result) = self.last_result.as_ref() {
+            if let Err(err) = result {
+                return err.is_recoverable()
+            }
+        }
+        false
+    }
+
+    pub fn get_solution(&self) -> Option<Solution> {
+        self.engine.model().map(|model| Solution::from_model(self.context.clone(), model))
+    }
+}
+
+impl Iterator for Solver<'_> {
+    type Item = Solution;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.solve().and_then(|is_sat| {
+            if is_sat {
+                self.engine.model().map(|model| {
+                    let anti_clause: Vec<_> = model.iter().map(|&lit| !lit).collect();
+                    self.engine.add_clause(anti_clause.as_slice());
+
+                    Solution::from_model(self.context.clone(), model)
+                })
+            } else {
+                None
+            }
+        })
     }
 }
 
