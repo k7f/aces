@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use crate::{
-    Port, Link, NodeID, PortID, LinkID, node,
+    Port, Link, ID, NodeID, PortID, LinkID, node,
     name::NameSpace,
     atom::{AtomSpace, AtomID},
 };
@@ -37,29 +37,71 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 /// [`Atom`]: crate::atom::Atom
 #[derive(Debug)]
 pub struct Context {
-    id:                 usize, // FIXME
-    pub(crate) globals: NameSpace,
-    pub(crate) nodes:   NameSpace,
-    pub(crate) atoms:   AtomSpace,
+    pub(crate) magic_id: usize,
+    pub(crate) name_id:  ID,
+    pub(crate) globals:  NameSpace,
+    pub(crate) nodes:    NameSpace,
+    pub(crate) atoms:    AtomSpace,
 }
 
 impl Context {
-    fn new() -> Self {
-        Self {
-            id:      rand::random(), // FIXME
-            globals: Default::default(),
-            nodes:   Default::default(),
-            atoms:   Default::default(),
-        }
+    /// Creates a new toplevel `Context` instance and returns a
+    /// corresponding [`ContextHandle`].
+    ///
+    /// Calling this method is the only public way of creating
+    /// toplevel `Context` instances.
+    pub fn new_toplevel<S: AsRef<str>>(name: S) -> ContextHandle {
+        let magic_id = rand::random();
+
+        let mut globals = NameSpace::default();
+        let name_id = globals.share_name(name);
+
+        let ctx = Self {
+            magic_id,
+            name_id,
+            globals,
+            nodes: Default::default(),
+            atoms: Default::default(),
+        };
+
+        Arc::new(Mutex::new(ctx))
     }
 
-    /// Creates a new `Context` instance and returns a corresponding
-    /// [`ContextHandle`].
+    /// Creates a new derived `Context` instance and returns a
+    /// corresponding [`ContextHandle`].
     ///
-    /// Calling this method is the only public way of creating new
+    /// Calling this method is the only public way of creating derived
     /// `Context` instances.
-    pub fn new_as_handle() -> ContextHandle {
-        Arc::new(Mutex::new(Context::new()))
+    pub fn new_derived<S: AsRef<str>>(name: S, parent: ContextHandle) -> ContextHandle {
+        let ctx = {
+            let mut parent = parent.lock().unwrap();
+
+            let magic_id = parent.magic_id;
+
+            // ID of child name in parent and child is the same (but
+            // not in further ancestors).  See `partial_cmp`.
+            let name_id = parent.globals.share_name(name);
+
+            let globals = parent.globals.clone();
+            let nodes = parent.nodes.clone();
+            let atoms = parent.atoms.clone();
+
+            Self { magic_id, name_id, globals, nodes, atoms }
+        };
+
+        Arc::new(Mutex::new(ctx))
+    }
+
+    pub fn is_toplevel(&self) -> bool {
+        self.name_id == unsafe { ID::new_unchecked(1) }
+    }
+
+    pub fn is_derived(&self) -> bool {
+        self.name_id > unsafe { ID::new_unchecked(1) }
+    }
+
+    pub fn get_name(&self) -> &str {
+        self.globals.get_name(self.name_id).expect("Invalid context.")
     }
 
     // Nodes
@@ -113,11 +155,52 @@ impl Context {
 
 impl cmp::PartialEq for Context {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        self.magic_id == other.magic_id && self.name_id == other.name_id
     }
 }
 
 impl cmp::Eq for Context {}
+
+impl cmp::PartialOrd for Context {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        if self.magic_id == other.magic_id {
+            if other.globals.get_id(self.get_name()) == Some(self.name_id) {
+                // ID of self's name in self and other is the same...
+                if self.name_id < other.name_id {
+                    // ...self is an ancestor of other,
+                    Some(cmp::Ordering::Greater)
+                } else if self.name_id > other.name_id {
+                    // ...other is _the_ parent of self,
+                    Some(cmp::Ordering::Less)
+                } else {
+                    // ...they are equal.
+                    Some(cmp::Ordering::Equal)
+                }
+            } else if self.globals.get_id(other.get_name()) == Some(other.name_id) {
+                // ID of other's name in self and other is the same...
+                if self.name_id < other.name_id {
+                    // ...self is _the_ parent of other: this case
+                    // should have already been covered,
+                    unreachable!()
+                } else if self.name_id > other.name_id {
+                    // ...other is an ancestor of self,
+                    Some(cmp::Ordering::Less)
+                } else {
+                    // ...they are equal: this case should have
+                    // already been covered.
+                    unreachable!()
+                }
+            } else if self.name_id == other.name_id {
+                // This case should have already been covered.
+                unreachable!()
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
 
 /// A trait for binding objects to [`Context`] temporarily, without
 /// permanently storing (and synchronizing) context references inside

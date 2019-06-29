@@ -33,7 +33,7 @@ impl Command for Validate {
 
         let mut num_bad_files = 0;
 
-        let ctx = Context::new_as_handle();
+        let ctx = Context::new_toplevel("validate");
 
         if self.is_recursive {
             // FIXME

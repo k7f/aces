@@ -6,7 +6,7 @@ type Name = string_cache::DefaultAtom;
 
 /// This type maintains a bijection between symbol [`Name`]s and their
 /// serial [`ID`]s.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct NameSpace {
     names: Vec<Name>,
     ids:   HashMap<Name, ID>,

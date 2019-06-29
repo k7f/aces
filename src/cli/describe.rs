@@ -33,7 +33,7 @@ impl Command for Describe {
     }
 
     fn run(&self) -> Result<(), Box<dyn Error>> {
-        let ctx = Context::new_as_handle();
+        let ctx = Context::new_toplevel("describe");
 
         let ces = CES::from_file(ctx.clone(), &self.main_path)?;
 
@@ -68,12 +68,14 @@ impl Command for Describe {
                     debug!("{}. Raw {:?}", count + 2, solution);
                     println!("{}. Solution: {}", count + 2, solution);
                 }
-            } else if let Some(_) = solver.is_sat() {
+            } else if solver.is_sat().is_some() {
                 println!("\nStructural deadlock (found no solutions).");
             } else if solver.was_interrupted() {
                 warn!("Solving was interrupted");
+            } else if let Some(Err(err)) = solver.take_last_result() {
+                error!("Solving failed: {}", err);
             } else {
-                // FIXME error!("{}", err);
+                unreachable!()
             }
 
             Ok(())

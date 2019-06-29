@@ -74,7 +74,7 @@ impl Contextual for LinkID {
 ///
 /// For the reverse mapping, from [`PortID`]s to [`NodeID`]s, call
 /// [`AtomSpace::get_port()`] followed by [`Port::get_node_id()`].
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct AtomSpace {
     atoms:          Vec<Atom>,
     source_nodes:   BTreeMap<NodeID, PortID>,
@@ -237,7 +237,7 @@ impl AtomSpace {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum Atom {
     Tx(Port),
     Rx(Port),

@@ -310,7 +310,7 @@ impl<'a> Solver<'a> {
         self.port_vars.extend(port_vars);
     }
 
-    /// Block empty solution models by adding a _void inhibition_
+    /// Blocks empty solution models by adding a _void inhibition_
     /// clause.
     ///
     /// A model represents an empty solution iff it contains only
@@ -346,6 +346,16 @@ impl<'a> Solver<'a> {
         self.is_sat
     }
 
+    /// Returns `true` if last call to [`solve()`] was interrupted.
+    /// Returns `false` if [`solve()`] either failed, or succeeded, or
+    /// hasn't been called yet.
+    ///
+    /// Note, that even if last call to [`solve()`] was indeed
+    /// interrupted, a subsequent invocation of [`take_last_result()`]
+    /// resets this to return `false` until next [`solve()`].
+    ///
+    /// [`solve()`]: Solver::solve()
+    /// [`take_last_result()`]: Solver::take_last_result()
     pub fn was_interrupted(&self) -> bool {
         if let Some(result) = self.last_result.as_ref() {
             if let Err(err) = result {
@@ -357,6 +367,17 @@ impl<'a> Solver<'a> {
 
     pub fn get_solution(&self) -> Option<Solution> {
         self.engine.model().map(|model| Solution::from_model(self.context.clone(), model))
+    }
+
+    /// Returns the result of last call to [`solve()`].
+    ///
+    /// Note, that this may be invoked successfully only once for
+    /// every call to [`solve()`], because, in varisat 0.2,
+    /// `varisat::solver::SolverError` can't be cloned.
+    ///
+    /// [`solve()`]: Solver::solve()
+    pub fn take_last_result(&mut self) -> Option<Result<bool, SolverError>> {
+        self.last_result.take()
     }
 }
 
