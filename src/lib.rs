@@ -11,14 +11,16 @@ pub mod node;
 mod atom;
 pub mod monomial;
 mod polynomial;
-mod context;
 mod ces;
-mod spec;
+mod context;
+mod content;
+mod yaml_script;
 pub mod sat;
 mod logging;
 pub mod cli;
 
 pub use context::{Context, ContextHandle, Contextual, InContext, InContextMut};
+pub use content::Content;
 pub use node::NodeID;
 pub use atom::{Port, Link, PortID, LinkID, Atomic};
 pub use polynomial::{Polynomial, Monomials};

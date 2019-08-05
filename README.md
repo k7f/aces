@@ -6,7 +6,10 @@ aces
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 
 Algebra of [Cause-Effect
-Structures](https://link.springer.com/book/10.1007/978-3-030-20461-7).
+Structures](https://link.springer.com/book/10.1007/978-3-030-20461-7)
+&mdash; an implementation of the theory.  This is the core library and
+command-line tools of the [_Ascesis_](https://github.com/k7f/ascesis)
+project.
 
 ## Prerequisites
 
@@ -15,7 +18,7 @@ Its executables should run on any
 [platform](https://forge.rust-lang.org/platform-support.html)
 supporting the Rust `std` library.  Be aware, though, that the project
 is very much a WIP.  The main toolchain used in development is nightly
-channel of Rust 1.37.
+channel of Rust 1.38.
 
 ## Library
 
@@ -35,7 +38,7 @@ public interface to the library.
 ### Installation
 
 Having [Rust](https://www.rust-lang.org/downloads.html) installed,
-ensure its version is at least 1.37: check with `cargo version` and
+ensure its version is at least 1.36: check with `cargo version` and
 run `rustup update` if needed.  Then
 
 ```bash
@@ -47,11 +50,11 @@ release on [crates.io](https://crates.io/crates/aces).
 
 ### Features
 
-C-e structures may be defined in `.ces` files.  The specification
-format, however, isn't documented and is very likely to change (there
-are some, perhaps self-explanatory, [examples](data/)).
+C-e structures may be defined in `.ces` text files.  The format of
+textual description, however, isn't documented and is very likely to
+change.  There are some, perhaps self-explanatory, [examples](data/).
 
-Run `aces` executable to load c-e structures from `.ces` files and
+Run the `aces` executable to load c-e structures from `.ces` files and
 analyse them.  By default, the program will check link coherence and
 print firing components, if there are any, or inform about structural
 deadlock.  To see the list of available subcommands and options run

@@ -1,11 +1,59 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fmt::Debug,
+    fmt,
     error::Error,
 };
+
 use regex::Regex;
 use yaml_rust::{Yaml, YamlLoader};
-use crate::{ContextHandle, ID, node, name::NameSpace, error::AcesError};
+use crate::{ContextHandle, ID, node, name::NameSpace, Content};
+
+#[derive(Debug, Clone)]
+pub(crate) enum YamlScriptError {
+    Empty,
+    Multiple,
+    NotADict,
+    KeyNotString,
+    NameNotString,
+    NameDup,
+    PolyInvalid,
+    PolyAmbiguous,
+    ShortPolyWithWords,
+    MonoInvalid,
+    LinkInvalid,
+    LinkReversed,
+    LinkList,
+}
+
+impl fmt::Display for YamlScriptError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.description())
+    }
+}
+
+impl Error for YamlScriptError {
+    fn description(&self) -> &str {
+        use YamlScriptError::*;
+
+        match self {
+            Empty => "YAML description is empty",
+            Multiple => "Multiple YAML descriptions",
+            NotADict => "Bad YAML description (not a dictionary)",
+            KeyNotString => "Non-string key in YAML description",
+            NameNotString => "Non-string CES name in YAML description",
+            NameDup => "Duplicated CES name in YAML description",
+            PolyInvalid => "Invalid YAML description of a polynomial",
+            PolyAmbiguous => "Ambiguous YAML description of a polynomial",
+            ShortPolyWithWords => {
+                "Multi-word node name is invalid in short YAML description of a polynomial"
+            }
+            MonoInvalid => "Invalid monomial in YAML description of a polynomial",
+            LinkInvalid => "Invalid link in YAML description of a polynomial",
+            LinkReversed => "Reversed link in YAML description of a polynomial",
+            LinkList => "Link list is invalid in YAML description of a polynomial",
+        }
+    }
+}
 
 trait UpdatableVec<V> {
     fn vec_update(&mut self, value: &V);
@@ -52,19 +100,19 @@ fn do_share_name<S: AsRef<str>>(
     single_word_only: bool,
 ) -> Result<ID, Box<dyn Error>> {
     if single_word_only && name.as_ref().contains(char::is_whitespace) {
-        Err(Box::new(AcesError::SpecShortPolyWithWords))
+        Err(Box::new(YamlScriptError::ShortPolyWithWords))
     } else {
         Ok(nodes.share_name(name))
     }
 }
 
-fn post_process_port_spec<S: AsRef<str>>(
+fn post_process_port_description<S: AsRef<str>>(
     nodes: &mut NameSpace,
-    spec: S,
+    description: S,
     single_word_only: bool,
 ) -> Result<Vec<ID>, Box<dyn Error>> {
-    if spec.as_ref().contains(',') {
-        let result: Result<Vec<ID>, Box<dyn Error>> = spec
+    if description.as_ref().contains(',') {
+        let result: Result<Vec<ID>, Box<dyn Error>> = description
             .as_ref()
             .split(',')
             .map(|s| do_share_name(nodes, s.trim(), single_word_only))
@@ -73,7 +121,7 @@ fn post_process_port_spec<S: AsRef<str>>(
 
         Ok(ids)
     } else {
-        let id = do_share_name(nodes, spec.as_ref().trim(), single_word_only)?;
+        let id = do_share_name(nodes, description.as_ref().trim(), single_word_only)?;
 
         Ok(vec![id])
     }
@@ -81,9 +129,9 @@ fn post_process_port_spec<S: AsRef<str>>(
 
 type PortParsed = (Vec<ID>, node::Face);
 
-fn do_parse_port_spec<S: AsRef<str>>(
+fn do_parse_port_description<S: AsRef<str>>(
     nodes: &mut NameSpace,
-    spec: S,
+    description: S,
     single_word_only: bool,
 ) -> Result<Option<PortParsed>, Box<dyn Error>> {
     lazy_static! {
@@ -93,12 +141,12 @@ fn do_parse_port_spec<S: AsRef<str>>(
         static ref TX_RE: Regex = Regex::new(r"^(.*[^><])(>+|\s+effects)$").unwrap();
         static ref RX_RE: Regex = Regex::new(r"^(.*[^><])(<+|\s+causes)$").unwrap();
     }
-    if let Some(cap) = TX_RE.captures(spec.as_ref()) {
-        let ids = post_process_port_spec(nodes, &cap[1], single_word_only)?;
+    if let Some(cap) = TX_RE.captures(description.as_ref()) {
+        let ids = post_process_port_description(nodes, &cap[1], single_word_only)?;
 
         Ok(Some((ids, node::Face::Tx)))
-    } else if let Some(cap) = RX_RE.captures(spec.as_ref()) {
-        let ids = post_process_port_spec(nodes, &cap[1], single_word_only)?;
+    } else if let Some(cap) = RX_RE.captures(description.as_ref()) {
+        let ids = post_process_port_description(nodes, &cap[1], single_word_only)?;
 
         Ok(Some((ids, node::Face::Rx)))
     } else {
@@ -106,41 +154,49 @@ fn do_parse_port_spec<S: AsRef<str>>(
     }
 }
 
-fn parse_port_spec<S: AsRef<str>>(ctx: &ContextHandle, spec: S) -> Option<PortParsed> {
+fn parse_port_description<S: AsRef<str>>(
+    ctx: &ContextHandle,
+    description: S,
+) -> Option<PortParsed> {
     let ref mut nodes = ctx.lock().unwrap().nodes;
 
-    do_parse_port_spec(nodes, spec, false).unwrap_or_else(|_| unreachable!())
+    do_parse_port_description(nodes, description, false).unwrap_or_else(|_| unreachable!())
 }
 
-fn parse_link_spec<S: AsRef<str> + Copy>(
+fn parse_link_description<S: AsRef<str> + Copy>(
     ctx: &ContextHandle,
-    spec: S,
+    description: S,
     valid_face: node::Face,
     single_word_only: bool,
 ) -> Result<(ID, bool), Box<dyn Error>> {
     let ref mut nodes = ctx.lock().unwrap().nodes;
 
-    let link_with_colink = do_parse_port_spec(nodes, spec, single_word_only)?;
+    let link_with_colink = do_parse_port_description(nodes, description, single_word_only)?;
 
     if let Some((ids, face)) = link_with_colink {
         if face == valid_face {
             if ids.len() == 1 {
                 Ok((ids[0], true))
             } else {
-                Err(Box::new(AcesError::SpecLinkList))
+                Err(Box::new(YamlScriptError::LinkList))
             }
         } else {
-            Err(Box::new(AcesError::SpecLinkReversed))
+            Err(Box::new(YamlScriptError::LinkReversed))
         }
     } else {
-        let id = do_share_name(nodes, spec, single_word_only)?;
+        let id = do_share_name(nodes, description, single_word_only)?;
 
         Ok((id, false))
     }
 }
 
+/// Intermediate representation of a c-e structure.
+///
+/// This is returned by the parser of YAML-formatted strings and then
+/// transformed into internal data structures, wich are used for
+/// analysis or during simulation.
 #[derive(Default, Debug)]
-struct SpecForYaml {
+pub(crate) struct YamlContent {
     name:    Option<String>,
     meta:    BTreeMap<String, Yaml>,
     causes:  BTreeMap<ID, PolyForYaml>,
@@ -148,7 +204,7 @@ struct SpecForYaml {
     carrier: BTreeSet<ID>,
 }
 
-impl SpecForYaml {
+impl YamlContent {
     fn add_ports(
         &mut self,
         ctx: &ContextHandle,
@@ -158,13 +214,14 @@ impl SpecForYaml {
     ) -> Result<(), Box<dyn Error>> {
         assert!(!ids.is_empty());
 
-        let mut poly_spec = PolyForYaml::new();
+        let mut poly_content = PolyForYaml::new();
 
         match poly_yaml {
             Yaml::String(other_name) => {
-                let (other_id, with_colink) = parse_link_spec(ctx, other_name.trim(), !face, true)?;
+                let (other_id, with_colink) =
+                    parse_link_description(ctx, other_name.trim(), !face, true)?;
 
-                poly_spec.vec_update(&vec![other_id]);
+                poly_content.vec_update(&vec![other_id]);
 
                 if with_colink {
                     if face == node::Face::Tx {
@@ -181,9 +238,9 @@ impl SpecForYaml {
                     match value {
                         Yaml::String(other_name) => {
                             let (other_id, with_colink) =
-                                parse_link_spec(ctx, other_name.trim(), !face, true)?;
+                                parse_link_description(ctx, other_name.trim(), !face, true)?;
 
-                            poly_spec.vec_update(&vec![other_id]);
+                            poly_content.vec_update(&vec![other_id]);
 
                             if with_colink {
                                 if face == node::Face::Tx {
@@ -196,13 +253,17 @@ impl SpecForYaml {
                         Yaml::Array(table) => {
                             is_flat = false;
 
-                            let mut mono_spec = MonoForYaml::new();
+                            let mut mono_content = MonoForYaml::new();
                             for value in table {
                                 if let Some(other_name) = value.as_str() {
-                                    let (other_id, with_colink) =
-                                        parse_link_spec(ctx, other_name.trim(), !face, false)?;
+                                    let (other_id, with_colink) = parse_link_description(
+                                        ctx,
+                                        other_name.trim(),
+                                        !face,
+                                        false,
+                                    )?;
 
-                                    mono_spec.vec_update(&other_id);
+                                    mono_content.vec_update(&other_id);
 
                                     if with_colink {
                                         if face == node::Face::Tx {
@@ -213,28 +274,28 @@ impl SpecForYaml {
                                         }
                                     }
                                 } else {
-                                    return Err(Box::new(AcesError::SpecLinkInvalid))
+                                    return Err(Box::new(YamlScriptError::LinkInvalid))
                                 }
                             }
-                            poly_spec.vec_update(&mono_spec);
+                            poly_content.vec_update(&mono_content);
                         }
-                        _ => return Err(Box::new(AcesError::SpecMonoInvalid)),
+                        _ => return Err(Box::new(YamlScriptError::MonoInvalid)),
                     }
                 }
                 if is_flat {
-                    return Err(Box::new(AcesError::SpecPolyAmbiguous))
+                    return Err(Box::new(YamlScriptError::PolyAmbiguous))
                 }
             }
-            _ => return Err(Box::new(AcesError::SpecPolyInvalid)),
+            _ => return Err(Box::new(YamlScriptError::PolyInvalid)),
         }
 
         if face == node::Face::Tx {
             for &id in ids {
-                self.effects.map_update(id, &poly_spec);
+                self.effects.map_update(id, &poly_content);
             }
         } else {
             for &id in ids {
-                self.causes.map_update(id, &poly_spec);
+                self.causes.map_update(id, &poly_content);
             }
         }
         Ok(())
@@ -248,7 +309,7 @@ impl SpecForYaml {
     ) -> Result<(), Box<dyn Error>> {
         if let Some(key) = key.as_str() {
             let key = key.trim();
-            let port_parsed = parse_port_spec(ctx, key);
+            let port_parsed = parse_port_description(ctx, key);
 
             if let Some((ids, face)) = port_parsed {
                 self.add_ports(ctx, &ids, face, value)
@@ -259,10 +320,10 @@ impl SpecForYaml {
 
                         Ok(())
                     } else {
-                        Err(Box::new(AcesError::SpecNameDup))
+                        Err(Box::new(YamlScriptError::NameDup))
                     }
                 } else {
-                    Err(Box::new(AcesError::SpecNameNotString))
+                    Err(Box::new(YamlScriptError::NameNotString))
                 }
             } else {
                 // FIXME handle duplicates
@@ -271,80 +332,46 @@ impl SpecForYaml {
                 Ok(())
             }
         } else {
-            Err(Box::new(AcesError::SpecKeyNotString))
+            Err(Box::new(YamlScriptError::KeyNotString))
         }
     }
 
     fn from_yaml(ctx: &ContextHandle, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
         if let Yaml::Hash(ref dict) = yaml {
-            let mut spec = Self::default();
+            let mut content = Self::default();
 
             for (key, value) in dict {
-                spec.add_entry(ctx, key, value)?;
+                content.add_entry(ctx, key, value)?;
             }
 
-            spec.carrier = spec.effects.keys().chain(spec.causes.keys()).copied().collect();
+            content.carrier =
+                content.effects.keys().chain(content.causes.keys()).copied().collect();
 
-            Ok(spec)
+            Ok(content)
         } else {
-            Err(Box::new(AcesError::SpecNotADict))
+            Err(Box::new(YamlScriptError::NotADict))
         }
     }
 
-    fn from_str<S: AsRef<str>>(ctx: &ContextHandle, raw_spec: S) -> Result<Self, Box<dyn Error>> {
-        let docs = YamlLoader::load_from_str(raw_spec.as_ref())?;
+    pub(crate) fn from_str<S: AsRef<str>>(
+        ctx: &ContextHandle,
+        script: S,
+    ) -> Result<Self, Box<dyn Error>> {
+        let docs = YamlLoader::load_from_str(script.as_ref())?;
 
         if docs.is_empty() {
-            Err(Box::new(AcesError::SpecEmpty))
+            Err(Box::new(YamlScriptError::Empty))
         } else if docs.len() == 1 {
-            let spec = Self::from_yaml(ctx, &docs[0])?;
-            Ok(spec)
+            let content = Self::from_yaml(ctx, &docs[0])?;
+            Ok(content)
         } else {
-            Err(Box::new(AcesError::SpecMultiple))
+            Err(Box::new(YamlScriptError::Multiple))
         }
     }
 }
 
-// FIXME define specific iterators for return types below
-/// An abstraction over c-e structure specification formats.
-///
-/// Note: types implementing `CESSpec` trait shouldn't own
-/// [`ContextHandle`]s, because `CESSpec` trait objects are owned by
-/// [`CES`] structs, along with [`ContextHandle`]s themselves.
-///
-/// [`CES`]: crate::CES
-pub(crate) trait CESSpec: Debug {
-    fn get_raw(&self) -> Option<&str>;
-    fn get_name(&self) -> Option<&str>;
-    fn get_carrier_ids(&self) -> Vec<ID>;
-    fn get_causes_by_id(&self, id: ID) -> Option<&Vec<Vec<ID>>>;
-    fn get_effects_by_id(&self, id: ID) -> Option<&Vec<Vec<ID>>>;
-}
-
-impl CESSpec for String {
-    fn get_raw(&self) -> Option<&str> {
-        Some(self)
-    }
-
-    fn get_name(&self) -> Option<&str> {
-        panic!("Attempt to access a phantom specification.")
-    }
-
-    fn get_carrier_ids(&self) -> Vec<ID> {
-        panic!("Attempt to access a phantom specification.")
-    }
-
-    fn get_causes_by_id(&self, _id: ID) -> Option<&Vec<Vec<ID>>> {
-        panic!("Attempt to access a phantom specification.")
-    }
-
-    fn get_effects_by_id(&self, _id: ID) -> Option<&Vec<Vec<ID>>> {
-        panic!("Attempt to access a phantom specification.")
-    }
-}
-
-impl CESSpec for SpecForYaml {
-    fn get_raw(&self) -> Option<&str> {
+impl Content for YamlContent {
+    fn get_script(&self) -> Option<&str> {
         None // FIXME
     }
 
@@ -367,18 +394,4 @@ impl CESSpec for SpecForYaml {
     fn get_effects_by_id(&self, id: ID) -> Option<&Vec<Vec<ID>>> {
         self.effects.get(&id)
     }
-}
-
-/// Parses a string specification of a c-e structure.
-///
-/// Returns a [`CESSpec`] trait object if parsing was successful,
-/// where a concrete type depends on a specification format.
-///
-/// Errors depend on a specification format.
-pub(crate) fn spec_from_str<S: AsRef<str>>(
-    ctx: &ContextHandle,
-    raw_spec: S,
-) -> Result<Box<dyn CESSpec>, Box<dyn Error>> {
-    // FIXME infer the format of spec string: yaml, sexpr, ...
-    Ok(Box::new(SpecForYaml::from_str(ctx, raw_spec)?))
 }

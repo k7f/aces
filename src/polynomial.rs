@@ -43,7 +43,7 @@ pub struct Polynomial<T: Atomic> {
 impl Polynomial<LinkID> {
     /// Creates a polynomial from a sequence of vectors of node
     /// [`ID`]s and in a [`Context`] given by a [`ContextHandle`].
-    pub fn from_spec(ctx: ContextHandle, port: &Port, spec_poly: &[Vec<ID>]) -> Self {
+    pub fn from_port_and_ids(ctx: ContextHandle, port: &Port, poly_ids: &[Vec<ID>]) -> Self {
         let mut result = Self::new();
 
         let pid = PortID(port.get_atom_id());
@@ -52,10 +52,10 @@ impl Polynomial<LinkID> {
 
         let mut ctx = ctx.lock().unwrap();
 
-        for spec_mono in spec_poly {
-            let mut mono_ids = BTreeSet::new();
+        for mono_ids in poly_ids {
+            let mut out_ids = BTreeSet::new();
 
-            for cohost in spec_mono {
+            for cohost in mono_ids {
                 let cohost = NodeID(*cohost);
                 let mut coport = Port::new(!face, cohost);
                 let copid = ctx.share_port(&mut coport);
@@ -66,9 +66,9 @@ impl Polynomial<LinkID> {
                 };
                 let id = ctx.share_link(&mut link);
 
-                mono_ids.insert(id);
+                out_ids.insert(id);
             }
-            result.add_atomics_sorted(mono_ids.into_iter()).unwrap();
+            result.add_atomics_sorted(out_ids.into_iter()).unwrap();
         }
 
         result

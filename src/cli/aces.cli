@@ -1,7 +1,7 @@
 name: required-by-clap
 args:
     - MAIN_PATH:
-        help: Path to the main CES specification
+        help: Path to a CES file
         required: false
         default_value: data/arrow.ces
         index: 1

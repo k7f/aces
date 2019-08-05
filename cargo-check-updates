@@ -1,0 +1,10 @@
+#!/bin/bash
+
+CRATES="log fern clap yaml-rust regex lazy_static rand glob string_cache bit-vec varisat"
+
+for crate in $CRATES ; do
+    echo -n "$crate = "
+    grep -m 1 "$crate = " Cargo.toml | cut -z -d\" -f2
+    echo -n " -> "
+    cargo search --limit 1 $crate | head -1 | awk '{print $3}'
+done

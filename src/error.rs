@@ -3,20 +3,6 @@ use crate::node;
 
 #[derive(Debug, Clone)]
 pub(crate) enum AcesError {
-    SpecEmpty,
-    SpecMultiple,
-    SpecNotADict,
-    SpecKeyNotString,
-    SpecNameNotString,
-    SpecNameDup,
-    SpecPolyInvalid,
-    SpecPolyAmbiguous,
-    SpecShortPolyWithWords,
-    SpecMonoInvalid,
-    SpecLinkInvalid,
-    SpecLinkReversed,
-    SpecLinkList,
-
     ContextMismatch,
     PortMismatch,
     NodeMissingForID,
@@ -55,22 +41,6 @@ impl Error for AcesError {
         use AcesError::*;
 
         match self {
-            SpecEmpty => "Empty specification",
-            SpecMultiple => "Multiple specifications",
-            SpecNotADict => "Bad specification (not a dictionary)",
-            SpecKeyNotString => "Non-string key in specification",
-            SpecNameNotString => "Non-string CES name in specification",
-            SpecNameDup => "Duplicated CES name in specification",
-            SpecPolyInvalid => "Invalid polynomial specification",
-            SpecPolyAmbiguous => "Ambiguous polynomial specification",
-            SpecShortPolyWithWords => {
-                "Multi-word node name is invalid in short polynomial specification"
-            }
-            SpecMonoInvalid => "Invalid monomial in polynomial specification",
-            SpecLinkInvalid => "Invalid link in polynomial specification",
-            SpecLinkReversed => "Reversed link in polynomial specification",
-            SpecLinkList => "Link list is invalid in polynomial specification",
-
             ContextMismatch => "Context mismatch",
             PortMismatch => "Port mismatch",
             NodeMissingForID => "Node is missing for ID",
