@@ -19,7 +19,7 @@ pub mod sat;
 mod logging;
 pub mod cli;
 
-pub use context::{Context, ContextHandle, Contextual, InContext, InContextMut};
+pub use context::{Context, ContextHandle, ContextOrigin, Contextual, InContext, InContextMut};
 pub use content::Content;
 pub use node::NodeID;
 pub use atom::{Port, Link, PortID, LinkID, Atomic};

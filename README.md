@@ -50,11 +50,12 @@ release on [crates.io](https://crates.io/crates/aces).
 
 ### Features
 
-C-e structures may be defined in `.ces` text files.  The format of
-textual description, however, isn't documented and is very likely to
-change.  There are some, perhaps self-explanatory, [examples](data/).
+C-e structures may be defined in `.cex` text files.  The format of
+textual description is YAML-based, but nowhere documented and very
+likely to change.  There are some, perhaps self-explanatory,
+[examples](data/).
 
-Run the `aces` executable to load c-e structures from `.ces` files and
+Run the `aces` executable to load c-e structures from `.cex` files and
 analyse them.  By default, the program will check link coherence and
 print firing components, if there are any, or inform about structural
 deadlock.  To see the list of available subcommands and options run

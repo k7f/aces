@@ -1,5 +1,5 @@
 use std::error::Error;
-use crate::{Context, CES, error::AcesError};
+use crate::{Context, ContextOrigin, CES, error::AcesError};
 use super::{App, Command};
 
 pub struct Validate {
@@ -29,11 +29,11 @@ impl Command for Validate {
 
     fn run(&self) -> Result<(), Box<dyn Error>> {
         // FIXME
-        let ref glob_path = format!("{}/*.ces", self.glob_path);
+        let ref glob_path = format!("{}/*.cex", self.glob_path);
 
         let mut num_bad_files = 0;
 
-        let ctx = Context::new_toplevel("validate");
+        let ctx = Context::new_toplevel("validate", ContextOrigin::cex_stream());
 
         if self.is_recursive {
             // FIXME
@@ -47,6 +47,9 @@ impl Command for Validate {
                             if self.verbosity >= 1 {
                                 info!("> {}", path.display());
                             }
+
+                            ctx.lock().unwrap().reset(ContextOrigin::cex_script(path));
+
                             let result = CES::from_file(ctx.clone(), path);
                             match result {
                                 Ok(ces) => {

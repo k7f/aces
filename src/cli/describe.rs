@@ -1,5 +1,5 @@
 use std::{str::FromStr, error::Error};
-use crate::{Context, CES, sat, error::AcesError};
+use crate::{Context, ContextOrigin, CES, sat, error::AcesError};
 use super::{App, Command};
 
 pub struct Describe {
@@ -33,7 +33,7 @@ impl Command for Describe {
     }
 
     fn run(&self) -> Result<(), Box<dyn Error>> {
-        let ctx = Context::new_toplevel("describe");
+        let ctx = Context::new_toplevel("describe", ContextOrigin::cex_script(&self.main_path));
 
         let ces = CES::from_file(ctx.clone(), &self.main_path)?;
 

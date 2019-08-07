@@ -1,7 +1,8 @@
 use std::{
     cmp, fmt,
-    error::Error,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    error::Error,
 };
 use crate::{
     Port, Link, ID, NodeID, PortID, LinkID, node,
@@ -25,6 +26,39 @@ use crate::{
 /// [`sat::Solution`]: crate::sat::Solution
 pub type ContextHandle = Arc<Mutex<Context>>;
 
+#[derive(Clone, Debug)]
+pub enum ContextOrigin {
+    Interactive,
+    CesScript(Option<PathBuf>),
+    CexScript(Option<PathBuf>),
+}
+
+impl ContextOrigin {
+    pub fn interactive() -> Self {
+        ContextOrigin::Interactive
+    }
+
+    pub fn ces_stream() -> Self {
+        ContextOrigin::CesScript(None)
+    }
+
+    pub fn cex_stream() -> Self {
+        ContextOrigin::CexScript(None)
+    }
+
+    pub fn ces_script<P: AsRef<Path>>(path: P) -> Self {
+        let path = path.as_ref().to_path_buf();
+
+        ContextOrigin::CesScript(Some(path))
+    }
+
+    pub fn cex_script<P: AsRef<Path>>(path: P) -> Self {
+        let path = path.as_ref().to_path_buf();
+
+        ContextOrigin::CexScript(Some(path))
+    }
+}
+
 /// A representation of shared state.
 ///
 /// This is an umbrella type which, currently, includes a collection
@@ -39,6 +73,7 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 pub struct Context {
     pub(crate) magic_id: usize,
     pub(crate) name_id:  ID,
+    pub(crate) origin:   ContextOrigin,
     pub(crate) globals:  NameSpace,
     pub(crate) nodes:    NameSpace,
     pub(crate) atoms:    AtomSpace,
@@ -50,7 +85,7 @@ impl Context {
     ///
     /// Calling this method is the only public way of creating
     /// toplevel `Context` instances.
-    pub fn new_toplevel<S: AsRef<str>>(name: S) -> ContextHandle {
+    pub fn new_toplevel<S: AsRef<str>>(name: S, origin: ContextOrigin) -> ContextHandle {
         let magic_id = rand::random();
 
         let mut globals = NameSpace::default();
@@ -59,12 +94,18 @@ impl Context {
         let ctx = Self {
             magic_id,
             name_id,
+            origin,
             globals,
             nodes: Default::default(),
             atoms: Default::default(),
         };
 
         Arc::new(Mutex::new(ctx))
+    }
+
+    pub fn reset(&mut self, new_origin: ContextOrigin) {
+        self.origin = new_origin;
+        // FIXME clear
     }
 
     /// Creates a new derived `Context` instance and returns a
@@ -82,11 +123,12 @@ impl Context {
             // not in further ancestors).  See `partial_cmp`.
             let name_id = parent.globals.share_name(name);
 
+            let origin = parent.origin.clone();
             let globals = parent.globals.clone();
             let nodes = parent.nodes.clone();
             let atoms = parent.atoms.clone();
 
-            Self { magic_id, name_id, globals, nodes, atoms }
+            Self { magic_id, name_id, origin, globals, nodes, atoms }
         };
 
         Arc::new(Mutex::new(ctx))

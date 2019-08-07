@@ -1,9 +1,9 @@
 name: required-by-clap
 args:
     - MAIN_PATH:
-        help: Path to a CES file
+        help: Path to a .cex file
         required: false
-        default_value: data/arrow.ces
+        default_value: data/arrow.cex
         index: 1
     - log:
         help: Turn on logging to file
@@ -27,7 +27,7 @@ subcommands:
 
     - validate:
         name: required-by-clap
-        about: Reads all CES files from a given glob path and checks them for errors
+        about: Reads all .cex files from a given glob path and checks them for errors
         args:
             - GLOB_PATH:
                 help: Glob pattern or path to directory
