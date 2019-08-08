@@ -107,19 +107,14 @@ impl CES {
         self.carrier.entry(node_id).or_insert_with(Default::default);
     }
 
-    /// Creates a new c-e structure from a textual description and in
-    /// a [`Context`] given by a [`ContextHandle`].
-    ///
-    /// [`Context`]: crate::Context
-    pub fn from_str<S: AsRef<str>>(ctx: ContextHandle, script: S) -> Result<Self, Box<dyn Error>> {
-        let content = content_from_str(&ctx, script)?;
-
+    pub fn from_content(
+        ctx: ContextHandle,
+        content: Box<dyn Content>,
+    ) -> Result<Self, Box<dyn Error>> {
         let mut ces = CES::new(ctx);
 
-        for id in content.get_carrier_ids() {
-            let node_id = NodeID(id);
-
-            if let Some(ref poly_ids) = content.get_causes_by_id(id) {
+        for node_id in content.get_carrier_ids() {
+            if let Some(ref poly_ids) = content.get_causes_by_id(node_id) {
                 let mut port = Port::new(node::Face::Rx, node_id);
                 let pid = ces.context.lock().unwrap().share_port(&mut port);
 
@@ -129,7 +124,7 @@ impl CES {
                 ces.carrier.entry(node_id).or_insert_with(Default::default);
             }
 
-            if let Some(ref poly_ids) = content.get_effects_by_id(id) {
+            if let Some(ref poly_ids) = content.get_effects_by_id(node_id) {
                 let mut port = Port::new(node::Face::Tx, node_id);
                 let pid = ces.context.lock().unwrap().share_port(&mut port);
 
@@ -142,6 +137,16 @@ impl CES {
 
         ces.content = Some(content);
         Ok(ces)
+    }
+
+    /// Creates a new c-e structure from a textual description and in
+    /// a [`Context`] given by a [`ContextHandle`].
+    ///
+    /// [`Context`]: crate::Context
+    pub fn from_str<S: AsRef<str>>(ctx: ContextHandle, script: S) -> Result<Self, Box<dyn Error>> {
+        let content = content_from_str(&ctx, script)?;
+
+        Self::from_content(ctx, content)
     }
 
     /// Creates a new c-e structure from a script file to be found

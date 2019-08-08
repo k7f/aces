@@ -1,11 +1,10 @@
 use std::{
     cmp, fmt,
-    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     error::Error,
 };
 use crate::{
-    Port, Link, ID, NodeID, PortID, LinkID, node,
+    ContentOrigin, Port, Link, ID, NodeID, PortID, LinkID, node,
     name::NameSpace,
     atom::{AtomSpace, AtomID},
 };
@@ -26,39 +25,6 @@ use crate::{
 /// [`sat::Solution`]: crate::sat::Solution
 pub type ContextHandle = Arc<Mutex<Context>>;
 
-#[derive(Clone, Debug)]
-pub enum ContextOrigin {
-    Interactive,
-    CesScript(Option<PathBuf>),
-    CexScript(Option<PathBuf>),
-}
-
-impl ContextOrigin {
-    pub fn interactive() -> Self {
-        ContextOrigin::Interactive
-    }
-
-    pub fn ces_stream() -> Self {
-        ContextOrigin::CesScript(None)
-    }
-
-    pub fn cex_stream() -> Self {
-        ContextOrigin::CexScript(None)
-    }
-
-    pub fn ces_script<P: AsRef<Path>>(path: P) -> Self {
-        let path = path.as_ref().to_path_buf();
-
-        ContextOrigin::CesScript(Some(path))
-    }
-
-    pub fn cex_script<P: AsRef<Path>>(path: P) -> Self {
-        let path = path.as_ref().to_path_buf();
-
-        ContextOrigin::CexScript(Some(path))
-    }
-}
-
 /// A representation of shared state.
 ///
 /// This is an umbrella type which, currently, includes a collection
@@ -73,7 +39,7 @@ impl ContextOrigin {
 pub struct Context {
     pub(crate) magic_id: usize,
     pub(crate) name_id:  ID,
-    pub(crate) origin:   ContextOrigin,
+    pub(crate) origin:   ContentOrigin,
     pub(crate) globals:  NameSpace,
     pub(crate) nodes:    NameSpace,
     pub(crate) atoms:    AtomSpace,
@@ -85,7 +51,7 @@ impl Context {
     ///
     /// Calling this method is the only public way of creating
     /// toplevel `Context` instances.
-    pub fn new_toplevel<S: AsRef<str>>(name: S, origin: ContextOrigin) -> ContextHandle {
+    pub fn new_toplevel<S: AsRef<str>>(name: S, origin: ContentOrigin) -> ContextHandle {
         let magic_id = rand::random();
 
         let mut globals = NameSpace::default();
@@ -103,7 +69,7 @@ impl Context {
         Arc::new(Mutex::new(ctx))
     }
 
-    pub fn reset(&mut self, new_origin: ContextOrigin) {
+    pub fn reset(&mut self, new_origin: ContentOrigin) {
         self.origin = new_origin;
         // FIXME clear
     }

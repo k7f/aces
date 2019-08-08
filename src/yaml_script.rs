@@ -6,7 +6,7 @@ use std::{
 
 use regex::Regex;
 use yaml_rust::{Yaml, YamlLoader};
-use crate::{ContextHandle, ID, node, name::NameSpace, Content};
+use crate::{ContextHandle, NodeID, node, name::NameSpace, Content};
 
 #[derive(Debug, Clone)]
 pub(crate) enum YamlScriptError {
@@ -63,11 +63,11 @@ trait UpdatableMap<K, V> {
     fn map_update(&mut self, key: K, value: &V);
 }
 
-type MonoForYaml = Vec<ID>;
+type MonoForYaml = Vec<NodeID>;
 type PolyForYaml = Vec<MonoForYaml>;
 
-impl UpdatableVec<ID> for MonoForYaml {
-    fn vec_update(&mut self, value: &ID) {
+impl UpdatableVec<NodeID> for MonoForYaml {
+    fn vec_update(&mut self, value: &NodeID) {
         if let Err(ndx) = self.binary_search(value) {
             self.insert(ndx, *value);
         }
@@ -82,8 +82,8 @@ impl UpdatableVec<MonoForYaml> for PolyForYaml {
     }
 }
 
-impl UpdatableMap<ID, PolyForYaml> for BTreeMap<ID, PolyForYaml> {
-    fn map_update(&mut self, key: ID, value: &PolyForYaml) {
+impl UpdatableMap<NodeID, PolyForYaml> for BTreeMap<NodeID, PolyForYaml> {
+    fn map_update(&mut self, key: NodeID, value: &PolyForYaml) {
         self.entry(key)
             .and_modify(|poly| {
                 for new_mono in value {
@@ -98,11 +98,11 @@ fn do_share_name<S: AsRef<str>>(
     nodes: &mut NameSpace,
     name: S,
     single_word_only: bool,
-) -> Result<ID, Box<dyn Error>> {
+) -> Result<NodeID, Box<dyn Error>> {
     if single_word_only && name.as_ref().contains(char::is_whitespace) {
         Err(Box::new(YamlScriptError::ShortPolyWithWords))
     } else {
-        Ok(nodes.share_name(name))
+        Ok(NodeID(nodes.share_name(name)))
     }
 }
 
@@ -110,9 +110,9 @@ fn post_process_port_description<S: AsRef<str>>(
     nodes: &mut NameSpace,
     description: S,
     single_word_only: bool,
-) -> Result<Vec<ID>, Box<dyn Error>> {
+) -> Result<Vec<NodeID>, Box<dyn Error>> {
     if description.as_ref().contains(',') {
-        let result: Result<Vec<ID>, Box<dyn Error>> = description
+        let result: Result<Vec<NodeID>, Box<dyn Error>> = description
             .as_ref()
             .split(',')
             .map(|s| do_share_name(nodes, s.trim(), single_word_only))
@@ -127,7 +127,7 @@ fn post_process_port_description<S: AsRef<str>>(
     }
 }
 
-type PortParsed = (Vec<ID>, node::Face);
+type PortParsed = (Vec<NodeID>, node::Face);
 
 fn do_parse_port_description<S: AsRef<str>>(
     nodes: &mut NameSpace,
@@ -168,7 +168,7 @@ fn parse_link_description<S: AsRef<str> + Copy>(
     description: S,
     valid_face: node::Face,
     single_word_only: bool,
-) -> Result<(ID, bool), Box<dyn Error>> {
+) -> Result<(NodeID, bool), Box<dyn Error>> {
     let ref mut nodes = ctx.lock().unwrap().nodes;
 
     let link_with_colink = do_parse_port_description(nodes, description, single_word_only)?;
@@ -199,16 +199,16 @@ fn parse_link_description<S: AsRef<str> + Copy>(
 pub(crate) struct YamlContent {
     name:    Option<String>,
     meta:    BTreeMap<String, Yaml>,
-    causes:  BTreeMap<ID, PolyForYaml>,
-    effects: BTreeMap<ID, PolyForYaml>,
-    carrier: BTreeSet<ID>,
+    causes:  BTreeMap<NodeID, PolyForYaml>,
+    effects: BTreeMap<NodeID, PolyForYaml>,
+    carrier: BTreeSet<NodeID>,
 }
 
 impl YamlContent {
     fn add_ports(
         &mut self,
         ctx: &ContextHandle,
-        ids: &[ID],
+        ids: &[NodeID],
         face: node::Face,
         poly_yaml: &Yaml,
     ) -> Result<(), Box<dyn Error>> {
@@ -383,15 +383,15 @@ impl Content for YamlContent {
         }
     }
 
-    fn get_carrier_ids(&self) -> Vec<ID> {
+    fn get_carrier_ids(&self) -> Vec<NodeID> {
         self.carrier.iter().copied().collect()
     }
 
-    fn get_causes_by_id(&self, id: ID) -> Option<&Vec<Vec<ID>>> {
+    fn get_causes_by_id(&self, id: NodeID) -> Option<&Vec<Vec<NodeID>>> {
         self.causes.get(&id)
     }
 
-    fn get_effects_by_id(&self, id: ID) -> Option<&Vec<Vec<ID>>> {
+    fn get_effects_by_id(&self, id: NodeID) -> Option<&Vec<Vec<NodeID>>> {
         self.effects.get(&id)
     }
 }

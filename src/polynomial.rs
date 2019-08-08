@@ -5,8 +5,8 @@ use std::{
 };
 use bit_vec::BitVec;
 use crate::{
-    ID, NodeID, Port, PortID, Link, LinkID, Context, ContextHandle, Contextual, InContextMut,
-    Atomic, node, monomial, sat, error::AcesError,
+    NodeID, Port, PortID, Link, LinkID, Context, ContextHandle, Contextual, InContextMut, Atomic,
+    node, monomial, sat, error::AcesError,
 };
 
 /// A formal polynomial.
@@ -41,9 +41,9 @@ pub struct Polynomial<T: Atomic> {
 }
 
 impl Polynomial<LinkID> {
-    /// Creates a polynomial from a sequence of vectors of node
-    /// [`ID`]s and in a [`Context`] given by a [`ContextHandle`].
-    pub fn from_port_and_ids(ctx: ContextHandle, port: &Port, poly_ids: &[Vec<ID>]) -> Self {
+    /// Creates a polynomial from a sequence of vectors of
+    /// [`NodeID`]s and in a [`Context`] given by a [`ContextHandle`].
+    pub fn from_port_and_ids(ctx: ContextHandle, port: &Port, poly_ids: &[Vec<NodeID>]) -> Self {
         let mut result = Self::new();
 
         let pid = PortID(port.get_atom_id());
@@ -56,7 +56,7 @@ impl Polynomial<LinkID> {
             let mut out_ids = BTreeSet::new();
 
             for cohost in mono_ids {
-                let cohost = NodeID(*cohost);
+                let cohost = *cohost;
                 let mut coport = Port::new(!face, cohost);
                 let copid = ctx.share_port(&mut coport);
 
