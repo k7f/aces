@@ -2,7 +2,7 @@ use std::{fmt, error::Error};
 use crate::node;
 
 #[derive(Debug, Clone)]
-pub(crate) enum AcesError {
+pub enum AcesError {
     ContextMismatch,
     PortMismatch,
     NodeMissingForID,

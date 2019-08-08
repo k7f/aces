@@ -19,6 +19,7 @@ pub mod sat;
 mod logging;
 pub mod cli;
 
+pub use error::AcesError;
 pub use context::{Context, ContextHandle, Contextual, InContext, InContextMut};
 pub use content::{Content, ContentOrigin};
 pub use node::NodeID;
