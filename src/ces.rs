@@ -109,7 +109,7 @@ impl CES {
 
     pub fn from_content(
         ctx: ContextHandle,
-        content: Box<dyn Content>,
+        mut content: Box<dyn Content>,
     ) -> Result<Self, Box<dyn Error>> {
         let mut ces = CES::new(ctx);
 

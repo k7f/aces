@@ -1,11 +1,12 @@
 use std::{
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     fmt::{self, Debug},
     error::Error,
 };
 use crate::{NodeID, ContextHandle, yaml_script::YamlContent};
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum ContentError {
     OriginMismatch(ContentOrigin),
 }
@@ -78,7 +79,7 @@ pub trait Content: Debug {
     /// YAML-formatted string or _Ascesis_ source.
     fn get_script(&self) -> Option<&str>;
     fn get_name(&self) -> Option<&str>;
-    fn get_carrier_ids(&self) -> Vec<NodeID>;
+    fn get_carrier_ids(&mut self) -> Vec<NodeID>;
     fn get_causes_by_id(&self, id: NodeID) -> Option<&Vec<Vec<NodeID>>>;
     fn get_effects_by_id(&self, id: NodeID) -> Option<&Vec<Vec<NodeID>>>;
 }
@@ -92,7 +93,7 @@ impl Content for String {
         panic!("Attempt to access a phantom content.")
     }
 
-    fn get_carrier_ids(&self) -> Vec<NodeID> {
+    fn get_carrier_ids(&mut self) -> Vec<NodeID> {
         panic!("Attempt to access a phantom content.")
     }
 
@@ -127,4 +128,137 @@ pub(crate) fn content_from_str<S: AsRef<str>>(
     // FIXME infer the format of content description: yaml, sexpr, ...
     // FIXME or better still, deal with formats as plugins and delegate the inference.
     Ok(Box::new(YamlContent::from_str(ctx, script)?))
+}
+
+#[derive(PartialOrd, Ord, PartialEq, Eq, Default, Debug)]
+pub(crate) struct MonoForContent {
+    content: Vec<NodeID>,
+}
+
+impl MonoForContent {
+    pub(crate) fn new() -> Self {
+        Default::default()
+    }
+
+    pub(crate) fn update(&mut self, id: NodeID) {
+        if let Err(ndx) = self.content.binary_search(&id) {
+            self.content.insert(ndx, id);
+        }
+    }
+
+    pub(crate) fn into_content(self) -> Vec<NodeID> {
+        self.content
+    }
+}
+
+#[derive(PartialOrd, Ord, PartialEq, Eq, Default, Debug)]
+pub(crate) struct PolyForContent {
+    content: Vec<Vec<NodeID>>,
+}
+
+impl PolyForContent {
+    pub(crate) fn new() -> Self {
+        Default::default()
+    }
+
+    pub(crate) fn update(&mut self, mono: Vec<NodeID>) {
+        if let Err(ndx) = self.content.binary_search(&mono) {
+            self.content.insert(ndx, mono);
+        }
+    }
+
+    pub(crate) fn as_content(&self) -> &Vec<Vec<NodeID>> {
+        &self.content
+    }
+}
+
+#[derive(Default, Debug)]
+struct MapForContent {
+    content: BTreeMap<NodeID, PolyForContent>,
+}
+
+impl MapForContent {
+    fn update(&mut self, id: NodeID, poly: &[Vec<NodeID>]) {
+        self.content
+            .entry(id)
+            .and_modify(|old_poly| {
+                for new_mono in poly {
+                    old_poly.update(new_mono.to_vec())
+                }
+            })
+            .or_insert_with(|| PolyForContent { content: poly.to_vec() });
+    }
+}
+
+#[derive(Default, Debug)]
+struct CarrierForContent {
+    content: Option<BTreeSet<NodeID>>,
+}
+
+impl CarrierForContent {
+    fn touch(&mut self, id: NodeID) {
+        if let Some(ref content) = self.content {
+            if content.contains(&id) {
+                return
+            }
+        }
+        self.content = None;
+    }
+
+    fn maybe_update(&mut self, causes: &MapForContent, effects: &MapForContent) {
+        if self.content.is_none() {
+            self.content =
+                Some(effects.content.keys().chain(causes.content.keys()).copied().collect());
+        }
+    }
+
+    fn as_owned_content(&self) -> Vec<NodeID> {
+        self.content.as_ref().unwrap().iter().copied().collect()
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct PartialContent {
+    carrier: CarrierForContent,
+    causes:  MapForContent,
+    effects: MapForContent,
+}
+
+impl PartialContent {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn update_causes(&mut self, id: NodeID, poly: &[Vec<NodeID>]) {
+        self.causes.update(id, poly);
+        self.carrier.touch(id);
+    }
+
+    pub fn update_effects(&mut self, id: NodeID, poly: &[Vec<NodeID>]) {
+        self.effects.update(id, poly);
+        self.carrier.touch(id);
+    }
+}
+
+impl Content for PartialContent {
+    fn get_script(&self) -> Option<&str> {
+        None
+    }
+
+    fn get_name(&self) -> Option<&str> {
+        None
+    }
+
+    fn get_carrier_ids(&mut self) -> Vec<NodeID> {
+        self.carrier.maybe_update(&self.causes, &self.effects);
+        self.carrier.as_owned_content()
+    }
+
+    fn get_causes_by_id(&self, id: NodeID) -> Option<&Vec<Vec<NodeID>>> {
+        self.causes.content.get(&id).map(|poly| poly.as_content())
+    }
+
+    fn get_effects_by_id(&self, id: NodeID) -> Option<&Vec<Vec<NodeID>>> {
+        self.effects.content.get(&id).map(|poly| poly.as_content())
+    }
 }

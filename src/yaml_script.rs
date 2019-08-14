@@ -1,12 +1,12 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt,
-    error::Error,
-};
-
+use std::{collections::BTreeMap, fmt, error::Error};
 use regex::Regex;
 use yaml_rust::{Yaml, YamlLoader};
-use crate::{ContextHandle, NodeID, node, name::NameSpace, Content};
+use crate::{
+    ContextHandle, NodeID, node,
+    name::NameSpace,
+    Content, PartialContent,
+    content::{PolyForContent, MonoForContent},
+};
 
 #[derive(Debug, Clone)]
 pub(crate) enum YamlScriptError {
@@ -52,45 +52,6 @@ impl Error for YamlScriptError {
             LinkReversed => "Reversed link in YAML description of a polynomial",
             LinkList => "Link list is invalid in YAML description of a polynomial",
         }
-    }
-}
-
-trait UpdatableVec<V> {
-    fn vec_update(&mut self, value: &V);
-}
-
-trait UpdatableMap<K, V> {
-    fn map_update(&mut self, key: K, value: &V);
-}
-
-type MonoForYaml = Vec<NodeID>;
-type PolyForYaml = Vec<MonoForYaml>;
-
-impl UpdatableVec<NodeID> for MonoForYaml {
-    fn vec_update(&mut self, value: &NodeID) {
-        if let Err(ndx) = self.binary_search(value) {
-            self.insert(ndx, *value);
-        }
-    }
-}
-
-impl UpdatableVec<MonoForYaml> for PolyForYaml {
-    fn vec_update(&mut self, value: &MonoForYaml) {
-        if let Err(ndx) = self.binary_search(value) {
-            self.insert(ndx, value.to_owned());
-        }
-    }
-}
-
-impl UpdatableMap<NodeID, PolyForYaml> for BTreeMap<NodeID, PolyForYaml> {
-    fn map_update(&mut self, key: NodeID, value: &PolyForYaml) {
-        self.entry(key)
-            .and_modify(|poly| {
-                for new_mono in value {
-                    poly.vec_update(new_mono)
-                }
-            })
-            .or_insert_with(|| value.to_owned());
     }
 }
 
@@ -199,9 +160,7 @@ fn parse_link_description<S: AsRef<str> + Copy>(
 pub(crate) struct YamlContent {
     name:    Option<String>,
     meta:    BTreeMap<String, Yaml>,
-    causes:  BTreeMap<NodeID, PolyForYaml>,
-    effects: BTreeMap<NodeID, PolyForYaml>,
-    carrier: BTreeSet<NodeID>,
+    content: PartialContent,
 }
 
 impl YamlContent {
@@ -214,20 +173,20 @@ impl YamlContent {
     ) -> Result<(), Box<dyn Error>> {
         assert!(!ids.is_empty());
 
-        let mut poly_content = PolyForYaml::new();
+        let mut poly_content = PolyForContent::new();
 
         match poly_yaml {
             Yaml::String(other_name) => {
                 let (other_id, with_colink) =
                     parse_link_description(ctx, other_name.trim(), !face, true)?;
 
-                poly_content.vec_update(&vec![other_id]);
+                poly_content.update(vec![other_id]);
 
                 if with_colink {
                     if face == node::Face::Tx {
-                        self.causes.map_update(other_id, &vec![ids.to_owned()]);
+                        self.content.update_causes(other_id, &[ids.to_owned()]);
                     } else {
-                        self.effects.map_update(other_id, &vec![ids.to_owned()]);
+                        self.content.update_effects(other_id, &[ids.to_owned()]);
                     }
                 }
             }
@@ -240,20 +199,20 @@ impl YamlContent {
                             let (other_id, with_colink) =
                                 parse_link_description(ctx, other_name.trim(), !face, true)?;
 
-                            poly_content.vec_update(&vec![other_id]);
+                            poly_content.update(vec![other_id]);
 
                             if with_colink {
                                 if face == node::Face::Tx {
-                                    self.causes.map_update(other_id, &vec![ids.to_owned()]);
+                                    self.content.update_causes(other_id, &[ids.to_owned()]);
                                 } else {
-                                    self.effects.map_update(other_id, &vec![ids.to_owned()]);
+                                    self.content.update_effects(other_id, &[ids.to_owned()]);
                                 }
                             }
                         }
                         Yaml::Array(table) => {
                             is_flat = false;
 
-                            let mut mono_content = MonoForYaml::new();
+                            let mut mono_content = MonoForContent::new();
                             for value in table {
                                 if let Some(other_name) = value.as_str() {
                                     let (other_id, with_colink) = parse_link_description(
@@ -263,21 +222,21 @@ impl YamlContent {
                                         false,
                                     )?;
 
-                                    mono_content.vec_update(&other_id);
+                                    mono_content.update(other_id);
 
                                     if with_colink {
                                         if face == node::Face::Tx {
-                                            self.causes.map_update(other_id, &vec![ids.to_owned()]);
+                                            self.content.update_causes(other_id, &[ids.to_owned()]);
                                         } else {
-                                            self.effects
-                                                .map_update(other_id, &vec![ids.to_owned()]);
+                                            self.content
+                                                .update_effects(other_id, &[ids.to_owned()]);
                                         }
                                     }
                                 } else {
                                     return Err(Box::new(YamlScriptError::LinkInvalid))
                                 }
                             }
-                            poly_content.vec_update(&mono_content);
+                            poly_content.update(mono_content.into_content());
                         }
                         _ => return Err(Box::new(YamlScriptError::MonoInvalid)),
                     }
@@ -291,11 +250,11 @@ impl YamlContent {
 
         if face == node::Face::Tx {
             for &id in ids {
-                self.effects.map_update(id, &poly_content);
+                self.content.update_effects(id, poly_content.as_content());
             }
         } else {
             for &id in ids {
-                self.causes.map_update(id, &poly_content);
+                self.content.update_causes(id, poly_content.as_content());
             }
         }
         Ok(())
@@ -338,16 +297,13 @@ impl YamlContent {
 
     fn from_yaml(ctx: &ContextHandle, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
         if let Yaml::Hash(ref dict) = yaml {
-            let mut content = Self::default();
+            let mut result = Self::default();
 
             for (key, value) in dict {
-                content.add_entry(ctx, key, value)?;
+                result.add_entry(ctx, key, value)?;
             }
 
-            content.carrier =
-                content.effects.keys().chain(content.causes.keys()).copied().collect();
-
-            Ok(content)
+            Ok(result)
         } else {
             Err(Box::new(YamlScriptError::NotADict))
         }
@@ -362,8 +318,8 @@ impl YamlContent {
         if docs.is_empty() {
             Err(Box::new(YamlScriptError::Empty))
         } else if docs.len() == 1 {
-            let content = Self::from_yaml(ctx, &docs[0])?;
-            Ok(content)
+            let result = Self::from_yaml(ctx, &docs[0])?;
+            Ok(result)
         } else {
             Err(Box::new(YamlScriptError::Multiple))
         }
@@ -383,15 +339,15 @@ impl Content for YamlContent {
         }
     }
 
-    fn get_carrier_ids(&self) -> Vec<NodeID> {
-        self.carrier.iter().copied().collect()
+    fn get_carrier_ids(&mut self) -> Vec<NodeID> {
+        self.content.get_carrier_ids()
     }
 
     fn get_causes_by_id(&self, id: NodeID) -> Option<&Vec<Vec<NodeID>>> {
-        self.causes.get(&id)
+        self.content.get_causes_by_id(id)
     }
 
     fn get_effects_by_id(&self, id: NodeID) -> Option<&Vec<Vec<NodeID>>> {
-        self.effects.get(&id)
+        self.content.get_effects_by_id(id)
     }
 }
