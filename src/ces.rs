@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, io::Read, fs::File, path::Path, error::Error};
 
 use crate::{
     ContextHandle, Port, NodeID, PortID, LinkID, Polynomial, Content, content::content_from_str,
-    node, sat,
+    node, sat, AcesError,
 };
 
 // None: fat link; Some(face): thin, face-only link
@@ -111,10 +111,16 @@ impl CES {
         ctx: ContextHandle,
         mut content: Box<dyn Content>,
     ) -> Result<Self, Box<dyn Error>> {
-        let mut ces = CES::new(ctx);
+        let mut ces = CES::new(ctx.clone());
 
         for node_id in content.get_carrier_ids() {
             if let Some(ref poly_ids) = content.get_causes_by_id(node_id) {
+                if poly_ids.is_empty() {
+                    let node_name = ctx.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
+
+                    return Err(Box::new(AcesError::EmptyCausesOfInternalNode(node_name)))
+                }
+
                 let mut port = Port::new(node::Face::Rx, node_id);
                 let pid = ces.context.lock().unwrap().share_port(&mut port);
 
@@ -125,6 +131,12 @@ impl CES {
             }
 
             if let Some(ref poly_ids) = content.get_effects_by_id(node_id) {
+                if poly_ids.is_empty() {
+                    let node_name = ctx.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
+
+                    return Err(Box::new(AcesError::EmptyEffectsOfInternalNode(node_name)))
+                }
+
                 let mut port = Port::new(node::Face::Tx, node_id);
                 let pid = ces.context.lock().unwrap().share_port(&mut port);
 

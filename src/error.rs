@@ -13,6 +13,9 @@ pub enum AcesError {
     NodeMissingForPort(node::Face),
     NodeMissingForLink(node::Face),
     CESIsIncoherent(String),
+
+    EmptyCausesOfInternalNode(String),
+    EmptyEffectsOfInternalNode(String),
 }
 
 impl fmt::Display for AcesError {
@@ -31,6 +34,12 @@ impl fmt::Display for AcesError {
                 if *face == node::Face::Tx { "sending" } else { "receiving" }
             ),
             CESIsIncoherent(name) => write!(f, "Structure '{}' is incoherent", name),
+            EmptyCausesOfInternalNode(name) => {
+                write!(f, "Empty cause polynomial of internal node '{}'", name)
+            }
+            EmptyEffectsOfInternalNode(name) => {
+                write!(f, "Empty effect polynomial of internal node '{}'", name)
+            }
             _ => write!(f, "{}", self.description()),
         }
     }
@@ -51,6 +60,9 @@ impl Error for AcesError {
             NodeMissingForPort(_) => "Missing node for port",
             NodeMissingForLink(_) => "Missing node for link",
             CESIsIncoherent(_) => "Incoherent CES",
+
+            EmptyCausesOfInternalNode(_) => "Empty cause polynomial of internal node",
+            EmptyEffectsOfInternalNode(_) => "Empty effect polynomial of internal node",
         }
     }
 }

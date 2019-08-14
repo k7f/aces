@@ -180,13 +180,13 @@ impl YamlContent {
                 let (other_id, with_colink) =
                     parse_link_description(ctx, other_name.trim(), !face, true)?;
 
-                poly_content.update(vec![other_id]);
+                poly_content.add_mono(vec![other_id]);
 
                 if with_colink {
                     if face == node::Face::Tx {
-                        self.content.update_causes(other_id, &[ids.to_owned()]);
+                        self.content.add_to_causes(other_id, &[ids.to_owned()]);
                     } else {
-                        self.content.update_effects(other_id, &[ids.to_owned()]);
+                        self.content.add_to_effects(other_id, &[ids.to_owned()]);
                     }
                 }
             }
@@ -199,13 +199,13 @@ impl YamlContent {
                             let (other_id, with_colink) =
                                 parse_link_description(ctx, other_name.trim(), !face, true)?;
 
-                            poly_content.update(vec![other_id]);
+                            poly_content.add_mono(vec![other_id]);
 
                             if with_colink {
                                 if face == node::Face::Tx {
-                                    self.content.update_causes(other_id, &[ids.to_owned()]);
+                                    self.content.add_to_causes(other_id, &[ids.to_owned()]);
                                 } else {
-                                    self.content.update_effects(other_id, &[ids.to_owned()]);
+                                    self.content.add_to_effects(other_id, &[ids.to_owned()]);
                                 }
                             }
                         }
@@ -222,21 +222,21 @@ impl YamlContent {
                                         false,
                                     )?;
 
-                                    mono_content.update(other_id);
+                                    mono_content.add_node(other_id);
 
                                     if with_colink {
                                         if face == node::Face::Tx {
-                                            self.content.update_causes(other_id, &[ids.to_owned()]);
+                                            self.content.add_to_causes(other_id, &[ids.to_owned()]);
                                         } else {
                                             self.content
-                                                .update_effects(other_id, &[ids.to_owned()]);
+                                                .add_to_effects(other_id, &[ids.to_owned()]);
                                         }
                                     }
                                 } else {
                                     return Err(Box::new(YamlScriptError::LinkInvalid))
                                 }
                             }
-                            poly_content.update(mono_content.into_content());
+                            poly_content.add_mono(mono_content.into_content());
                         }
                         _ => return Err(Box::new(YamlScriptError::MonoInvalid)),
                     }
@@ -250,11 +250,11 @@ impl YamlContent {
 
         if face == node::Face::Tx {
             for &id in ids {
-                self.content.update_effects(id, poly_content.as_content());
+                self.content.add_to_effects(id, poly_content.as_content());
             }
         } else {
             for &id in ids {
-                self.content.update_causes(id, poly_content.as_content());
+                self.content.add_to_causes(id, poly_content.as_content());
             }
         }
         Ok(())

@@ -140,7 +140,7 @@ impl MonoForContent {
         Default::default()
     }
 
-    pub(crate) fn update(&mut self, id: NodeID) {
+    pub(crate) fn add_node(&mut self, id: NodeID) {
         if let Err(ndx) = self.content.binary_search(&id) {
             self.content.insert(ndx, id);
         }
@@ -161,7 +161,7 @@ impl PolyForContent {
         Default::default()
     }
 
-    pub(crate) fn update(&mut self, mono: Vec<NodeID>) {
+    pub(crate) fn add_mono(&mut self, mono: Vec<NodeID>) {
         if let Err(ndx) = self.content.binary_search(&mono) {
             self.content.insert(ndx, mono);
         }
@@ -178,12 +178,15 @@ struct MapForContent {
 }
 
 impl MapForContent {
-    fn update(&mut self, id: NodeID, poly: &[Vec<NodeID>]) {
+    // `poly.is_ampty()` test is ommited here, because it is done by the
+    // only callers, `PartialContent::add_to_causes()` and
+    // `PartialContent::add_to_effects()`.
+    fn add_poly(&mut self, id: NodeID, poly: &[Vec<NodeID>]) {
         self.content
             .entry(id)
             .and_modify(|old_poly| {
                 for new_mono in poly {
-                    old_poly.update(new_mono.to_vec())
+                    old_poly.add_mono(new_mono.to_vec())
                 }
             })
             .or_insert_with(|| PolyForContent { content: poly.to_vec() });
@@ -229,14 +232,18 @@ impl PartialContent {
         Default::default()
     }
 
-    pub fn update_causes(&mut self, id: NodeID, poly: &[Vec<NodeID>]) {
-        self.causes.update(id, poly);
-        self.carrier.touch(id);
+    pub fn add_to_causes(&mut self, id: NodeID, poly: &[Vec<NodeID>]) {
+        if !poly.is_empty() {
+            self.causes.add_poly(id, poly);
+            self.carrier.touch(id);
+        }
     }
 
-    pub fn update_effects(&mut self, id: NodeID, poly: &[Vec<NodeID>]) {
-        self.effects.update(id, poly);
-        self.carrier.touch(id);
+    pub fn add_to_effects(&mut self, id: NodeID, poly: &[Vec<NodeID>]) {
+        if !poly.is_empty() {
+            self.effects.add_poly(id, poly);
+            self.carrier.touch(id);
+        }
     }
 }
 
