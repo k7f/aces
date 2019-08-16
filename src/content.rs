@@ -1,4 +1,5 @@
 use std::{
+    ops::{AddAssign, MulAssign},
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     fmt::{self, Debug},
@@ -141,8 +142,8 @@ impl MonoForContent {
     }
 
     pub(crate) fn add_node(&mut self, id: NodeID) {
-        if let Err(ndx) = self.content.binary_search(&id) {
-            self.content.insert(ndx, id);
+        if let Err(pos) = self.content.binary_search(&id) {
+            self.content.insert(pos, id);
         }
     }
 
@@ -162,13 +163,39 @@ impl PolyForContent {
     }
 
     pub(crate) fn add_mono(&mut self, mono: Vec<NodeID>) {
-        if let Err(ndx) = self.content.binary_search(&mono) {
-            self.content.insert(ndx, mono);
+        if let Err(pos) = self.content.binary_search(&mono) {
+            self.content.insert(pos, mono);
+        }
+    }
+
+    pub(crate) fn multiply_by_mono(&mut self, mono: Vec<NodeID>) {
+        if self.content.is_empty() {
+            self.add_mono(mono);
+        } else {
+            let mut old_poly = Vec::new();
+            old_poly.append(&mut self.content);
+
+            for mut old_mono in old_poly {
+                for node_id in mono.iter() {
+                    if let Err(pos) = old_mono.binary_search(node_id) {
+                        old_mono.insert(pos, *node_id);
+                    }
+                }
+                self.add_mono(old_mono);
+            }
         }
     }
 
     pub(crate) fn as_content(&self) -> &Vec<Vec<NodeID>> {
         &self.content
+    }
+}
+
+impl AddAssign for PolyForContent {
+    fn add_assign(&mut self, other: Self) {
+        for mono in other.content {
+            self.add_mono(mono);
+        }
     }
 }
 
@@ -178,16 +205,34 @@ struct MapForContent {
 }
 
 impl MapForContent {
-    // `poly.is_ampty()` test is ommited here, because it is done by the
+    // `poly.is_empty()` test is ommited here, because it is done by the
     // only callers, `PartialContent::add_to_causes()` and
     // `PartialContent::add_to_effects()`.
     fn add_poly(&mut self, id: NodeID, poly: &[Vec<NodeID>]) {
         self.content
             .entry(id)
             .and_modify(|old_poly| {
-                for new_mono in poly {
-                    old_poly.add_mono(new_mono.to_vec())
+                for mono in poly {
+                    old_poly.add_mono(mono.to_vec());
                 }
+            })
+            .or_insert_with(|| PolyForContent { content: poly.to_vec() });
+    }
+
+    // `poly.is_empty()` test is ommited here, because it is done by the
+    // only callers, `PartialContent::multiply_causes()` and
+    // `PartialContent::multiply_effects()`.
+    fn multiply_by_poly(&mut self, id: NodeID, poly: &[Vec<NodeID>]) {
+        self.content
+            .entry(id)
+            .and_modify(|old_poly| {
+                let mut new_poly = PolyForContent::new();
+                for mono in poly {
+                    let mut aux_poly = old_poly.clone();
+                    aux_poly.multiply_by_mono(mono.to_vec());
+                    new_poly += aux_poly;
+                }
+                *old_poly = new_poly;
             })
             .or_insert_with(|| PolyForContent { content: poly.to_vec() });
     }
@@ -256,13 +301,41 @@ impl PartialContent {
         }
     }
 
-    pub fn add_assign(&mut self, other: Self) {
+    pub fn multiply_causes(&mut self, id: NodeID, poly: &[Vec<NodeID>]) {
+        if !poly.is_empty() {
+            self.causes.multiply_by_poly(id, poly);
+            self.carrier.touch(id);
+        }
+    }
+
+    pub fn multiply_effects(&mut self, id: NodeID, poly: &[Vec<NodeID>]) {
+        if !poly.is_empty() {
+            self.effects.multiply_by_poly(id, poly);
+            self.carrier.touch(id);
+        }
+    }
+}
+
+impl AddAssign for PartialContent {
+    fn add_assign(&mut self, other: Self) {
         for (id, poly) in other.causes.content {
             self.add_to_causes(id, &poly.content);
         }
 
         for (id, poly) in other.effects.content {
             self.add_to_effects(id, &poly.content);
+        }
+    }
+}
+
+impl MulAssign for PartialContent {
+    fn mul_assign(&mut self, other: Self) {
+        for (id, poly) in other.causes.content {
+            self.multiply_causes(id, &poly.content);
+        }
+
+        for (id, poly) in other.effects.content {
+            self.multiply_effects(id, &poly.content);
         }
     }
 }

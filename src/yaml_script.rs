@@ -184,8 +184,12 @@ impl YamlContent {
 
         match poly_yaml {
             Yaml::String(other_name) => {
-                let (other_id, with_colink) =
-                    parse_link_description(self.content.get_context(), other_name.trim(), !face, true)?;
+                let (other_id, with_colink) = parse_link_description(
+                    self.content.get_context(),
+                    other_name.trim(),
+                    !face,
+                    true,
+                )?;
 
                 poly_content.add_mono(vec![other_id]);
 
@@ -203,8 +207,12 @@ impl YamlContent {
                 for value in table {
                     match value {
                         Yaml::String(other_name) => {
-                            let (other_id, with_colink) =
-                                parse_link_description(self.content.get_context(), other_name.trim(), !face, true)?;
+                            let (other_id, with_colink) = parse_link_description(
+                                self.content.get_context(),
+                                other_name.trim(),
+                                !face,
+                                true,
+                            )?;
 
                             poly_content.add_mono(vec![other_id]);
 
@@ -267,11 +275,7 @@ impl YamlContent {
         Ok(())
     }
 
-    fn add_entry(
-        &mut self,
-        key: &Yaml,
-        value: &Yaml,
-    ) -> Result<(), Box<dyn Error>> {
+    fn add_entry(&mut self, key: &Yaml, value: &Yaml) -> Result<(), Box<dyn Error>> {
         if let Some(key) = key.as_str() {
             let key = key.trim();
             let port_parsed = parse_port_description(self.content.get_context(), key);
