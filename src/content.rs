@@ -130,7 +130,7 @@ pub(crate) fn content_from_str<S: AsRef<str>>(
     Ok(Box::new(YamlContent::from_str(ctx, script)?))
 }
 
-#[derive(PartialOrd, Ord, PartialEq, Eq, Default, Debug)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Default, Debug)]
 pub(crate) struct MonoForContent {
     content: Vec<NodeID>,
 }
@@ -151,7 +151,7 @@ impl MonoForContent {
     }
 }
 
-#[derive(PartialOrd, Ord, PartialEq, Eq, Default, Debug)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Default, Debug)]
 pub(crate) struct PolyForContent {
     content: Vec<Vec<NodeID>>,
 }
@@ -172,7 +172,7 @@ impl PolyForContent {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 struct MapForContent {
     content: BTreeMap<NodeID, PolyForContent>,
 }
@@ -193,7 +193,7 @@ impl MapForContent {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 struct CarrierForContent {
     content: Option<BTreeSet<NodeID>>,
 }
@@ -220,16 +220,26 @@ impl CarrierForContent {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Clone, Debug)]
 pub struct PartialContent {
+    context: ContextHandle,
     carrier: CarrierForContent,
     causes:  MapForContent,
     effects: MapForContent,
 }
 
 impl PartialContent {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(ctx: &ContextHandle) -> Self {
+        PartialContent {
+            context: ctx.clone(),
+            carrier: Default::default(),
+            causes:  Default::default(),
+            effects: Default::default(),
+        }
+    }
+
+    pub fn get_context(&self) -> &ContextHandle {
+        &self.context
     }
 
     pub fn add_to_causes(&mut self, id: NodeID, poly: &[Vec<NodeID>]) {
@@ -243,6 +253,16 @@ impl PartialContent {
         if !poly.is_empty() {
             self.effects.add_poly(id, poly);
             self.carrier.touch(id);
+        }
+    }
+
+    pub fn add_assign(&mut self, other: Self) {
+        for (id, poly) in other.causes.content {
+            self.add_to_causes(id, &poly.content);
+        }
+
+        for (id, poly) in other.effects.content {
+            self.add_to_effects(id, &poly.content);
         }
     }
 }
@@ -268,4 +288,8 @@ impl Content for PartialContent {
     fn get_effects_by_id(&self, id: NodeID) -> Option<&Vec<Vec<NodeID>>> {
         self.effects.content.get(&id).map(|poly| poly.as_content())
     }
+}
+
+pub trait CompilableAsContent {
+    fn compile_as_content(&self, ctx: &ContextHandle) -> Result<PartialContent, Box<dyn Error>>;
 }

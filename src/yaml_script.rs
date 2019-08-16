@@ -156,7 +156,7 @@ fn parse_link_description<S: AsRef<str> + Copy>(
 /// This is returned by the parser of YAML-formatted strings and then
 /// transformed into internal data structures, wich are used for
 /// analysis or during simulation.
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub(crate) struct YamlContent {
     name:    Option<String>,
     meta:    BTreeMap<String, Yaml>,
@@ -164,9 +164,16 @@ pub(crate) struct YamlContent {
 }
 
 impl YamlContent {
+    pub(crate) fn new(ctx: &ContextHandle) -> Self {
+        YamlContent {
+            name:    Default::default(),
+            meta:    Default::default(),
+            content: PartialContent::new(ctx),
+        }
+    }
+
     fn add_ports(
         &mut self,
-        ctx: &ContextHandle,
         ids: &[NodeID],
         face: node::Face,
         poly_yaml: &Yaml,
@@ -178,7 +185,7 @@ impl YamlContent {
         match poly_yaml {
             Yaml::String(other_name) => {
                 let (other_id, with_colink) =
-                    parse_link_description(ctx, other_name.trim(), !face, true)?;
+                    parse_link_description(self.content.get_context(), other_name.trim(), !face, true)?;
 
                 poly_content.add_mono(vec![other_id]);
 
@@ -197,7 +204,7 @@ impl YamlContent {
                     match value {
                         Yaml::String(other_name) => {
                             let (other_id, with_colink) =
-                                parse_link_description(ctx, other_name.trim(), !face, true)?;
+                                parse_link_description(self.content.get_context(), other_name.trim(), !face, true)?;
 
                             poly_content.add_mono(vec![other_id]);
 
@@ -216,7 +223,7 @@ impl YamlContent {
                             for value in table {
                                 if let Some(other_name) = value.as_str() {
                                     let (other_id, with_colink) = parse_link_description(
-                                        ctx,
+                                        self.content.get_context(),
                                         other_name.trim(),
                                         !face,
                                         false,
@@ -262,16 +269,15 @@ impl YamlContent {
 
     fn add_entry(
         &mut self,
-        ctx: &ContextHandle,
         key: &Yaml,
         value: &Yaml,
     ) -> Result<(), Box<dyn Error>> {
         if let Some(key) = key.as_str() {
             let key = key.trim();
-            let port_parsed = parse_port_description(ctx, key);
+            let port_parsed = parse_port_description(self.content.get_context(), key);
 
             if let Some((ids, face)) = port_parsed {
-                self.add_ports(ctx, &ids, face, value)
+                self.add_ports(&ids, face, value)
             } else if key == "name" {
                 if let Some(name) = value.as_str() {
                     if self.name.is_none() {
@@ -297,10 +303,10 @@ impl YamlContent {
 
     fn from_yaml(ctx: &ContextHandle, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
         if let Yaml::Hash(ref dict) = yaml {
-            let mut result = Self::default();
+            let mut result = Self::new(ctx);
 
             for (key, value) in dict {
-                result.add_entry(ctx, key, value)?;
+                result.add_entry(key, value)?;
             }
 
             Ok(result)
