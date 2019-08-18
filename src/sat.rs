@@ -5,6 +5,7 @@ use std::{
     fmt::{self, Write},
     error::Error,
 };
+use log::Level::Debug;
 use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
 use crate::{
     Atomic, Context, ContextHandle, Contextual, Polynomial, PortID, LinkID, node, atom::AtomID,
@@ -143,6 +144,24 @@ impl Contextual for Literal {
     }
 }
 
+pub struct Clause {
+    literals: Vec<Lit>,
+    info:     String,
+}
+
+impl Clause {
+    pub fn new<'a, I, S>(clause: I, info: S) -> Self
+    where
+        I: IntoIterator<Item = &'a Literal> + Clone,
+        S: AsRef<str>,
+    {
+        let literals = clause.into_iter().map(|lit| lit.0).collect();
+        let info = info.as_ref().to_owned();
+
+        Clause { literals, info }
+    }
+}
+
 pub struct Formula {
     context:   ContextHandle,
     cnf:       CnfFormula,
@@ -154,18 +173,26 @@ impl Formula {
         Self { context: ctx, cnf: Default::default(), variables: Default::default() }
     }
 
-    // FIXME define `Clause` type
-    fn add_clause<'a, I, S>(&mut self, clause: I, info: S)
-    where
-        I: IntoIterator<Item = &'a Literal>,
-        S: AsRef<str>,
-    {
-        let vc: Vec<_> = clause.into_iter().map(|lit| lit.0).collect();
+    fn add_clause(&mut self, clause: Clause) {
+        if log_enabled!(Debug) {
+            let mut liter = clause.literals.iter();
+            if let Some(lit) = liter.next() {
+                let ctx = self.context.lock().unwrap();
+                let mut litxt = format!("{}", ctx.with(&Literal(*lit)));
 
-        debug!("Add (to formula) {} clause: {:?}", info.as_ref(), vc);
+                for lit in liter {
+                    litxt.push_str(&format!(", {}", ctx.with(&Literal(*lit))));
+                }
+                debug!("Add (to formula) {} clause: [{}]", clause.info, litxt);
+            } else {
+                debug!("Empty {} clause, not added to formula", clause.info);
+            }
+        }
 
-        self.cnf.add_clause(vc.as_slice());
-        self.variables.extend(vc.iter().map(|lit| lit.var()));
+        if !clause.literals.is_empty() {
+            self.cnf.add_clause(clause.literals.as_slice());
+            self.variables.extend(clause.literals.iter().map(|lit| lit.var()));
+        }
     }
 
     /// Adds an _antiport_ rule to this `Formula`.
@@ -187,7 +214,8 @@ impl Formula {
             }
         };
 
-        self.add_clause(&[port_lit, antiport_lit], "internal node");
+        let clause = Clause::new(&[port_lit, antiport_lit], "internal node");
+        self.add_clause(clause);
     }
 
     /// Adds a _link coherence_ rule to this `Formula`.
@@ -218,8 +246,12 @@ impl Formula {
                 panic!("There is no link with ID {:?}.", link_id)
             }
         };
-        self.add_clause(&[link_lit, tx_port_lit], "link coherence (Tx side)");
-        self.add_clause(&[link_lit, rx_port_lit], "link coherence (Rx side)");
+
+        let clause = Clause::new(&[link_lit, tx_port_lit], "link coherence (Tx side)");
+        self.add_clause(clause);
+
+        let clause = Clause::new(&[link_lit, rx_port_lit], "link coherence (Rx side)");
+        self.add_clause(clause);
     }
 
     /// Adds a _polynomial_ rule to this formula.
@@ -228,7 +260,7 @@ impl Formula {
             let port_lit = port_id.into_sat_literal(true);
 
             for clause in poly.as_sat_clauses(port_lit) {
-                self.add_clause(clause.iter(), "monomial");
+                self.add_clause(clause);
             }
         }
     }

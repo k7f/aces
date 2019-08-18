@@ -315,18 +315,21 @@ impl<T: Atomic> Polynomial<T> {
     ///
     /// Returns a sequence of clauses in the form of vector of vectors
     /// of [`sat::Literal`]s.
-    pub fn as_sat_clauses(&self, port_lit: sat::Literal) -> Vec<Vec<sat::Literal>> {
+    pub fn as_sat_clauses(&self, port_lit: sat::Literal) -> Vec<sat::Clause> {
         if self.is_atomic() {
             // Consequence is a single positive link literal.  The
             // rule is a single two-literal port-link clause.
 
-            vec![vec![self.product[0].into_sat_literal(false), port_lit]]
+            vec![sat::Clause::new(&[self.product[0].into_sat_literal(false), port_lit], "monomial")]
         } else if self.is_monomial() {
             // Consequence is a conjunction of _N_ >= 2 positive link
             // literals.  The rule is a sequence of _N_ two-literal
             // port-link clauses.
 
-            self.product.iter().map(|id| vec![id.into_sat_literal(false), port_lit]).collect()
+            self.product
+                .iter()
+                .map(|id| sat::Clause::new(&[id.into_sat_literal(false), port_lit], "monomial"))
+                .collect()
         } else {
             // Consequence is a disjunction of _M_ >= 2 statements,
             // each being a conjunction of _N_ >= 2 positive and
@@ -411,7 +414,7 @@ impl<T: Atomic> Polynomial<T> {
                 num_repeated_literals,
             );
 
-            clauses
+            clauses.iter().map(|lits| sat::Clause::new(lits, "monomial")).collect()
         }
     }
 }
