@@ -162,6 +162,24 @@ impl Clause {
     }
 }
 
+impl Contextual for Clause {
+    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
+        let mut liter = self.literals.iter();
+
+        if let Some(lit) = liter.next() {
+            let mut litxt = Literal(*lit).format(ctx, dock)?;
+
+            for lit in liter {
+                litxt.push_str(&format!(", {}", ctx.with(&Literal(*lit))));
+            }
+
+            Ok(format!("{{{}}}", litxt))
+        } else {
+            Ok("{{}}".to_owned())
+        }
+    }
+}
+
 pub struct Formula {
     context:   ContextHandle,
     cnf:       CnfFormula,
@@ -174,22 +192,14 @@ impl Formula {
     }
 
     fn add_clause(&mut self, clause: Clause) {
-        if log_enabled!(Debug) {
-            let mut liter = clause.literals.iter();
-            if let Some(lit) = liter.next() {
+        if clause.literals.is_empty() {
+            debug!("Empty {} clause, not added to formula", clause.info);
+        } else {
+            if log_enabled!(Debug) {
                 let ctx = self.context.lock().unwrap();
-                let mut litxt = format!("{}", ctx.with(&Literal(*lit)));
-
-                for lit in liter {
-                    litxt.push_str(&format!(", {}", ctx.with(&Literal(*lit))));
-                }
-                debug!("Add (to formula) {} clause: [{}]", clause.info, litxt);
-            } else {
-                debug!("Empty {} clause, not added to formula", clause.info);
+                debug!("Add (to formula) {} clause: {}", clause.info, ctx.with(&clause))
             }
-        }
 
-        if !clause.literals.is_empty() {
             self.cnf.add_clause(clause.literals.as_slice());
             self.variables.extend(clause.literals.iter().map(|lit| lit.var()));
         }

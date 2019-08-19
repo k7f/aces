@@ -1,5 +1,5 @@
 use std::{
-    slice, iter, cmp, ops,
+    slice, iter, cmp, ops, fmt,
     collections::{BTreeSet, HashSet},
     error::Error,
 };
@@ -33,7 +33,7 @@ use crate::{
 /// Implementation detects some, but not all, cases of mismatch and
 /// panics if it does so.
 #[derive(Clone, Debug)]
-pub struct Polynomial<T: Atomic> {
+pub struct Polynomial<T: Atomic + fmt::Debug> {
     product: Vec<T>,
     weights: Vec<monomial::Weight>,
     // FIXME choose a better representation of a boolean matrix.
@@ -75,7 +75,7 @@ impl Polynomial<LinkID> {
     }
 }
 
-impl<T: Atomic> Polynomial<T> {
+impl<T: Atomic + fmt::Debug> Polynomial<T> {
     /// Creates an empty polynomial, _&theta;_.
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
@@ -179,7 +179,7 @@ impl<T: Atomic> Polynomial<T> {
             }
         }
 
-        let mut new_row = BitVec::from_elem(self.product.len(), false);
+        let mut new_row = BitVec::with_capacity(2 * self.product.len());
 
         let mut prev_thing = None;
         let mut no_new_things = true;
@@ -212,6 +212,9 @@ impl<T: Atomic> Polynomial<T> {
 
             match self.product[ndx..].binary_search(&thing) {
                 Ok(i) => {
+                    if i > 0 {
+                        new_row.grow(i, false);
+                    }
                     new_row.push(true);
                     ndx += i + 1;
                 }
@@ -220,8 +223,10 @@ impl<T: Atomic> Polynomial<T> {
 
                     no_new_things = false;
 
+                    if i > 0 {
+                        new_row.grow(i, false);
+                    }
                     new_row.push(true);
-                    new_row.push(false);
 
                     self.product.insert(ndx, thing);
 
@@ -419,15 +424,15 @@ impl<T: Atomic> Polynomial<T> {
     }
 }
 
-impl<T: Atomic> cmp::PartialEq for Polynomial<T> {
+impl<T: Atomic + fmt::Debug> cmp::PartialEq for Polynomial<T> {
     fn eq(&self, other: &Self) -> bool {
         self.product == other.product && self.sum == other.sum
     }
 }
 
-impl<T: Atomic> cmp::Eq for Polynomial<T> {}
+impl<T: Atomic + fmt::Debug> cmp::Eq for Polynomial<T> {}
 
-impl<T: Atomic> cmp::PartialOrd for Polynomial<T> {
+impl<T: Atomic + fmt::Debug> cmp::PartialOrd for Polynomial<T> {
     #[allow(clippy::collapsible_if)]
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         // FIXME optimize
@@ -516,12 +521,12 @@ impl<'a> ops::AddAssign<&Self> for InContextMut<'a, Polynomial<LinkID>> {
 /// iterators.  It borrows the [`Polynomial`] being iterated over and
 /// traverses its data in place, without allocating extra space for
 /// inner iteration.
-pub struct Monomials<'a, T: Atomic> {
+pub struct Monomials<'a, T: Atomic + fmt::Debug> {
     poly: &'a Polynomial<T>,
     ndx:  usize,
 }
 
-impl<'a, T: Atomic> Iterator for Monomials<'a, T> {
+impl<'a, T: Atomic + fmt::Debug> Iterator for Monomials<'a, T> {
     #[allow(clippy::type_complexity)]
     type Item = iter::FilterMap<
         iter::Zip<slice::Iter<'a, T>, bit_vec::Iter<'a>>,
