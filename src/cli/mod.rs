@@ -6,6 +6,11 @@ pub use validate::Validate;
 
 pub trait Command {
     fn name_of_log_file(&self) -> String;
+
+    fn console_level(&self) -> Option<log::LevelFilter> {
+        None
+    }
+
     fn run(&self) -> Result<(), Box<dyn std::error::Error>>;
 }
 

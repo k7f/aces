@@ -325,7 +325,11 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             // Consequence is a single positive link literal.  The
             // rule is a single two-literal port-link clause.
 
-            vec![sat::Clause::new(&[self.product[0].into_sat_literal(false), port_lit], "monomial")]
+            vec![sat::Clause::from_pair(
+                self.product[0].into_sat_literal(false),
+                port_lit,
+                "monomial",
+            )]
         } else if self.is_monomial() {
             // Consequence is a conjunction of _N_ >= 2 positive link
             // literals.  The rule is a sequence of _N_ two-literal
@@ -333,7 +337,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
 
             self.product
                 .iter()
-                .map(|id| sat::Clause::new(&[id.into_sat_literal(false), port_lit], "monomial"))
+                .map(|id| sat::Clause::from_pair(id.into_sat_literal(false), port_lit, "monomial"))
                 .collect()
         } else {
             // Consequence is a disjunction of _M_ >= 2 statements,

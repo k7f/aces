@@ -118,6 +118,24 @@ impl Literal {
     }
 }
 
+impl From<Lit> for Literal {
+    fn from(lit: Lit) -> Self {
+        Literal(lit)
+    }
+}
+
+impl From<Literal> for Lit {
+    fn from(lit: Literal) -> Self {
+        lit.0
+    }
+}
+
+impl From<&Literal> for Lit {
+    fn from(lit: &Literal) -> Self {
+        lit.0
+    }
+}
+
 impl ops::Not for Literal {
     type Output = Self;
 
@@ -145,26 +163,39 @@ impl Contextual for Literal {
 }
 
 pub struct Clause {
-    literals: Vec<Lit>,
-    info:     String,
+    lits: Vec<Lit>,
+    info: String,
 }
 
 impl Clause {
-    pub fn new<'a, I, S>(clause: I, info: S) -> Self
+    pub fn new<I, S>(literals: I, info: S) -> Self
     where
-        I: IntoIterator<Item = &'a Literal> + Clone,
+        I: IntoIterator + Clone,
+        I::Item: Into<Lit>,
         S: AsRef<str>,
     {
-        let literals = clause.into_iter().map(|lit| lit.0).collect();
+        let lits = literals.into_iter().map(|lit| lit.into()).collect();
         let info = info.as_ref().to_owned();
 
-        Clause { literals, info }
+        Clause { lits, info }
+    }
+
+    pub fn from_pair<L1, L2, S>(lit1: L1, lit2: L2, info: S) -> Self
+    where
+        L1: Into<Lit>,
+        L2: Into<Lit>,
+        S: AsRef<str>,
+    {
+        let lits = vec![lit1.into(), lit2.into()];
+        let info = info.as_ref().to_owned();
+
+        Clause { lits, info }
     }
 }
 
 impl Contextual for Clause {
     fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
-        let mut liter = self.literals.iter();
+        let mut liter = self.lits.iter();
 
         if let Some(lit) = liter.next() {
             let mut litxt = Literal(*lit).format(ctx, dock)?;
@@ -192,7 +223,7 @@ impl Formula {
     }
 
     fn add_clause(&mut self, clause: Clause) {
-        if clause.literals.is_empty() {
+        if clause.lits.is_empty() {
             debug!("Empty {} clause, not added to formula", clause.info);
         } else {
             if log_enabled!(Debug) {
@@ -200,8 +231,8 @@ impl Formula {
                 debug!("Add (to formula) {} clause: {}", clause.info, ctx.with(&clause))
             }
 
-            self.cnf.add_clause(clause.literals.as_slice());
-            self.variables.extend(clause.literals.iter().map(|lit| lit.var()));
+            self.cnf.add_clause(clause.lits.as_slice());
+            self.variables.extend(clause.lits.iter().map(|lit| lit.var()));
         }
     }
 
@@ -216,15 +247,15 @@ impl Formula {
         let (port_lit, antiport_lit) = {
             if let Some(antiport_id) = self.context.lock().unwrap().get_antiport_id(port_id) {
                 (
-                    Literal::from_atom_id(port_id.into(), true),
-                    Literal::from_atom_id(antiport_id.into(), true),
+                    Lit::from_atom_id(port_id.into(), true),
+                    Lit::from_atom_id(antiport_id.into(), true),
                 )
             } else {
                 return // this isn't an internal node
             }
         };
 
-        let clause = Clause::new(&[port_lit, antiport_lit], "internal node");
+        let clause = Clause::from_pair(port_lit, antiport_lit, "internal node");
         self.add_clause(clause);
     }
 
@@ -239,7 +270,7 @@ impl Formula {
     /// Panics if `link_id` doesn't identify any `Link` in the
     /// `Context` of this `Formula`.
     pub fn add_link_coherence(&mut self, link_id: LinkID) {
-        let link_lit = Literal::from_atom_id(link_id.into(), true);
+        let link_lit = Lit::from_atom_id(link_id.into(), true);
 
         let (tx_port_lit, rx_port_lit) = {
             let ctx = self.context.lock().unwrap();
@@ -249,18 +280,18 @@ impl Formula {
                 let rx_port_id = link.get_rx_port_id();
 
                 (
-                    Literal::from_atom_id(tx_port_id.into(), false),
-                    Literal::from_atom_id(rx_port_id.into(), false),
+                    Lit::from_atom_id(tx_port_id.into(), false),
+                    Lit::from_atom_id(rx_port_id.into(), false),
                 )
             } else {
                 panic!("There is no link with ID {:?}.", link_id)
             }
         };
 
-        let clause = Clause::new(&[link_lit, tx_port_lit], "link coherence (Tx side)");
+        let clause = Clause::from_pair(link_lit, tx_port_lit, "link coherence (Tx side)");
         self.add_clause(clause);
 
-        let clause = Clause::new(&[link_lit, rx_port_lit], "link coherence (Rx side)");
+        let clause = Clause::from_pair(link_lit, rx_port_lit, "link coherence (Rx side)");
         self.add_clause(clause);
     }
 
@@ -336,10 +367,17 @@ impl<'a> Solver<'a> {
         }
     }
 
-    fn add_clause<S: AsRef<str>>(&mut self, clause: &[Lit], info: S) {
-        debug!("Add (to solver) {} clause: {:?}", info.as_ref(), clause);
+    fn add_clause(&mut self, clause: Clause) {
+        if clause.lits.is_empty() {
+            debug!("Empty {} clause, not added to solver", clause.info);
+        } else {
+            if log_enabled!(Debug) {
+                let ctx = self.context.lock().unwrap();
+                debug!("Add (to solver) {} clause: {}", clause.info, ctx.with(&clause));
+            }
 
-        self.engine.add_clause(clause);
+            self.engine.add_clause(clause.lits.as_slice());
+        }
     }
 
     pub fn add_formula(&mut self, formula: &Formula) {
@@ -362,9 +400,10 @@ impl<'a> Solver<'a> {
     ///
     /// [`Port`]: crate::Port
     pub fn inhibit_empty_solution(&mut self) {
-        let clause: Vec<_> = self.port_vars.iter().map(|&var| Lit::from_var(var, true)).collect();
+        let lits = self.port_vars.iter().map(|&var| Lit::from_var(var, true));
+        let clause = Clause::new(lits, "void inhibition");
 
-        self.add_clause(&clause, "void inhibition");
+        self.add_clause(clause);
     }
 
     // fn assume(&mut self, assumptions: &[Lit]) {

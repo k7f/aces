@@ -20,12 +20,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         _ => unreachable!(),
     };
 
-    let console_level = match app.occurrences_of("verbose") {
+    let console_level = command.console_level().unwrap_or(match app.occurrences_of("verbose") {
         0 => log::LevelFilter::Warn,
         1 => log::LevelFilter::Info,
         2 => log::LevelFilter::Debug,
         _ => log::LevelFilter::Trace,
-    };
+    });
 
     let mut logger = Logger::new(app.get_name()).with_console(console_level);
 

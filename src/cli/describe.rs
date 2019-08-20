@@ -1,4 +1,5 @@
 use std::{str::FromStr, error::Error};
+use log::Level::Trace;
 use crate::{Context, ContentOrigin, CES, sat, error::AcesError};
 use super::{App, Command};
 
@@ -32,19 +33,29 @@ impl Command for Describe {
         "aces.log".to_owned()
     }
 
+    fn console_level(&self) -> Option<log::LevelFilter> {
+        Some(match self.verbosity {
+            0 => log::LevelFilter::Warn,
+            1 => log::LevelFilter::Info,
+            2 => log::LevelFilter::Debug,
+            _ => log::LevelFilter::Trace,
+        })
+    }
+
     fn run(&self) -> Result<(), Box<dyn Error>> {
         let ctx = Context::new_toplevel("describe", ContentOrigin::cex_script(&self.main_path));
 
         let ces = CES::from_file(ctx.clone(), &self.main_path)?;
 
-        if self.verbosity >= 3 {
+        if log_enabled!(Trace) {
             trace!("{:?}", ctx.lock().unwrap());
         } else {
             debug!("{:?}", ctx.lock().unwrap().nodes);
         }
 
-        // FIXME display not debug
-        info!("{:?}", ces);
+        trace!("{:?}", ces);
+        // FIXME impl Display
+        // info!("{}", ces);
 
         if !ces.is_coherent() {
             Err(Box::new(AcesError::CESIsIncoherent(
