@@ -4,16 +4,18 @@ use crate::{Context, ContentOrigin, CES, sat, error::AcesError};
 use super::{App, Command};
 
 pub struct Describe {
-    main_path: String,
-    verbosity: u64,
+    main_path:    String,
+    minimal_mode: bool,
+    verbosity:    u64,
 }
 
 impl Describe {
     pub fn new_command(app: &App) -> Box<dyn Command> {
         let main_path = app.value_of("MAIN_PATH").unwrap_or_else(|| unreachable!()).to_owned();
+        let minimal_mode = !app.is_present("all");
         let verbosity = app.occurrences_of("verbose").max(app.occurrences_of("log"));
 
-        Box::new(Self { main_path, verbosity })
+        Box::new(Self { main_path, minimal_mode, verbosity })
     }
 }
 
@@ -70,6 +72,9 @@ impl Command for Describe {
             let mut solver = sat::Solver::new(ctx.clone());
             solver.add_formula(&formula);
             solver.inhibit_empty_solution();
+
+            info!("Start of {} search", if self.minimal_mode { "minimal" } else { "all-solution" });
+            solver.set_minimal_mode(self.minimal_mode);
 
             if let Some(first_solution) = solver.next() {
                 debug!("1. Raw {:?}", first_solution);

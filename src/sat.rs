@@ -349,22 +349,37 @@ impl fmt::Display for Formula {
 }
 
 pub struct Solver<'a> {
-    context:     ContextHandle,
-    engine:      varisat::Solver<'a>,
-    port_vars:   BTreeSet<Var>,
-    is_sat:      Option<bool>,
-    last_result: Option<Result<bool, SolverError>>,
+    context:      ContextHandle,
+    engine:       varisat::Solver<'a>,
+    port_vars:    BTreeSet<Var>,
+    is_sat:       Option<bool>,
+    last_result:  Option<Result<bool, SolverError>>,
+    only_minimal: bool,
+    blocked_vars: BTreeSet<Var>,
 }
 
 impl<'a> Solver<'a> {
     pub fn new(ctx: ContextHandle) -> Self {
         Self {
-            context:     ctx,
-            engine:      Default::default(),
-            port_vars:   Default::default(),
-            is_sat:      None,
-            last_result: None,
+            context:      ctx,
+            engine:       Default::default(),
+            port_vars:    Default::default(),
+            is_sat:       None,
+            last_result:  None,
+            only_minimal: false,
+            blocked_vars: Default::default(),
         }
+    }
+
+    pub fn reset(&mut self) -> Result<(), SolverError> {
+        self.is_sat = None;
+        self.last_result = None;
+        self.blocked_vars.clear();
+        self.engine.close_proof()
+    }
+
+    pub fn set_minimal_mode(&mut self, only_minimal: bool) {
+        self.only_minimal = only_minimal;
     }
 
     fn add_clause(&mut self, clause: Clause) {
@@ -377,6 +392,29 @@ impl<'a> Solver<'a> {
             }
 
             self.engine.add_clause(clause.lits.as_slice());
+        }
+    }
+
+    fn add_anti_clause(&mut self, model: &[Lit]) {
+        let anti_clause: Vec<_> = model.iter().map(|&lit| !lit).collect();
+
+        self.engine.add_clause(anti_clause.as_slice());
+    }
+
+    fn add_blocking_clause(&mut self, model: &[Lit]) {
+        let mut blocking_clause = Vec::new();
+
+        for &lit in model.iter() {
+            if lit.is_positive() && !self.blocked_vars.contains(&lit.var()) {
+                self.blocked_vars.insert(lit.var());
+            } else {
+                blocking_clause.push(!lit);
+                self.blocked_vars.remove(&lit.var());
+            }
+        }
+
+        if !blocking_clause.is_empty() {
+            self.engine.add_clause(blocking_clause.as_slice());
         }
     }
 
@@ -469,8 +507,11 @@ impl Iterator for Solver<'_> {
         self.solve().and_then(|is_sat| {
             if is_sat {
                 self.engine.model().map(|model| {
-                    let anti_clause: Vec<_> = model.iter().map(|&lit| !lit).collect();
-                    self.engine.add_clause(anti_clause.as_slice());
+                    if self.only_minimal {
+                        self.add_blocking_clause(&model);
+                    } else {
+                        self.add_anti_clause(&model);
+                    }
 
                     Solution::from_model(self.context.clone(), model)
                 })

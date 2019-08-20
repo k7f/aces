@@ -5,6 +5,12 @@ args:
         required: false
         default_value: data/arrow.cex
         index: 1
+    - all:
+        help: Search for all solutions, not only minimal
+        long: all
+        short: a
+        multiple: false
+        global: false
     - log:
         help: Turn on logging to file
         long: log
