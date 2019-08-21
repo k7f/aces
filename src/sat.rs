@@ -27,22 +27,7 @@ impl CESVar for Var {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-#[repr(transparent)]
-pub struct Variable(pub(crate) Var);
-
-impl Variable {
-    #[allow(dead_code)]
-    pub(crate) fn from_atom_id(atom_id: AtomID) -> Self {
-        Self(Var::from_atom_id(atom_id))
-    }
-
-    pub(crate) fn into_atom_id(self) -> AtomID {
-        self.0.into_atom_id()
-    }
-}
-
-impl Contextual for Variable {
+impl Contextual for Var {
     fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
         let mut result = String::new();
         let atom_id = self.into_atom_id();
@@ -59,6 +44,16 @@ impl Contextual for Variable {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[repr(transparent)]
+pub struct Variable(pub(crate) Var);
+
+impl Contextual for Variable {
+    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
+        self.0.format(ctx, dock)
+    }
+}
+
 trait CESLit {
     fn from_atom_id(atom_id: AtomID, negated: bool) -> Self;
     fn into_atom_id(self) -> (AtomID, bool);
@@ -72,6 +67,34 @@ impl CESLit for Lit {
     fn into_atom_id(self) -> (AtomID, bool) {
         let lit = self.to_dimacs();
         unsafe { (AtomID::new_unchecked(lit.abs().try_into().unwrap()), lit < 0) }
+    }
+}
+
+impl Contextual for Lit {
+    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
+        if self.is_negative() {
+            Ok(format!("~{}", self.var().format(ctx, dock)?))
+        } else {
+            self.var().format(ctx, dock)
+        }
+    }
+}
+
+impl Contextual for Vec<Lit> {
+    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
+        let mut liter = self.iter();
+
+        if let Some(lit) = liter.next() {
+            let mut litxt = lit.format(ctx, dock)?;
+
+            for lit in liter {
+                litxt.push_str(&format!(", {}", ctx.with(lit)));
+            }
+
+            Ok(format!("{{{}}}", litxt))
+        } else {
+            Ok("{{}}".to_owned())
+        }
     }
 }
 
@@ -154,11 +177,7 @@ impl ops::BitXor<bool> for Literal {
 
 impl Contextual for Literal {
     fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
-        if self.is_negative() {
-            Ok(format!("~{}", Variable(self.0.var()).format(ctx, dock)?))
-        } else {
-            Variable(self.0.var()).format(ctx, dock)
-        }
+        self.0.format(ctx, dock)
     }
 }
 
@@ -195,19 +214,7 @@ impl Clause {
 
 impl Contextual for Clause {
     fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
-        let mut liter = self.lits.iter();
-
-        if let Some(lit) = liter.next() {
-            let mut litxt = Literal(*lit).format(ctx, dock)?;
-
-            for lit in liter {
-                litxt.push_str(&format!(", {}", ctx.with(&Literal(*lit))));
-            }
-
-            Ok(format!("{{{}}}", litxt))
-        } else {
-            Ok("{{}}".to_owned())
-        }
+        self.lits.format(ctx, dock)
     }
 }
 
@@ -355,7 +362,8 @@ pub struct Solver<'a> {
     is_sat:       Option<bool>,
     last_result:  Option<Result<bool, SolverError>>,
     only_minimal: bool,
-    blocked_vars: BTreeSet<Var>,
+    min_residue:  BTreeSet<Var>,
+    assumptions:  Vec<Lit>,
 }
 
 impl<'a> Solver<'a> {
@@ -367,14 +375,16 @@ impl<'a> Solver<'a> {
             is_sat:       None,
             last_result:  None,
             only_minimal: false,
-            blocked_vars: Default::default(),
+            min_residue:  Default::default(),
+            assumptions:  Default::default(),
         }
     }
 
     pub fn reset(&mut self) -> Result<(), SolverError> {
         self.is_sat = None;
         self.last_result = None;
-        self.blocked_vars.clear();
+        self.min_residue.clear();
+        self.assumptions.clear();
         self.engine.close_proof()
     }
 
@@ -392,29 +402,6 @@ impl<'a> Solver<'a> {
             }
 
             self.engine.add_clause(clause.lits.as_slice());
-        }
-    }
-
-    fn add_anti_clause(&mut self, model: &[Lit]) {
-        let anti_clause: Vec<_> = model.iter().map(|&lit| !lit).collect();
-
-        self.engine.add_clause(anti_clause.as_slice());
-    }
-
-    fn add_blocking_clause(&mut self, model: &[Lit]) {
-        let mut blocking_clause = Vec::new();
-
-        for &lit in model.iter() {
-            if lit.is_positive() && !self.blocked_vars.contains(&lit.var()) {
-                self.blocked_vars.insert(lit.var());
-            } else {
-                blocking_clause.push(!lit);
-                self.blocked_vars.remove(&lit.var());
-            }
-        }
-
-        if !blocking_clause.is_empty() {
-            self.engine.add_clause(blocking_clause.as_slice());
         }
     }
 
@@ -444,11 +431,45 @@ impl<'a> Solver<'a> {
         self.add_clause(clause);
     }
 
-    // fn assume(&mut self, assumptions: &[Lit]) {
-    //     self.engine.assume(assumptions);
-    // }
+    /// Adds a _model inhibition_ clause which will remove a specific
+    /// `model` from solution space.
+    ///
+    /// The blocking clause is constructed by negating the given
+    /// `model`, i.e. by taking the disjunction of all literals and
+    /// reversing polarity of each.
+    fn inhibit_model(&mut self, model: &[Lit]) {
+        let anti_lits = model.iter().map(|&lit| !lit);
+
+        let anti_clause = Clause::new(anti_lits, "model inhibition");
+        self.add_clause(anti_clause);
+    }
+
+    fn reduce_model(&mut self, model: &[Lit]) {
+        let mut reducing_lits = Vec::new();
+
+        for &lit in model.iter() {
+            if !self.min_residue.contains(&lit.var()) {
+                if lit.is_positive() {
+                    reducing_lits.push(!lit);
+                } else {
+                    self.assumptions.push(lit);
+                    self.min_residue.insert(lit.var());
+                }
+            }
+        }
+
+        let reducing_clause = Clause::new(reducing_lits.into_iter(), "model reduction");
+        self.add_clause(reducing_clause);
+    }
 
     pub fn solve(&mut self) -> Option<bool> {
+        if log_enabled!(Debug) && !self.assumptions.is_empty() {
+            let ctx = self.context.lock().unwrap();
+            debug!("Solving under assumptions: {}", ctx.with(&self.assumptions));
+        }
+
+        self.engine.assume(self.assumptions.as_slice());
+
         let result = self.engine.solve();
 
         let is_sat = result.as_ref().ok().copied();
@@ -504,17 +525,54 @@ impl Iterator for Solver<'_> {
     type Item = Solution;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.only_minimal {
+            self.assumptions.clear();
+        } else if let Some(is_sat) = self.is_sat {
+            if is_sat {
+                if let Some(model) = self.engine.model() {
+                    self.inhibit_model(&model);
+                }
+            }
+        }
+
         self.solve().and_then(|is_sat| {
             if is_sat {
-                self.engine.model().map(|model| {
-                    if self.only_minimal {
-                        self.add_blocking_clause(&model);
-                    } else {
-                        self.add_anti_clause(&model);
-                    }
+                if self.only_minimal {
+                    if let Some(top_model) = self.engine.model() {
+                        self.min_residue.clear();
+                        self.assumptions.clear();
 
-                    Solution::from_model(self.context.clone(), model)
-                })
+                        self.reduce_model(&top_model);
+
+                        while let Some(is_sat) = self.solve() {
+                            if is_sat {
+                                if let Some(model) = self.engine.model() {
+                                    self.reduce_model(&model);
+                                } else {
+                                    break
+                                }
+                            } else {
+                                break
+                            }
+                        }
+
+                        let model = top_model.iter().filter_map(|lit| {
+                            if self.min_residue.contains(&lit.var()) {
+                                None
+                            } else {
+                                Some(*lit)
+                            }
+                        });
+
+                        Some(Solution::from_model(self.context.clone(), model))
+                    } else {
+                        None
+                    }
+                } else {
+                    self.engine
+                        .model()
+                        .map(|model| Solution::from_model(self.context.clone(), model))
+                }
             } else {
                 None
             }

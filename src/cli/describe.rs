@@ -1,5 +1,4 @@
 use std::{str::FromStr, error::Error};
-use log::Level::Trace;
 use crate::{Context, ContentOrigin, CES, sat, error::AcesError};
 use super::{App, Command};
 
@@ -49,12 +48,7 @@ impl Command for Describe {
 
         let ces = CES::from_file(ctx.clone(), &self.main_path)?;
 
-        if log_enabled!(Trace) {
-            trace!("{:?}", ctx.lock().unwrap());
-        } else {
-            debug!("{:?}", ctx.lock().unwrap().nodes);
-        }
-
+        trace!("{:?}", ctx.lock().unwrap());
         trace!("{:?}", ces);
         // FIXME impl Display
         // info!("{}", ces);
@@ -73,7 +67,7 @@ impl Command for Describe {
             solver.add_formula(&formula);
             solver.inhibit_empty_solution();
 
-            info!("Start of {} search", if self.minimal_mode { "minimal" } else { "all-solution" });
+            info!("Start of {}-solution search", if self.minimal_mode { "min" } else { "all" });
             solver.set_minimal_mode(self.minimal_mode);
 
             if let Some(first_solution) = solver.next() {

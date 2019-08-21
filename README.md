@@ -8,8 +8,8 @@ aces
 Algebra of [Cause-Effect
 Structures](https://link.springer.com/book/10.1007/978-3-030-20461-7)
 &mdash; an implementation of the theory.  This is the core library and
-command-line tools of the [_Ascesis_](https://github.com/k7f/ascesis)
-project.
+a set of command-line tools of the
+[_Ascesis_](https://github.com/k7f/ascesis) project.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ Its executables should run on any
 [platform](https://forge.rust-lang.org/platform-support.html)
 supporting the Rust `std` library.  Be aware, though, that the project
 is very much a WIP.  The main toolchain used in development is nightly
-channel of Rust 1.38.
+channel of Rust 1.39.
 
 ## Library
 
@@ -38,7 +38,7 @@ public interface to the library.
 ### Installation
 
 Having [Rust](https://www.rust-lang.org/downloads.html) installed,
-ensure its version is at least 1.36: check with `cargo version` and
+ensure its version is at least 1.37: check with `cargo version` and
 run `rustup update` if needed.  Then
 
 ```bash
