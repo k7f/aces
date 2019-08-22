@@ -1,8 +1,4 @@
-use std::{
-    slice, iter, cmp, ops, fmt,
-    collections::{BTreeSet, HashSet},
-    error::Error,
-};
+use std::{slice, iter, cmp, ops, fmt, collections::BTreeSet, error::Error};
 use bit_vec::BitVec;
 use crate::{
     NodeID, Port, PortID, Link, LinkID, Context, ContextHandle, Contextual, InContextMut, Atomic,
@@ -328,7 +324,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             vec![sat::Clause::from_pair(
                 self.product[0].into_sat_literal(false),
                 port_lit,
-                "monomial",
+                "atomic",
             )]
         } else if self.is_monomial() {
             // Consequence is a conjunction of _N_ >= 2 positive link
@@ -374,24 +370,10 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             let mut num_repeated_literals = 0;
 
             'outer: loop {
-                let clause = cursors.iter().enumerate().map(|(row, &col)| clause_table[row][col]);
+                let lits = cursors.iter().enumerate().map(|(row, &col)| clause_table[row][col]);
 
-                let positives: HashSet<_> =
-                    clause.clone().filter_map(|lit| lit.into_variable_if_positive()).collect();
-                let negatives: HashSet<_> =
-                    clause.filter_map(|lit| lit.into_variable_if_negative()).collect();
-
-                if positives.is_disjoint(&negatives) {
-                    let clause: Vec<_> = positives
-                        .into_iter()
-                        .map(|var| sat::Literal::from_variable(var, false))
-                        .chain(
-                            negatives.into_iter().map(|var| sat::Literal::from_variable(var, true)),
-                        )
-                        .collect();
-
+                if let Some(clause) = sat::Clause::from_literals_checked(lits, "polynomial term") {
                     num_repeated_literals += num_monos + 1 - clause.len();
-
                     clauses.push(clause);
                 } else {
                     num_tautologies += 1;
@@ -417,13 +399,13 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             }
 
             info!(
-                "Pushed {} clauses, removed {} tautologies and {} repeated literals",
+                "Pushing {} polynomial term clauses (removed {} tautologies and {} repeated literals)",
                 clauses.len(),
                 num_tautologies,
                 num_repeated_literals,
             );
 
-            clauses.iter().map(|lits| sat::Clause::new(lits, "monomial")).collect()
+            clauses
         }
     }
 }

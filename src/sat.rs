@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashSet},
     convert::TryInto,
     ops,
     fmt::{self, Write},
@@ -103,10 +103,6 @@ impl Contextual for Vec<Lit> {
 pub struct Literal(pub(crate) Lit);
 
 impl Literal {
-    pub(crate) fn from_variable(var: Variable, negated: bool) -> Self {
-        Literal(Lit::from_var(var.0, !negated))
-    }
-
     pub(crate) fn from_atom_id(atom_id: AtomID, negated: bool) -> Self {
         Self(Lit::from_atom_id(atom_id, negated))
     }
@@ -122,22 +118,6 @@ impl Literal {
 
     pub fn is_positive(self) -> bool {
         self.0.is_positive()
-    }
-
-    pub(crate) fn into_variable_if_positive(self) -> Option<Variable> {
-        if self.is_positive() {
-            Some(Variable(self.0.var()))
-        } else {
-            None
-        }
-    }
-
-    pub(crate) fn into_variable_if_negative(self) -> Option<Variable> {
-        if self.is_negative() {
-            Some(Variable(self.0.var()))
-        } else {
-            None
-        }
     }
 }
 
@@ -187,7 +167,7 @@ pub struct Clause {
 }
 
 impl Clause {
-    pub fn new<I, S>(literals: I, info: S) -> Self
+    pub fn from_literals<I, S>(literals: I, info: S) -> Self
     where
         I: IntoIterator + Clone,
         I::Item: Into<Lit>,
@@ -209,6 +189,63 @@ impl Clause {
         let info = info.as_ref().to_owned();
 
         Clause { lits, info }
+    }
+
+    pub fn from_literals_checked<I, S>(literals: I, info: S) -> Option<Self>
+    where
+        I: IntoIterator + Clone,
+        I::Item: Into<Lit>,
+        S: AsRef<str>,
+    {
+        let positives: HashSet<_> = literals
+            .clone()
+            .into_iter()
+            .filter_map(|lit| {
+                let lit = lit.into();
+
+                if lit.is_positive() {
+                    Some(lit.var())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let negatives: HashSet<_> = literals
+            .into_iter()
+            .filter_map(|lit| {
+                let lit = lit.into();
+
+                if lit.is_negative() {
+                    Some(lit.var())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if positives.is_disjoint(&negatives) {
+            let lits: Vec<_> = positives
+                .into_iter()
+                .map(|var| Lit::from_var(var, true))
+                .chain(negatives.into_iter().map(|var| Lit::from_var(var, false)))
+                .collect();
+
+            let info = info.as_ref().to_owned();
+
+            Some(Clause { lits, info })
+        } else {
+            trace!("Tautology: +{:?} -{:?}", positives, negatives);
+            None
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lits.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.lits.len()
     }
 }
 
@@ -426,7 +463,7 @@ impl<'a> Solver<'a> {
     /// [`Port`]: crate::Port
     pub fn inhibit_empty_solution(&mut self) {
         let lits = self.port_vars.iter().map(|&var| Lit::from_var(var, true));
-        let clause = Clause::new(lits, "void inhibition");
+        let clause = Clause::from_literals(lits, "void inhibition");
 
         self.add_clause(clause);
     }
@@ -440,7 +477,7 @@ impl<'a> Solver<'a> {
     fn inhibit_model(&mut self, model: &[Lit]) {
         let anti_lits = model.iter().map(|&lit| !lit);
 
-        let anti_clause = Clause::new(anti_lits, "model inhibition");
+        let anti_clause = Clause::from_literals(anti_lits, "model inhibition");
         self.add_clause(anti_clause);
     }
 
@@ -458,7 +495,7 @@ impl<'a> Solver<'a> {
             }
         }
 
-        let reducing_clause = Clause::new(reducing_lits.into_iter(), "model reduction");
+        let reducing_clause = Clause::from_literals(reducing_lits.into_iter(), "model reduction");
         self.add_clause(reducing_clause);
     }
 
@@ -537,8 +574,10 @@ impl Iterator for Solver<'_> {
 
         self.solve().and_then(|is_sat| {
             if is_sat {
-                if self.only_minimal {
-                    if let Some(top_model) = self.engine.model() {
+                self.engine.model().map(|top_model| {
+                    if self.only_minimal {
+                        trace!("Top model: {:?}", top_model);
+
                         self.min_residue.clear();
                         self.assumptions.clear();
 
@@ -547,6 +586,8 @@ impl Iterator for Solver<'_> {
                         while let Some(is_sat) = self.solve() {
                             if is_sat {
                                 if let Some(model) = self.engine.model() {
+                                    trace!("Reduced model: {:?}", top_model);
+
                                     self.reduce_model(&model);
                                 } else {
                                     break
@@ -556,23 +597,15 @@ impl Iterator for Solver<'_> {
                             }
                         }
 
-                        let model = top_model.iter().filter_map(|lit| {
-                            if self.min_residue.contains(&lit.var()) {
-                                None
-                            } else {
-                                Some(*lit)
-                            }
+                        let min_model = top_model.iter().map(|lit| {
+                            Lit::from_var(lit.var(), !self.min_residue.contains(&lit.var()))
                         });
 
-                        Some(Solution::from_model(self.context.clone(), model))
+                        Solution::from_model(self.context.clone(), min_model)
                     } else {
-                        None
+                        Solution::from_model(self.context.clone(), top_model)
                     }
-                } else {
-                    self.engine
-                        .model()
-                        .map(|model| Solution::from_model(self.context.clone(), model))
-                }
+                })
             } else {
                 None
             }
