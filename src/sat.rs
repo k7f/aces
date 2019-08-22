@@ -586,7 +586,7 @@ impl Iterator for Solver<'_> {
                         while let Some(is_sat) = self.solve() {
                             if is_sat {
                                 if let Some(model) = self.engine.model() {
-                                    trace!("Reduced model: {:?}", top_model);
+                                    trace!("Reduced model: {:?}", model);
 
                                     self.reduce_model(&model);
                                 } else {

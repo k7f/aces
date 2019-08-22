@@ -3,7 +3,7 @@
 [package]
 
 name = "aces"
-version = "0.0.6-pre"
+version = "0.0.6"
 description = "Algebra of Cause-Effect Structures"
 authors = ["k7f"]
 edition = "2018"
