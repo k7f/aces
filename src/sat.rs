@@ -262,8 +262,12 @@ pub struct Formula {
 }
 
 impl Formula {
-    pub fn new(ctx: ContextHandle) -> Self {
-        Self { context: ctx, cnf: Default::default(), variables: Default::default() }
+    pub fn new(ctx: &ContextHandle) -> Self {
+        Self {
+            context:   ctx.clone(),
+            cnf:       Default::default(),
+            variables: Default::default(),
+        }
     }
 
     fn add_clause(&mut self, clause: Clause) {
@@ -404,9 +408,9 @@ pub struct Solver<'a> {
 }
 
 impl<'a> Solver<'a> {
-    pub fn new(ctx: ContextHandle) -> Self {
+    pub fn new(ctx: &ContextHandle) -> Self {
         Self {
-            context:      ctx,
+            context:      ctx.clone(),
             engine:       Default::default(),
             port_vars:    Default::default(),
             is_sat:       None,
@@ -543,7 +547,7 @@ impl<'a> Solver<'a> {
     }
 
     pub fn get_solution(&self) -> Option<Solution> {
-        self.engine.model().map(|model| Solution::from_model(self.context.clone(), model))
+        self.engine.model().map(|model| Solution::from_model(&self.context, model))
     }
 
     /// Returns the result of last call to [`solve()`].
@@ -601,9 +605,9 @@ impl Iterator for Solver<'_> {
                             Lit::from_var(lit.var(), !self.min_residue.contains(&lit.var()))
                         });
 
-                        Solution::from_model(self.context.clone(), min_model)
+                        Solution::from_model(&self.context, min_model)
                     } else {
-                        Solution::from_model(self.context.clone(), top_model)
+                        Solution::from_model(&self.context, top_model)
                     }
                 })
             } else {
@@ -621,16 +625,16 @@ pub struct Solution {
 }
 
 impl Solution {
-    fn new(ctx: ContextHandle) -> Self {
+    fn new(ctx: &ContextHandle) -> Self {
         Self {
-            context:  ctx,
+            context:  ctx.clone(),
             model:    Default::default(),
             pre_set:  Default::default(),
             post_set: Default::default(),
         }
     }
 
-    fn from_model<I: IntoIterator<Item = Lit>>(ctx: ContextHandle, model: I) -> Self {
+    fn from_model<I: IntoIterator<Item = Lit>>(ctx: &ContextHandle, model: I) -> Self {
         let mut solution = Self::new(ctx);
 
         for lit in model {

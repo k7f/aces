@@ -35,9 +35,9 @@ impl CES {
     /// [`ContextHandle`].
     ///
     /// [`Context`]: crate::Context
-    pub fn new(ctx: ContextHandle) -> Self {
+    pub fn new(ctx: &ContextHandle) -> Self {
         Self {
-            context:        ctx,
+            context:        ctx.clone(),
             content:        Default::default(),
             causes:         Default::default(),
             effects:        Default::default(),
@@ -108,10 +108,10 @@ impl CES {
     }
 
     pub fn from_content(
-        ctx: ContextHandle,
+        ctx: &ContextHandle,
         mut content: Box<dyn Content>,
     ) -> Result<Self, Box<dyn Error>> {
-        let mut ces = CES::new(ctx.clone());
+        let mut ces = CES::new(ctx);
 
         for node_id in content.get_carrier_ids() {
             if let Some(ref poly_ids) = content.get_causes_by_id(node_id) {
@@ -124,7 +124,7 @@ impl CES {
                 let mut port = Port::new(node::Face::Rx, node_id);
                 let pid = ces.context.lock().unwrap().share_port(&mut port);
 
-                let poly = Polynomial::from_port_and_ids(ces.context.clone(), &port, poly_ids);
+                let poly = Polynomial::from_port_and_ids(&ces.context, &port, poly_ids);
 
                 ces.add_cause_polynomial(pid, poly);
                 ces.carrier.entry(node_id).or_insert_with(Default::default);
@@ -140,7 +140,7 @@ impl CES {
                 let mut port = Port::new(node::Face::Tx, node_id);
                 let pid = ces.context.lock().unwrap().share_port(&mut port);
 
-                let poly = Polynomial::from_port_and_ids(ces.context.clone(), &port, poly_ids);
+                let poly = Polynomial::from_port_and_ids(&ces.context, &port, poly_ids);
 
                 ces.add_effect_polynomial(pid, poly);
                 ces.carrier.entry(node_id).or_insert_with(Default::default);
@@ -155,8 +155,8 @@ impl CES {
     /// a [`Context`] given by a [`ContextHandle`].
     ///
     /// [`Context`]: crate::Context
-    pub fn from_str<S: AsRef<str>>(ctx: ContextHandle, script: S) -> Result<Self, Box<dyn Error>> {
-        let content = content_from_str(&ctx, script)?;
+    pub fn from_str<S: AsRef<str>>(ctx: &ContextHandle, script: S) -> Result<Self, Box<dyn Error>> {
+        let content = content_from_str(ctx, script)?;
 
         Self::from_content(ctx, content)
     }
@@ -166,12 +166,16 @@ impl CES {
     /// [`ContextHandle`].
     ///
     /// [`Context`]: crate::Context
-    pub fn from_file<P: AsRef<Path>>(ctx: ContextHandle, path: P) -> Result<Self, Box<dyn Error>> {
+    pub fn from_file<P: AsRef<Path>>(ctx: &ContextHandle, path: P) -> Result<Self, Box<dyn Error>> {
         let mut fp = File::open(path)?;
         let mut script = String::new();
         fp.read_to_string(&mut script)?;
 
         Self::from_str(ctx, &script)
+    }
+
+    pub fn get_context(&self) -> &ContextHandle {
+        &self.context
     }
 
     pub fn get_name(&self) -> Option<&str> {
@@ -195,7 +199,7 @@ impl CES {
     }
 
     pub fn get_formula(&self) -> sat::Formula {
-        let mut formula = sat::Formula::new(self.context.clone());
+        let mut formula = sat::Formula::new(&self.context);
 
         for (&pid, poly) in self.causes.iter() {
             formula.add_polynomial(pid, poly);
@@ -211,5 +215,45 @@ impl CES {
         }
 
         formula
+    }
+
+    pub fn solve(&self, minimal_mode: bool) -> Result<(), Box<dyn Error>> {
+        if !self.is_coherent() {
+            Err(Box::new(AcesError::CESIsIncoherent(
+                self.get_name().unwrap_or("anonymous").to_owned(),
+            )))
+        } else {
+            let formula = self.get_formula();
+
+            debug!("Raw {:?}", formula);
+            info!("Formula: {}", formula);
+
+            let mut solver = sat::Solver::new(&self.context);
+            solver.add_formula(&formula);
+            solver.inhibit_empty_solution();
+
+            info!("Start of {}-solution search", if minimal_mode { "min" } else { "all" });
+            solver.set_minimal_mode(minimal_mode);
+
+            if let Some(first_solution) = solver.next() {
+                debug!("1. Raw {:?}", first_solution);
+                println!("1. Solution: {}", first_solution);
+
+                for (count, solution) in solver.enumerate() {
+                    debug!("{}. Raw {:?}", count + 2, solution);
+                    println!("{}. Solution: {}", count + 2, solution);
+                }
+            } else if solver.is_sat().is_some() {
+                println!("\nStructural deadlock (found no solutions).");
+            } else if solver.was_interrupted() {
+                warn!("Solving was interrupted");
+            } else if let Some(Err(err)) = solver.take_last_result() {
+                error!("Solving failed: {}", err);
+            } else {
+                unreachable!()
+            }
+
+            Ok(())
+        }
     }
 }

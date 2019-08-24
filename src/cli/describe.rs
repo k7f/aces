@@ -1,5 +1,5 @@
 use std::{str::FromStr, error::Error};
-use crate::{Context, ContentOrigin, CES, sat, error::AcesError};
+use crate::{Context, ContentOrigin, CES};
 use super::{App, Command};
 
 pub struct Describe {
@@ -46,49 +46,13 @@ impl Command for Describe {
     fn run(&self) -> Result<(), Box<dyn Error>> {
         let ctx = Context::new_toplevel("describe", ContentOrigin::cex_script(&self.main_path));
 
-        let ces = CES::from_file(ctx.clone(), &self.main_path)?;
+        let ces = CES::from_file(&ctx, &self.main_path)?;
 
         trace!("{:?}", ctx.lock().unwrap());
         trace!("{:?}", ces);
         // FIXME impl Display
         // info!("{}", ces);
 
-        if !ces.is_coherent() {
-            Err(Box::new(AcesError::CESIsIncoherent(
-                ces.get_name().unwrap_or("anonymous").to_owned(),
-            )))
-        } else {
-            let formula = ces.get_formula();
-
-            debug!("Raw {:?}", formula);
-            info!("Formula: {}", formula);
-
-            let mut solver = sat::Solver::new(ctx.clone());
-            solver.add_formula(&formula);
-            solver.inhibit_empty_solution();
-
-            info!("Start of {}-solution search", if self.minimal_mode { "min" } else { "all" });
-            solver.set_minimal_mode(self.minimal_mode);
-
-            if let Some(first_solution) = solver.next() {
-                debug!("1. Raw {:?}", first_solution);
-                println!("1. Solution: {}", first_solution);
-
-                for (count, solution) in solver.enumerate() {
-                    debug!("{}. Raw {:?}", count + 2, solution);
-                    println!("{}. Solution: {}", count + 2, solution);
-                }
-            } else if solver.is_sat().is_some() {
-                println!("\nStructural deadlock (found no solutions).");
-            } else if solver.was_interrupted() {
-                warn!("Solving was interrupted");
-            } else if let Some(Err(err)) = solver.take_last_result() {
-                error!("Solving failed: {}", err);
-            } else {
-                unreachable!()
-            }
-
-            Ok(())
-        }
+        ces.solve(self.minimal_mode)
     }
 }

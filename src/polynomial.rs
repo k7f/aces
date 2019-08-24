@@ -39,7 +39,7 @@ pub struct Polynomial<T: Atomic + fmt::Debug> {
 impl Polynomial<LinkID> {
     /// Creates a polynomial from a sequence of vectors of
     /// [`NodeID`]s and in a [`Context`] given by a [`ContextHandle`].
-    pub fn from_port_and_ids(ctx: ContextHandle, port: &Port, poly_ids: &[Vec<NodeID>]) -> Self {
+    pub fn from_port_and_ids(ctx: &ContextHandle, port: &Port, poly_ids: &[Vec<NodeID>]) -> Self {
         let mut result = Self::new();
 
         let pid = PortID(port.get_atom_id());
@@ -399,7 +399,8 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             }
 
             info!(
-                "Pushing {} polynomial term clauses (removed {} tautologies and {} repeated literals)",
+                "Pushing {} polynomial term clauses (removed {} tautologies and {} repeated \
+                 literals)",
                 clauses.len(),
                 num_tautologies,
                 num_repeated_literals,

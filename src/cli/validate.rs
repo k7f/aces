@@ -50,7 +50,7 @@ impl Command for Validate {
 
                             ctx.lock().unwrap().reset(ContentOrigin::cex_script(path));
 
-                            let result = CES::from_file(ctx.clone(), path);
+                            let result = CES::from_file(&ctx, path);
                             match result {
                                 Ok(ces) => {
                                     if self.verbosity >= 2 {
