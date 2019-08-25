@@ -11,12 +11,12 @@ use crate::{
     Atomic, Context, ContextHandle, Contextual, Polynomial, PortID, LinkID, node, atom::AtomID,
 };
 
-trait CESVar {
+trait CEVar {
     fn from_atom_id(atom_id: AtomID) -> Self;
     fn into_atom_id(self) -> AtomID;
 }
 
-impl CESVar for Var {
+impl CEVar for Var {
     fn from_atom_id(atom_id: AtomID) -> Self {
         Var::from_dimacs(atom_id.get().try_into().unwrap())
     }
@@ -54,12 +54,12 @@ impl Contextual for Variable {
     }
 }
 
-trait CESLit {
+trait CELit {
     fn from_atom_id(atom_id: AtomID, negated: bool) -> Self;
     fn into_atom_id(self) -> (AtomID, bool);
 }
 
-impl CESLit for Lit {
+impl CELit for Lit {
     fn from_atom_id(atom_id: AtomID, negated: bool) -> Self {
         Self::from_var(Var::from_atom_id(atom_id), !negated)
     }

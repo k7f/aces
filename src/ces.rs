@@ -1,8 +1,8 @@
 use std::{collections::BTreeMap, io::Read, fs::File, path::Path, error::Error};
 
 use crate::{
-    ContextHandle, Port, NodeID, PortID, LinkID, Polynomial, Content, content::content_from_str,
-    node, sat, AcesError,
+    ContextHandle, Port, NodeID, PortID, LinkID, Polynomial, FiringComponent, Content,
+    content::content_from_str, node, sat, AcesError,
 };
 
 // None: fat link; Some(face): thin, face-only link
@@ -15,12 +15,12 @@ type LinkState = Option<node::Face>;
 /// capacities for the carrier), the intermediate content
 /// representation from which a c-e structure originated (optionally),
 /// and some auxiliary recomputable data.  Other properties are
-/// available indirectly: `CES` instance owns a [`ContextHandle`]
-/// which resolves to a shared [`Context`] object.
+/// available indirectly: `CEStructure` instance owns a
+/// [`ContextHandle`] which resolves to a shared [`Context`] object.
 ///
 /// [`Context`]: crate::Context
 #[derive(Debug)]
-pub struct CES {
+pub struct CEStructure {
     context:        ContextHandle,
     content:        Option<Box<dyn Content>>,
     causes:         BTreeMap<PortID, Polynomial<LinkID>>,
@@ -28,9 +28,10 @@ pub struct CES {
     links:          BTreeMap<LinkID, LinkState>,
     carrier:        BTreeMap<NodeID, node::Capacity>,
     num_thin_links: u32,
+    fcs:            Option<Vec<FiringComponent>>,
 }
 
-impl CES {
+impl CEStructure {
     /// Creates an empty c-e structure in a [`Context`] given by a
     /// [`ContextHandle`].
     ///
@@ -44,6 +45,7 @@ impl CES {
             links:          Default::default(),
             carrier:        Default::default(),
             num_thin_links: 0,
+            fcs:            Default::default(),
         }
     }
 
@@ -89,8 +91,8 @@ impl CES {
         self.effects.insert(port_id, poly);
     }
 
-    /// Adds a [`Polynomial`] to this `CES` at a given `face` (cause
-    /// or effect) of a node.
+    /// Adds a [`Polynomial`] to this `CEStructure` at a given `face`
+    /// (cause or effect) of a node.
     ///
     /// The polynomial `poly` is added to another polynomial which is
     /// already, explicitly or implicitly (as the default _&theta;_),
@@ -111,7 +113,7 @@ impl CES {
         ctx: &ContextHandle,
         mut content: Box<dyn Content>,
     ) -> Result<Self, Box<dyn Error>> {
-        let mut ces = CES::new(ctx);
+        let mut ces = CEStructure::new(ctx);
 
         for node_id in content.get_carrier_ids() {
             if let Some(ref poly_ids) = content.get_causes_by_id(node_id) {
@@ -192,8 +194,8 @@ impl CES {
     /// C-e structure is coherent iff it has no thin links, where a
     /// link is thin iff it occurs either in causes or in effects, but
     /// not in both.  Internally, there is a thin links counter
-    /// associated with each `CES` object.  This counter is updated
-    /// whenever a polynomial is added to the structure.
+    /// associated with each `CEStructure` object.  This counter is
+    /// updated whenever a polynomial is added to the structure.
     pub fn is_coherent(&self) -> bool {
         self.num_thin_links == 0
     }
@@ -219,7 +221,7 @@ impl CES {
 
     pub fn solve(&self, minimal_mode: bool) -> Result<(), Box<dyn Error>> {
         if !self.is_coherent() {
-            Err(Box::new(AcesError::CESIsIncoherent(
+            Err(Box::new(AcesError::IncoherentStructure(
                 self.get_name().unwrap_or("anonymous").to_owned(),
             )))
         } else {

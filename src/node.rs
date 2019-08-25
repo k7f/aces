@@ -9,14 +9,15 @@ use crate::{ID, Context, Contextual, InContext, Atomic, sat, error::AcesError};
 /// etc.
 ///
 /// Therefore, there is no type `Node` in _aces_.  Instead, structural
-/// information is stored in [`CES`] objects and accessed through
-/// structural identifiers, [`PortID`] and [`LinkID`].  Remaining
-/// node-related data is retrieved through `NodeID`s from [`Context`]
-/// instances (many such instances may coexist in the program).
+/// information is stored in [`CEStructure`] objects and accessed
+/// through structural identifiers, [`PortID`] and [`LinkID`].
+/// Remaining node-related data is retrieved through `NodeID`s from
+/// [`Context`] instances (many such instances may coexist in the
+/// program).
 ///
 /// [`PortID`]: crate::PortID
 /// [`LinkID`]: crate::LinkID
-/// [`CES`]: crate::CES
+/// [`CEStructure`]: crate::CEStructure
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[repr(transparent)]
 pub struct NodeID(pub(crate) ID);

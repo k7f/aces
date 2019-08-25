@@ -2,7 +2,7 @@ use std::{cmp, collections::BTreeMap, error::Error};
 use crate::{ID, NodeID, Context, Contextual, InContext, node, sat, error::AcesError};
 
 /// An abstract structural identifier serving as the common base of
-/// [`PortID`] and [`LinkID`].
+/// [`PortID`], [`LinkID`], [`ForkID`] and [`JoinID`].
 ///
 /// Since this is a numeric identifier, which is serial and one-based,
 /// it trivially maps into numeric codes of variables in the DIMACS
@@ -69,8 +69,66 @@ impl Contextual for LinkID {
     }
 }
 
-/// A collection of [`Atom`]s ([`PortID`]s and [`LinkID`]s) and a
-/// mapping from [`NodeID`]s to [`PortID`]s.
+/// An identifier of a [`Fork`], a type derived from [`AtomID`].
+///
+/// There is a trivial bijection between values of this type and
+/// numeric codes of DIMACS variables.  This mapping simplifies the
+/// construction of SAT queries and interpretation of solutions.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[repr(transparent)]
+pub struct ForkID(pub(crate) AtomID);
+
+impl ForkID {
+    #[inline]
+    pub const fn get(self) -> AtomID {
+        self.0
+    }
+}
+
+impl From<ForkID> for AtomID {
+    fn from(id: ForkID) -> Self {
+        id.0
+    }
+}
+
+impl Contextual for ForkID {
+    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
+        let fork = ctx.get_fork(*self).ok_or(AcesError::ForkMissingForID)?;
+        fork.format(ctx, dock)
+    }
+}
+
+/// An identifier of a [`Join`], a type derived from [`AtomID`].
+///
+/// There is a trivial bijection between values of this type and
+/// numeric codes of DIMACS variables.  This mapping simplifies the
+/// construction of SAT queries and interpretation of solutions.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[repr(transparent)]
+pub struct JoinID(pub(crate) AtomID);
+
+impl JoinID {
+    #[inline]
+    pub const fn get(self) -> AtomID {
+        self.0
+    }
+}
+
+impl From<JoinID> for AtomID {
+    fn from(id: JoinID) -> Self {
+        id.0
+    }
+}
+
+impl Contextual for JoinID {
+    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
+        let join = ctx.get_join(*self).ok_or(AcesError::JoinMissingForID)?;
+        join.format(ctx, dock)
+    }
+}
+
+/// A collection of [`Atom`]s ([`PortID`]s, [`LinkID`]s, [`ForkID`]s
+/// and [`JoinID`]s) and a mapping from [`NodeID`]s to [`PortID`]s.
 ///
 /// For the reverse mapping, from [`PortID`]s to [`NodeID`]s, call
 /// [`AtomSpace::get_port()`] followed by [`Port::get_node_id()`].
@@ -160,6 +218,24 @@ impl AtomSpace {
     }
 
     #[inline]
+    pub(crate) fn share_fork(&mut self, fork: &mut Fork) -> ForkID {
+        let atom_id = self.do_share_atom(Atom::Fork(fork.clone()));
+
+        fork.atom_id = Some(atom_id);
+
+        ForkID(atom_id)
+    }
+
+    #[inline]
+    pub(crate) fn share_join(&mut self, join: &mut Join) -> JoinID {
+        let atom_id = self.do_share_atom(Atom::Join(join.clone()));
+
+        join.atom_id = Some(atom_id);
+
+        JoinID(atom_id)
+    }
+
+    #[inline]
     pub(crate) fn get_atom(&self, atom_id: AtomID) -> Option<&Atom> {
         self.atoms.get(atom_id.get())
     }
@@ -211,6 +287,38 @@ impl AtomSpace {
         }
     }
 
+    #[inline]
+    pub(crate) fn get_fork(&self, fid: ForkID) -> Option<&Fork> {
+        match self.get_atom(fid.into()) {
+            Some(Atom::Fork(a)) => Some(a),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn get_fork_mut(&mut self, fid: ForkID) -> Option<&mut Fork> {
+        match self.get_atom_mut(fid.into()) {
+            Some(Atom::Fork(a)) => Some(a),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn get_join(&self, jid: JoinID) -> Option<&Join> {
+        match self.get_atom(jid.into()) {
+            Some(Atom::Join(a)) => Some(a),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn get_join_mut(&mut self, jid: JoinID) -> Option<&mut Join> {
+        match self.get_atom_mut(jid.into()) {
+            Some(Atom::Join(a)) => Some(a),
+            _ => None,
+        }
+    }
+
     pub fn get_antiport_id(&self, pid: PortID) -> Option<PortID> {
         if let Some(port) = self.get_port(pid) {
             if let Some(&(tx_id, rx_id)) = self.internal_nodes.get(&port.node_id) {
@@ -242,6 +350,8 @@ pub(crate) enum Atom {
     Tx(Port),
     Rx(Port),
     Link(Link),
+    Fork(Fork),
+    Join(Join),
     Bottom,
 }
 
@@ -253,6 +363,8 @@ impl Atom {
             Tx(p) => &mut p.atom_id,
             Rx(p) => &mut p.atom_id,
             Link(l) => &mut l.atom_id,
+            Fork(f) => &mut f.atom_id,
+            Join(j) => &mut j.atom_id,
             Bottom => panic!("Attempt to set ID of the bottom atom"),
         };
 
@@ -270,6 +382,8 @@ impl Atom {
             Tx(p) => p.atom_id,
             Rx(p) => p.atom_id,
             Link(l) => l.atom_id,
+            Fork(f) => f.atom_id,
+            Join(j) => j.atom_id,
             Bottom => panic!("Attempt to get ID of the bottom atom"),
         }
     }
@@ -288,6 +402,8 @@ impl cmp::PartialEq for Atom {
             Tx(p) => if let Tx(o) = other { p == o } else { false },
             Rx(p) => if let Rx(o) = other { p == o } else { false },
             Link(l) => if let Link(o) = other { l == o } else { false },
+            Fork(f) => if let Fork(o) = other { f == o } else { false },
+            Join(j) => if let Join(o) = other { j == o } else { false },
             Bottom => false, // irreflexive, hence no `impl cmp::Eq for Atom`
         }
     }
@@ -417,6 +533,146 @@ impl Contextual for Link {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Fork {
+    atom_id:     Option<AtomID>,
+    tx_port_id:  PortID,
+    tx_node_id:  NodeID,
+    rx_port_ids: Vec<PortID>,
+    rx_node_ids: Vec<NodeID>,
+}
+
+impl Fork {
+    pub fn new(
+        tx_port_id: PortID,
+        tx_node_id: NodeID,
+        rx_port_ids: Vec<PortID>, // FIXME
+        rx_node_ids: Vec<NodeID>, // FIXME
+    ) -> Self {
+        Self { atom_id: None, tx_port_id, tx_node_id, rx_port_ids, rx_node_ids }
+    }
+
+    pub fn get_atom_id(&self) -> AtomID {
+        self.atom_id.expect("Attempt to access an uninitialized fork")
+    }
+
+    pub fn get_fork_id(&self) -> ForkID {
+        ForkID(self.get_atom_id())
+    }
+
+    pub fn get_tx_port_id(&self) -> PortID {
+        self.tx_port_id
+    }
+
+    pub fn get_tx_node_id(&self) -> NodeID {
+        self.tx_node_id
+    }
+
+    pub fn get_rx_port_ids(&self) -> &[PortID] {
+        self.rx_port_ids.as_slice()
+    }
+
+    pub fn get_rx_node_ids(&self) -> &[NodeID] {
+        self.rx_node_ids.as_slice()
+    }
+}
+
+impl cmp::PartialEq for Fork {
+    fn eq(&self, other: &Self) -> bool {
+        self.tx_port_id == other.tx_port_id && self.rx_node_ids == other.rx_node_ids
+    }
+}
+
+impl cmp::Eq for Fork {}
+
+impl Contextual for Fork {
+    fn format(&self, ctx: &Context, _dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
+        let tx_node_name = ctx
+            .get_node_name(self.get_tx_node_id())
+            .ok_or(AcesError::NodeMissingForFork(node::Face::Tx))?;
+
+        let rx_node_names: Result<Vec<_>, AcesError> = self
+            .get_rx_node_ids()
+            .iter()
+            .map(|&node_id| {
+                ctx.get_node_name(node_id).ok_or(AcesError::NodeMissingForFork(node::Face::Rx))
+            })
+            .collect();
+
+        Ok(format!("({} > {:?})", tx_node_name, rx_node_names?))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Join {
+    atom_id:     Option<AtomID>,
+    tx_port_ids: Vec<PortID>,
+    tx_node_ids: Vec<NodeID>,
+    rx_port_id:  PortID,
+    rx_node_id:  NodeID,
+}
+
+impl Join {
+    pub fn new(
+        tx_port_ids: Vec<PortID>, // FIXME
+        tx_node_ids: Vec<NodeID>, // FIXME
+        rx_port_id: PortID,
+        rx_node_id: NodeID,
+    ) -> Self {
+        Self { atom_id: None, tx_port_ids, tx_node_ids, rx_port_id, rx_node_id }
+    }
+
+    pub fn get_atom_id(&self) -> AtomID {
+        self.atom_id.expect("Attempt to access an uninitialized join")
+    }
+
+    pub fn get_join_id(&self) -> JoinID {
+        JoinID(self.get_atom_id())
+    }
+
+    pub fn get_tx_port_ids(&self) -> &[PortID] {
+        self.tx_port_ids.as_slice()
+    }
+
+    pub fn get_tx_node_ids(&self) -> &[NodeID] {
+        self.tx_node_ids.as_slice()
+    }
+
+    pub fn get_rx_port_id(&self) -> PortID {
+        self.rx_port_id
+    }
+
+    pub fn get_rx_node_id(&self) -> NodeID {
+        self.rx_node_id
+    }
+}
+
+impl cmp::PartialEq for Join {
+    fn eq(&self, other: &Self) -> bool {
+        self.tx_port_ids == other.tx_port_ids && self.rx_node_id == other.rx_node_id
+    }
+}
+
+impl cmp::Eq for Join {}
+
+impl Contextual for Join {
+    fn format(&self, ctx: &Context, _dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
+        let tx_node_names: Result<Vec<_>, AcesError> = self
+            .get_tx_node_ids()
+            .iter()
+            .map(|&node_id| {
+                ctx.get_node_name(node_id).ok_or(AcesError::NodeMissingForJoin(node::Face::Tx))
+            })
+            .collect();
+
+        let rx_node_name = ctx
+            .get_node_name(self.get_rx_node_id())
+            .ok_or(AcesError::NodeMissingForJoin(node::Face::Rx))?;
+
+        Ok(format!("({:?} > {})", tx_node_names?, rx_node_name))
+    }
+}
+
 /// A trait of an identifier convertible into [`NodeID`] and into
 /// [`sat::Literal`].
 pub trait Atomic: Contextual + Copy + PartialEq + Eq + PartialOrd + Ord {
@@ -445,6 +701,32 @@ impl Atomic for LinkID {
         let lid = this.get_thing();
 
         ctx.get_link(*lid).and_then(|link| dock.map(|face| link.get_node_id(face)))
+    }
+
+    fn into_sat_literal(self, negated: bool) -> sat::Literal {
+        sat::Literal::from_atom_id(self.get(), negated)
+    }
+}
+
+impl Atomic for ForkID {
+    fn into_node_id(this: InContext<Self>) -> Option<NodeID> {
+        let ctx = this.get_context();
+        let fid = this.get_thing();
+
+        ctx.get_fork(*fid).map(|fork| fork.get_tx_node_id())
+    }
+
+    fn into_sat_literal(self, negated: bool) -> sat::Literal {
+        sat::Literal::from_atom_id(self.get(), negated)
+    }
+}
+
+impl Atomic for JoinID {
+    fn into_node_id(this: InContext<Self>) -> Option<NodeID> {
+        let ctx = this.get_context();
+        let jid = this.get_thing();
+
+        ctx.get_join(*jid).map(|join| join.get_rx_node_id())
     }
 
     fn into_sat_literal(self, negated: bool) -> sat::Literal {

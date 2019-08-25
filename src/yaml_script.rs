@@ -40,8 +40,8 @@ impl Error for YamlScriptError {
             Multiple => "Multiple YAML descriptions",
             NotADict => "Bad YAML description (not a dictionary)",
             KeyNotString => "Non-string key in YAML description",
-            NameNotString => "Non-string CES name in YAML description",
-            NameDup => "Duplicated CES name in YAML description",
+            NameNotString => "Non-string c-e structure name in YAML description",
+            NameDup => "Duplicated c-e structure name in YAML description",
             PolyInvalid => "Invalid YAML description of a polynomial",
             PolyAmbiguous => "Ambiguous YAML description of a polynomial",
             ShortPolyWithWords => {

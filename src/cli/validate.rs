@@ -1,5 +1,5 @@
 use std::error::Error;
-use crate::{Context, ContentOrigin, CES, error::AcesError};
+use crate::{Context, ContentOrigin, CEStructure, error::AcesError};
 use super::{App, Command};
 
 pub struct Validate {
@@ -50,7 +50,7 @@ impl Command for Validate {
 
                             ctx.lock().unwrap().reset(ContentOrigin::cex_script(path));
 
-                            let result = CES::from_file(&ctx, path);
+                            let result = CEStructure::from_file(&ctx, path);
                             match result {
                                 Ok(ces) => {
                                     if self.verbosity >= 2 {
@@ -58,7 +58,7 @@ impl Command for Validate {
                                     }
 
                                     if !self.syntax_only && !ces.is_coherent() {
-                                        let err = AcesError::CESIsIncoherent(
+                                        let err = AcesError::IncoherentStructure(
                                             ces.get_name().unwrap_or("anonymous").to_owned(),
                                         );
 

@@ -70,9 +70,9 @@ impl ContentOrigin {
 ///
 /// Note: types implementing `Content` trait shouldn't own
 /// [`ContextHandle`]s, because `Content` trait objects are owned by
-/// [`CES`] structs, along with [`ContextHandle`]s themselves.
+/// [`CEStructure`] structs, along with [`ContextHandle`]s themselves.
 ///
-/// [`CES`]: crate::CES
+/// [`CEStructure`]: crate::CEStructure
 /// [`ContextHandle`]: crate::ContextHandle
 /// [`YamlContent`]: crate::yaml_script::YamlContent
 pub trait Content: Debug {

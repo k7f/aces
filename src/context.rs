@@ -4,7 +4,7 @@ use std::{
     error::Error,
 };
 use crate::{
-    ContentOrigin, Port, Link, ID, NodeID, PortID, LinkID, node,
+    ContentOrigin, Port, Link, Fork, Join, ID, NodeID, PortID, LinkID, ForkID, JoinID, node,
     name::NameSpace,
     atom::{AtomSpace, AtomID},
 };
@@ -13,13 +13,13 @@ use crate::{
 ///
 /// All [`Context`] handles used in _aces_ have type
 /// `Arc<Mutex<Context>>`.  They are stored permanently in the
-/// following structs: [`CES`], [`sat::Formula`], [`sat::Solver`], and
-/// [`sat::Solution`].
+/// following structs: [`CEStructure`], [`sat::Formula`],
+/// [`sat::Solver`], and [`sat::Solution`].
 ///
 /// For another way of binding [`Context`] to data see [`Contextual`]
 /// trait and [`InContext`] struct.
 ///
-/// [`CES`]: crate::CES
+/// [`CEStructure`]: crate::CEStructure
 /// [`sat::Formula`]: crate::sat::Formula
 /// [`sat::Solver`]: crate::sat::Solver
 /// [`sat::Solution`]: crate::sat::Solution
@@ -140,6 +140,14 @@ impl Context {
         self.atoms.share_link(link)
     }
 
+    pub fn share_fork(&mut self, fork: &mut Fork) -> ForkID {
+        self.atoms.share_fork(fork)
+    }
+
+    pub fn share_join(&mut self, join: &mut Join) -> JoinID {
+        self.atoms.share_join(join)
+    }
+
     pub fn get_port(&self, port_id: PortID) -> Option<&Port> {
         self.atoms.get_port(port_id)
     }
@@ -154,6 +162,22 @@ impl Context {
 
     pub fn get_link_mut(&mut self, link_id: LinkID) -> Option<&mut Link> {
         self.atoms.get_link_mut(link_id)
+    }
+
+    pub fn get_fork(&self, fork_id: ForkID) -> Option<&Fork> {
+        self.atoms.get_fork(fork_id)
+    }
+
+    pub fn get_fork_mut(&mut self, fork_id: ForkID) -> Option<&mut Fork> {
+        self.atoms.get_fork_mut(fork_id)
+    }
+
+    pub fn get_join(&self, join_id: JoinID) -> Option<&Join> {
+        self.atoms.get_join(join_id)
+    }
+
+    pub fn get_join_mut(&mut self, join_id: JoinID) -> Option<&mut Join> {
+        self.atoms.get_join_mut(join_id)
     }
 
     pub fn get_antiport_id(&self, port_id: PortID) -> Option<PortID> {

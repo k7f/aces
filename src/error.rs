@@ -8,11 +8,15 @@ pub enum AcesError {
     NodeMissingForID,
     PortMissingForID,
     LinkMissingForID,
+    ForkMissingForID,
+    JoinMissingForID,
     AtomicsNotOrdered,
 
     NodeMissingForPort(node::Face),
     NodeMissingForLink(node::Face),
-    CESIsIncoherent(String),
+    NodeMissingForFork(node::Face),
+    NodeMissingForJoin(node::Face),
+    IncoherentStructure(String),
 
     EmptyCausesOfInternalNode(String),
     EmptyEffectsOfInternalNode(String),
@@ -33,7 +37,17 @@ impl fmt::Display for AcesError {
                 "Missing {} node for link",
                 if *face == node::Face::Tx { "sending" } else { "receiving" }
             ),
-            CESIsIncoherent(name) => write!(f, "Structure '{}' is incoherent", name),
+            NodeMissingForFork(face) => write!(
+                f,
+                "Missing {} node for fork",
+                if *face == node::Face::Tx { "sending" } else { "receiving" }
+            ),
+            NodeMissingForJoin(face) => write!(
+                f,
+                "Missing {} node for join",
+                if *face == node::Face::Tx { "sending" } else { "receiving" }
+            ),
+            IncoherentStructure(name) => write!(f, "Structure '{}' is incoherent", name),
             EmptyCausesOfInternalNode(name) => {
                 write!(f, "Empty cause polynomial of internal node '{}'", name)
             }
@@ -55,11 +69,15 @@ impl Error for AcesError {
             NodeMissingForID => "Node is missing for ID",
             PortMissingForID => "Port is missing for ID",
             LinkMissingForID => "Link is missing for ID",
+            ForkMissingForID => "Fork is missing for ID",
+            JoinMissingForID => "Join is missing for ID",
             AtomicsNotOrdered => "Atomics have to be given in strictly increasing order",
 
             NodeMissingForPort(_) => "Missing node for port",
             NodeMissingForLink(_) => "Missing node for link",
-            CESIsIncoherent(_) => "Incoherent CES",
+            NodeMissingForFork(_) => "Missing node for fork",
+            NodeMissingForJoin(_) => "Missing node for join",
+            IncoherentStructure(_) => "Incoherent c-e structure",
 
             EmptyCausesOfInternalNode(_) => "Empty cause polynomial of internal node",
             EmptyEffectsOfInternalNode(_) => "Empty effect polynomial of internal node",
