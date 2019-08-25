@@ -36,5 +36,5 @@ use std::num::NonZeroUsize;
 ///
 /// Used as a common internal type backing the conversion between
 /// vector indices and specific identifiers, such as [`NodeID`],
-/// [`PortID`], and [`LinkID`].
+/// [`PortID`], [`LinkID`], [`ForkID`], and [`JoinID`].
 pub(crate) type ID = NonZeroUsize;

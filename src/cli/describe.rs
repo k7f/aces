@@ -46,13 +46,25 @@ impl Command for Describe {
     fn run(&self) -> Result<(), Box<dyn Error>> {
         let ctx = Context::new_toplevel("describe", ContentOrigin::cex_script(&self.main_path));
 
-        let ces = CEStructure::from_file(&ctx, &self.main_path)?;
+        let mut ces = CEStructure::from_file(&ctx, &self.main_path)?;
 
         trace!("{:?}", ctx.lock().unwrap());
         trace!("{:?}", ces);
         // FIXME impl Display
         // info!("{}", ces);
 
-        ces.solve(self.minimal_mode)
+        ces.solve(self.minimal_mode)?;
+
+        if let Some(fcs) = ces.get_firing_components() {
+            println!("Firing components:");
+
+            let ctx = ctx.lock().unwrap();
+
+            for (i, fc) in fcs.iter().enumerate() {
+                println!("{}. {}", i + 1, ctx.with(fc));
+            }
+        }
+
+        Ok(())
     }
 }

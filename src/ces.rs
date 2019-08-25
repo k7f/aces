@@ -8,6 +8,20 @@ use crate::{
 // None: fat link; Some(face): thin, face-only link
 type LinkState = Option<node::Face>;
 
+#[derive(Debug)]
+enum Resolution {
+    Unsolved,
+    Incoherent,
+    Deadlock,
+    Solved(Vec<FiringComponent>),
+}
+
+impl Default for Resolution {
+    fn default() -> Self {
+        Resolution::Unsolved
+    }
+}
+
 /// A single c-e structure.
 ///
 /// Internally, instances of this type own structural information (the
@@ -28,7 +42,7 @@ pub struct CEStructure {
     links:          BTreeMap<LinkID, LinkState>,
     carrier:        BTreeMap<NodeID, node::Capacity>,
     num_thin_links: u32,
-    fcs:            Option<Vec<FiringComponent>>,
+    resolution:     Resolution,
 }
 
 impl CEStructure {
@@ -45,7 +59,7 @@ impl CEStructure {
             links:          Default::default(),
             carrier:        Default::default(),
             num_thin_links: 0,
-            fcs:            Default::default(),
+            resolution:     Default::default(),
         }
     }
 
@@ -219,8 +233,10 @@ impl CEStructure {
         formula
     }
 
-    pub fn solve(&self, minimal_mode: bool) -> Result<(), Box<dyn Error>> {
+    pub fn solve(&mut self, minimal_mode: bool) -> Result<(), Box<dyn Error>> {
         if !self.is_coherent() {
+            self.resolution = Resolution::Incoherent;
+
             Err(Box::new(AcesError::IncoherentStructure(
                 self.get_name().unwrap_or("anonymous").to_owned(),
             )))
@@ -238,24 +254,39 @@ impl CEStructure {
             solver.set_minimal_mode(minimal_mode);
 
             if let Some(first_solution) = solver.next() {
+                let mut fcs = Vec::new();
+
                 debug!("1. Raw {:?}", first_solution);
-                println!("1. Solution: {}", first_solution);
+                fcs.push(first_solution.into());
 
                 for (count, solution) in solver.enumerate() {
                     debug!("{}. Raw {:?}", count + 2, solution);
-                    println!("{}. Solution: {}", count + 2, solution);
+                    fcs.push(solution.into());
                 }
+
+                self.resolution = Resolution::Solved(fcs);
             } else if solver.is_sat().is_some() {
-                println!("\nStructural deadlock (found no solutions).");
+                info!("\nStructural deadlock (found no solutions).");
+                self.resolution = Resolution::Deadlock;
             } else if solver.was_interrupted() {
                 warn!("Solving was interrupted");
+                self.resolution = Resolution::Unsolved;
             } else if let Some(Err(err)) = solver.take_last_result() {
                 error!("Solving failed: {}", err);
+                self.resolution = Resolution::Unsolved;
             } else {
                 unreachable!()
             }
 
             Ok(())
+        }
+    }
+
+    pub fn get_firing_components(&self) -> Option<&[FiringComponent]> {
+        if let Resolution::Solved(ref fcs) = self.resolution {
+            Some(fcs.as_slice())
+        } else {
+            None
         }
     }
 }

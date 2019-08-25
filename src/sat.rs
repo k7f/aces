@@ -8,7 +8,7 @@ use std::{
 use log::Level::Debug;
 use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
 use crate::{
-    Atomic, Context, ContextHandle, Contextual, Polynomial, PortID, LinkID, node, atom::AtomID,
+    Atomic, Context, ContextHandle, Contextual, Polynomial, NodeID, PortID, LinkID, node, atom::AtomID,
 };
 
 trait CEVar {
@@ -620,8 +620,8 @@ impl Iterator for Solver<'_> {
 pub struct Solution {
     context:  ContextHandle,
     model:    Vec<Lit>,
-    pre_set:  Vec<Lit>,
-    post_set: Vec<Lit>,
+    pre_set:  Vec<NodeID>,
+    post_set: Vec<NodeID>,
 }
 
 impl Solution {
@@ -645,16 +645,26 @@ impl Solution {
                 let ctx = solution.context.lock().unwrap();
 
                 if let Some(port) = ctx.get_port(PortID(atom_id)) {
+                    let node_id = port.get_node_id();
+
                     if port.get_face() == node::Face::Tx {
-                        solution.pre_set.push(lit);
+                        solution.pre_set.push(node_id);
                     } else {
-                        solution.post_set.push(lit);
+                        solution.post_set.push(node_id);
                     }
                 }
             }
         }
 
         solution
+    }
+
+    pub fn get_pre_set(&self) -> &[NodeID] {
+        self.pre_set.as_slice()
+    }
+
+    pub fn get_post_set(&self) -> &[NodeID] {
+        self.post_set.as_slice()
     }
 }
 
@@ -677,10 +687,8 @@ impl fmt::Display for Solution {
 
             let ctx = self.context.lock().unwrap();
 
-            for lit in self.pre_set.iter() {
-                let lit = Literal(*lit);
-
-                write!(f, " {}", ctx.with(&lit))?;
+            for node_id in self.pre_set.iter() {
+                write!(f, " {}", ctx.with(node_id))?;
             }
 
             write!(f, " }} => {{")?;
@@ -691,10 +699,8 @@ impl fmt::Display for Solution {
         } else {
             let ctx = self.context.lock().unwrap();
 
-            for lit in self.post_set.iter() {
-                let lit = Literal(*lit);
-
-                write!(f, " {}", ctx.with(&lit))?;
+            for node_id in self.post_set.iter() {
+                write!(f, " {}", ctx.with(node_id))?;
             }
 
             write!(f, " }}")?;
