@@ -1,5 +1,5 @@
 use std::{cmp, collections::BTreeMap, error::Error};
-use crate::{ID, NodeID, Context, Contextual, InContext, node, sat, error::AcesError};
+use crate::{ID, NodeID, Context, Contextual, InContext, node, monomial, sat, error::AcesError};
 
 /// An abstract structural identifier serving as the common base of
 /// [`PortID`], [`LinkID`], [`ForkID`] and [`JoinID`].
@@ -536,20 +536,18 @@ impl Contextual for Link {
 #[derive(Clone, Debug)]
 pub struct Fork {
     atom_id:     Option<AtomID>,
-    tx_port_id:  PortID,
     tx_node_id:  NodeID,
-    rx_port_ids: Vec<PortID>,
     rx_node_ids: Vec<NodeID>,
+    weight:      monomial::Weight,
 }
 
 impl Fork {
     pub fn new(
-        tx_port_id: PortID,
         tx_node_id: NodeID,
-        rx_port_ids: Vec<PortID>, // FIXME
         rx_node_ids: Vec<NodeID>, // FIXME
+        weight: monomial::Weight,
     ) -> Self {
-        Self { atom_id: None, tx_port_id, tx_node_id, rx_port_ids, rx_node_ids }
+        Self { atom_id: None, tx_node_id, rx_node_ids, weight }
     }
 
     pub fn get_atom_id(&self) -> AtomID {
@@ -560,26 +558,29 @@ impl Fork {
         ForkID(self.get_atom_id())
     }
 
-    pub fn get_tx_port_id(&self) -> PortID {
-        self.tx_port_id
-    }
-
     pub fn get_tx_node_id(&self) -> NodeID {
         self.tx_node_id
-    }
-
-    pub fn get_rx_port_ids(&self) -> &[PortID] {
-        self.rx_port_ids.as_slice()
     }
 
     pub fn get_rx_node_ids(&self) -> &[NodeID] {
         self.rx_node_ids.as_slice()
     }
+
+    pub fn get_weight(&self) -> monomial::Weight {
+        self.weight
+    }
 }
 
 impl cmp::PartialEq for Fork {
     fn eq(&self, other: &Self) -> bool {
-        self.tx_port_id == other.tx_port_id && self.rx_node_ids == other.rx_node_ids
+        let result = self.tx_node_id == other.tx_node_id && self.rx_node_ids == other.rx_node_ids;
+
+        // FIXME
+        if result && self.weight != other.weight {
+            panic!("Fork weight mismatch")
+        }
+
+        result
     }
 }
 
@@ -606,20 +607,18 @@ impl Contextual for Fork {
 #[derive(Clone, Debug)]
 pub struct Join {
     atom_id:     Option<AtomID>,
-    tx_port_ids: Vec<PortID>,
     tx_node_ids: Vec<NodeID>,
-    rx_port_id:  PortID,
     rx_node_id:  NodeID,
+    weight:      monomial::Weight,
 }
 
 impl Join {
     pub fn new(
-        tx_port_ids: Vec<PortID>, // FIXME
         tx_node_ids: Vec<NodeID>, // FIXME
-        rx_port_id: PortID,
         rx_node_id: NodeID,
+        weight: monomial::Weight,
     ) -> Self {
-        Self { atom_id: None, tx_port_ids, tx_node_ids, rx_port_id, rx_node_id }
+        Self { atom_id: None, tx_node_ids, rx_node_id, weight }
     }
 
     pub fn get_atom_id(&self) -> AtomID {
@@ -630,26 +629,29 @@ impl Join {
         JoinID(self.get_atom_id())
     }
 
-    pub fn get_tx_port_ids(&self) -> &[PortID] {
-        self.tx_port_ids.as_slice()
-    }
-
     pub fn get_tx_node_ids(&self) -> &[NodeID] {
         self.tx_node_ids.as_slice()
-    }
-
-    pub fn get_rx_port_id(&self) -> PortID {
-        self.rx_port_id
     }
 
     pub fn get_rx_node_id(&self) -> NodeID {
         self.rx_node_id
     }
+
+    pub fn get_weight(&self) -> monomial::Weight {
+        self.weight
+    }
 }
 
 impl cmp::PartialEq for Join {
     fn eq(&self, other: &Self) -> bool {
-        self.tx_port_ids == other.tx_port_ids && self.rx_node_id == other.rx_node_id
+        let result = self.tx_node_ids == other.tx_node_ids && self.rx_node_id == other.rx_node_id;
+
+        // FIXME
+        if result && self.weight != other.weight {
+            panic!("Join weight mismatch")
+        }
+
+        result
     }
 }
 

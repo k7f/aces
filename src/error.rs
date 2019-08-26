@@ -16,6 +16,8 @@ pub enum AcesError {
     NodeMissingForLink(node::Face),
     NodeMissingForFork(node::Face),
     NodeMissingForJoin(node::Face),
+    FiringNodeMissing(node::Face),
+    FiringNodeDuplicated(node::Face),
     IncoherentStructure(String),
 
     EmptyCausesOfInternalNode(String),
@@ -45,6 +47,16 @@ impl fmt::Display for AcesError {
             NodeMissingForJoin(face) => write!(
                 f,
                 "Missing {} node for join",
+                if *face == node::Face::Tx { "sending" } else { "receiving" }
+            ),
+            FiringNodeMissing(face) => write!(
+                f,
+                "Missing {} node in firing component",
+                if *face == node::Face::Tx { "sending" } else { "receiving" }
+            ),
+            FiringNodeDuplicated(face) => write!(
+                f,
+                "Duplicated {} node in firing component",
                 if *face == node::Face::Tx { "sending" } else { "receiving" }
             ),
             IncoherentStructure(name) => write!(f, "Structure '{}' is incoherent", name),
@@ -77,6 +89,8 @@ impl Error for AcesError {
             NodeMissingForLink(_) => "Missing node for link",
             NodeMissingForFork(_) => "Missing node for fork",
             NodeMissingForJoin(_) => "Missing node for join",
+            FiringNodeMissing(_) => "Missing node in firing component",
+            FiringNodeDuplicated(_) => "Duplicated node in firing component",
             IncoherentStructure(_) => "Incoherent c-e structure",
 
             EmptyCausesOfInternalNode(_) => "Empty cause polynomial of internal node",

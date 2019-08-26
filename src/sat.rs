@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashSet},
+    collections::{BTreeSet, BTreeMap, HashSet},
     convert::TryInto,
     ops,
     fmt::{self, Write},
@@ -8,7 +8,8 @@ use std::{
 use log::Level::Debug;
 use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
 use crate::{
-    Atomic, Context, ContextHandle, Contextual, Polynomial, NodeID, PortID, LinkID, node, atom::AtomID,
+    Atomic, Context, ContextHandle, Contextual, Polynomial, NodeID, PortID, LinkID, ForkID, JoinID,
+    Fork, Join, node, atom::AtomID,
 };
 
 trait CEVar {
@@ -622,6 +623,8 @@ pub struct Solution {
     model:    Vec<Lit>,
     pre_set:  Vec<NodeID>,
     post_set: Vec<NodeID>,
+    fork_set: Vec<ForkID>,
+    join_set: Vec<JoinID>,
 }
 
 impl Solution {
@@ -631,11 +634,15 @@ impl Solution {
             model:    Default::default(),
             pre_set:  Default::default(),
             post_set: Default::default(),
+            fork_set: Default::default(),
+            join_set: Default::default(),
         }
     }
 
     fn from_model<I: IntoIterator<Item = Lit>>(ctx: &ContextHandle, model: I) -> Self {
         let mut solution = Self::new(ctx);
+        let mut fork_map = BTreeMap::new();
+        let mut join_map = BTreeMap::new();
 
         for lit in model {
             solution.model.push(lit);
@@ -652,11 +659,43 @@ impl Solution {
                     } else {
                         solution.post_set.push(node_id);
                     }
+                } else if let Some(link) = ctx.get_link(LinkID(atom_id)) {
+                    let tx_node_id = link.get_tx_node_id();
+                    let rx_node_id = link.get_rx_node_id();
+
+                    fork_map.entry(tx_node_id).or_insert_with(Vec::new).push(rx_node_id);
+                    join_map.entry(rx_node_id).or_insert_with(Vec::new).push(tx_node_id);
                 }
             }
         }
 
+        {
+            let mut ctx = solution.context.lock().unwrap();
+
+            solution.fork_set = fork_map
+                .into_iter()
+                .map(|(k, v)| {
+                    ctx.share_fork(&mut Fork::new(k, v, Default::default())) // FIXME
+                })
+                .collect();
+
+            solution.join_set = join_map
+                .into_iter()
+                .map(|(k, v)| {
+                    ctx.share_join(&mut Join::new(v, k, Default::default())) // FIXME
+                })
+                .collect();
+        }
+
         solution
+    }
+
+    pub fn get_context(&self) -> &ContextHandle {
+        &self.context
+    }
+
+    pub fn get_model(&self) -> &[Lit] {
+        self.model.as_slice()
     }
 
     pub fn get_pre_set(&self) -> &[NodeID] {
@@ -666,14 +705,23 @@ impl Solution {
     pub fn get_post_set(&self) -> &[NodeID] {
         self.post_set.as_slice()
     }
+
+    pub fn get_fork_set(&self) -> &[ForkID] {
+        self.fork_set.as_slice()
+    }
+
+    pub fn get_join_set(&self) -> &[JoinID] {
+        self.join_set.as_slice()
+    }
 }
 
 impl fmt::Debug for Solution {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "Solution {{ model: {:?}, pre_set: {:?}, post_set: {:?} }}",
-            self.model, self.pre_set, self.post_set
+            "Solution {{ model: {:?}, pre_set: {:?}, post_set: {:?}, fork_set: {:?}, join_set: \
+             {:?} }}",
+            self.model, self.pre_set, self.post_set, self.fork_set, self.join_set
         )
     }
 }

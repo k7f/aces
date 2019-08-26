@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, io::Read, fs::File, path::Path, error::Error};
+use std::{collections::BTreeMap, convert::TryInto, io::Read, fs::File, path::Path, error::Error};
 
 use crate::{
     ContextHandle, Port, NodeID, PortID, LinkID, Polynomial, FiringComponent, Content,
@@ -257,11 +257,11 @@ impl CEStructure {
                 let mut fcs = Vec::new();
 
                 debug!("1. Raw {:?}", first_solution);
-                fcs.push(first_solution.into());
+                fcs.push(first_solution.try_into()?);
 
                 for (count, solution) in solver.enumerate() {
                     debug!("{}. Raw {:?}", count + 2, solution);
-                    fcs.push(solution.into());
+                    fcs.push(solution.try_into()?);
                 }
 
                 self.resolution = Resolution::Solved(fcs);
