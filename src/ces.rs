@@ -39,8 +39,8 @@ pub struct CEStructure {
     content:        Option<Box<dyn Content>>,
     causes:         BTreeMap<PortID, Polynomial<LinkID>>,
     effects:        BTreeMap<PortID, Polynomial<LinkID>>,
-    links:          BTreeMap<LinkID, LinkState>,
     carrier:        BTreeMap<NodeID, node::Capacity>,
+    links:          BTreeMap<LinkID, LinkState>,
     num_thin_links: u32,
     resolution:     Resolution,
 }
@@ -56,14 +56,35 @@ impl CEStructure {
             content:        Default::default(),
             causes:         Default::default(),
             effects:        Default::default(),
-            links:          Default::default(),
             carrier:        Default::default(),
+            links:          Default::default(),
             num_thin_links: 0,
             resolution:     Default::default(),
         }
     }
 
-    fn add_cause_polynomial(&mut self, port_id: PortID, poly: Polynomial<LinkID>) {
+    /// Construct a [`Polynomial`] from a sequence of sequences of
+    /// [`NodeID`]s and add to causes of a node of this `CEStructure`.
+    ///
+    /// This method is incremental: the polynomial is added to another
+    /// polynomial which is already, explicitly or implicitly (as the
+    /// default _&theta;_), attached to the `node_id` as node's
+    /// causes.
+    pub fn add_causes<'a, I>(&mut self, node_id: NodeID, poly_ids: I)
+    where
+        I: IntoIterator + 'a,
+        I::Item: IntoIterator<Item=&'a NodeID>,
+    {
+        let poly = Polynomial::from_nodes_in_context(
+            &self.context,
+            node::Face::Rx,
+            node_id,
+            poly_ids,
+        );
+
+        let mut port = Port::new(node::Face::Rx, node_id);
+        let port_id = self.context.lock().unwrap().share_port(&mut port);
+
         for &lid in poly.get_atomics() {
             if let Some(what_missing) = self.links.get_mut(&lid) {
                 if *what_missing == Some(node::Face::Rx) {
@@ -82,9 +103,33 @@ impl CEStructure {
 
         // FIXME add to old if any
         self.causes.insert(port_id, poly);
+
+        self.carrier.entry(node_id).or_insert_with(Default::default);
     }
 
-    fn add_effect_polynomial(&mut self, port_id: PortID, poly: Polynomial<LinkID>) {
+    /// Construct a [`Polynomial`] from a sequence of sequences of
+    /// [`NodeID`]s and add to effects of a node of this
+    /// `CEStructure`.
+    ///
+    /// This method is incremental: the polynomial is added to another
+    /// polynomial which is already, explicitly or implicitly (as the
+    /// default _&theta;_), attached to the `node_id` as node's
+    /// effects.
+    pub fn add_effects<'a, I>(&mut self, node_id: NodeID, poly_ids: I)
+    where
+        I: IntoIterator + 'a,
+        I::Item: IntoIterator<Item=&'a NodeID>,
+    {
+        let poly = Polynomial::from_nodes_in_context(
+            &self.context,
+            node::Face::Tx,
+            node_id,
+            poly_ids,
+        );
+
+        let mut port = Port::new(node::Face::Tx, node_id);
+        let port_id = self.context.lock().unwrap().share_port(&mut port);
+
         for &lid in poly.get_atomics() {
             if let Some(what_missing) = self.links.get_mut(&lid) {
                 if *what_missing == Some(node::Face::Tx) {
@@ -103,22 +148,6 @@ impl CEStructure {
 
         // FIXME add to old if any
         self.effects.insert(port_id, poly);
-    }
-
-    /// Adds a [`Polynomial`] to this `CEStructure` at a given `face`
-    /// (cause or effect) of a node.
-    ///
-    /// The polynomial `poly` is added to another polynomial which is
-    /// already, explicitly or implicitly (as the default _&theta;_),
-    /// attached to a `node_id` at a given `face`.
-    pub fn add_polynomial(&mut self, node_id: NodeID, face: node::Face, poly: Polynomial<LinkID>) {
-        let mut port = Port::new(face, node_id);
-        let pid = self.context.lock().unwrap().share_port(&mut port);
-
-        match face {
-            node::Face::Rx => self.add_cause_polynomial(pid, poly),
-            node::Face::Tx => self.add_effect_polynomial(pid, poly),
-        }
 
         self.carrier.entry(node_id).or_insert_with(Default::default);
     }
@@ -130,36 +159,24 @@ impl CEStructure {
         let mut ces = CEStructure::new(ctx);
 
         for node_id in content.get_carrier_ids() {
-            if let Some(ref poly_ids) = content.get_causes_by_id(node_id) {
+            if let Some(poly_ids) = content.get_causes_by_id(node_id) {
                 if poly_ids.is_empty() {
                     let node_name = ctx.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
 
                     return Err(Box::new(AcesError::EmptyCausesOfInternalNode(node_name)))
                 }
 
-                let mut port = Port::new(node::Face::Rx, node_id);
-                let pid = ces.context.lock().unwrap().share_port(&mut port);
-
-                let poly = Polynomial::from_port_and_ids(&ces.context, &port, poly_ids);
-
-                ces.add_cause_polynomial(pid, poly);
-                ces.carrier.entry(node_id).or_insert_with(Default::default);
+                ces.add_causes(node_id, poly_ids);
             }
 
-            if let Some(ref poly_ids) = content.get_effects_by_id(node_id) {
+            if let Some(poly_ids) = content.get_effects_by_id(node_id) {
                 if poly_ids.is_empty() {
                     let node_name = ctx.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
 
                     return Err(Box::new(AcesError::EmptyEffectsOfInternalNode(node_name)))
                 }
 
-                let mut port = Port::new(node::Face::Tx, node_id);
-                let pid = ces.context.lock().unwrap().share_port(&mut port);
-
-                let poly = Polynomial::from_port_and_ids(&ces.context, &port, poly_ids);
-
-                ces.add_effect_polynomial(pid, poly);
-                ces.carrier.entry(node_id).or_insert_with(Default::default);
+                ces.add_effects(node_id, poly_ids);
             }
         }
 
@@ -214,7 +231,7 @@ impl CEStructure {
         self.num_thin_links == 0
     }
 
-    pub fn get_formula(&self) -> sat::Formula {
+    pub fn get_port_link_formula(&self) -> sat::Formula {
         let mut formula = sat::Formula::new(&self.context);
 
         for (&pid, poly) in self.causes.iter() {
@@ -233,6 +250,14 @@ impl CEStructure {
         formula
     }
 
+    pub fn get_fork_join_formula(&self) -> sat::Formula {
+        let mut formula = sat::Formula::new(&self.context);
+
+        // FIXME
+
+        formula
+    }
+
     pub fn solve(&mut self, minimal_mode: bool) -> Result<(), Box<dyn Error>> {
         if !self.is_coherent() {
             self.resolution = Resolution::Incoherent;
@@ -241,7 +266,7 @@ impl CEStructure {
                 self.get_name().unwrap_or("anonymous").to_owned(),
             )))
         } else {
-            let formula = self.get_formula();
+            let formula = self.get_port_link_formula();
 
             debug!("Raw {:?}", formula);
             info!("Formula: {}", formula);

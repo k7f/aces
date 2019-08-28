@@ -1,8 +1,8 @@
 use std::{slice, iter, cmp, ops, fmt, collections::BTreeSet, error::Error};
 use bit_vec::BitVec;
 use crate::{
-    NodeID, Port, PortID, Link, LinkID, Context, ContextHandle, Contextual, InContextMut, Atomic,
-    node, monomial, sat, error::AcesError,
+    NodeID, Port, Link, LinkID, Context, ContextHandle, Contextual, InContextMut, Atomic, node,
+    monomial, sat, error::AcesError,
 };
 
 /// A formal polynomial.
@@ -39,20 +39,28 @@ pub struct Polynomial<T: Atomic + fmt::Debug> {
 impl Polynomial<LinkID> {
     /// Creates a polynomial from a sequence of vectors of
     /// [`NodeID`]s and in a [`Context`] given by a [`ContextHandle`].
-    pub fn from_port_and_ids(ctx: &ContextHandle, port: &Port, poly_ids: &[Vec<NodeID>]) -> Self {
+    pub fn from_nodes_in_context<'a, I>(
+        ctx: &ContextHandle,
+        face: node::Face,
+        node_id: NodeID,
+        poly_ids: I,
+    ) -> Self
+    where
+        I: IntoIterator + 'a,
+        I::Item: IntoIterator<Item=&'a NodeID>,
+    {
         let mut result = Self::new();
-
-        let pid = PortID(port.get_atom_id());
+        let mut port = Port::new(face, node_id);
+        let pid = ctx.lock().unwrap().share_port(&mut port);
         let host = port.get_node_id();
         let face = port.get_face();
 
         let mut ctx = ctx.lock().unwrap();
 
-        for mono_ids in poly_ids {
+        for mono_ids in poly_ids.into_iter() {
             let mut out_ids = BTreeSet::new();
 
-            for cohost in mono_ids {
-                let cohost = *cohost;
+            for cohost in mono_ids.into_iter().copied() {
                 let mut coport = Port::new(!face, cohost);
                 let copid = ctx.share_port(&mut coport);
 
