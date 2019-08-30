@@ -22,6 +22,9 @@ pub enum AcesError {
 
     EmptyCausesOfInternalNode(String),
     EmptyEffectsOfInternalNode(String),
+
+    UnlistedAtomicInMonomial,
+    IncoherencyLeak,
 }
 
 impl fmt::Display for AcesError {
@@ -95,6 +98,9 @@ impl Error for AcesError {
 
             EmptyCausesOfInternalNode(_) => "Empty cause polynomial of internal node",
             EmptyEffectsOfInternalNode(_) => "Empty effect polynomial of internal node",
+
+            UnlistedAtomicInMonomial => "Monomial contains an unlisted atomic",
+            IncoherencyLeak => "Unexpected incoherency of a c-e structure",
         }
     }
 }

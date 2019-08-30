@@ -1,12 +1,24 @@
-use std::{collections::BTreeMap, convert::TryInto, io::Read, fs::File, path::Path, error::Error};
-
-use crate::{
-    ContextHandle, Port, NodeID, PortID, LinkID, Polynomial, FiringComponent, Content,
-    content::content_from_str, node, sat, AcesError,
+use std::{
+    collections::{btree_map, BTreeMap},
+    convert::TryInto,
+    io::Read,
+    fs::File,
+    path::Path,
+    error::Error,
 };
 
-// None: fat link; Some(face): thin, face-only link
-type LinkState = Option<node::Face>;
+use crate::{
+    ContextHandle, Port, Fork, Join, NodeID, PortID, LinkID, ForkID, JoinID, Polynomial,
+    FiringComponent, Content, content::content_from_str, node, sat, AcesError,
+};
+
+#[derive(PartialEq, Debug)]
+enum LinkState {
+    /// Single-face link (structure containing it is incoherent).  The
+    /// [`node::Face`] value is the missing face.
+    Thin(node::Face),
+    Fat,
+}
 
 #[derive(Debug)]
 enum Resolution {
@@ -37,12 +49,16 @@ impl Default for Resolution {
 pub struct CEStructure {
     context:        ContextHandle,
     content:        Option<Box<dyn Content>>,
+    resolution:     Resolution,
     causes:         BTreeMap<PortID, Polynomial<LinkID>>,
     effects:        BTreeMap<PortID, Polynomial<LinkID>>,
     carrier:        BTreeMap<NodeID, node::Capacity>,
     links:          BTreeMap<LinkID, LinkState>,
     num_thin_links: u32,
-    resolution:     Resolution,
+    forks:          BTreeMap<NodeID, Vec<ForkID>>,
+    joins:          BTreeMap<NodeID, Vec<JoinID>>,
+    co_forks:       BTreeMap<JoinID, Vec<ForkID>>,
+    co_joins:       BTreeMap<ForkID, Vec<JoinID>>,
 }
 
 impl CEStructure {
@@ -54,94 +70,169 @@ impl CEStructure {
         Self {
             context:        ctx.clone(),
             content:        Default::default(),
+            resolution:     Default::default(),
             causes:         Default::default(),
             effects:        Default::default(),
             carrier:        Default::default(),
             links:          Default::default(),
             num_thin_links: 0,
-            resolution:     Default::default(),
+            forks:          Default::default(),
+            joins:          Default::default(),
+            co_forks:       Default::default(),
+            co_joins:       Default::default(),
         }
     }
 
-    /// Construct a [`Polynomial`] from a sequence of sequences of
-    /// [`NodeID`]s and add to causes of a node of this `CEStructure`.
+    /// Constructs new [`Polynomial`] from a sequence of sequences of
+    /// [`NodeID`]s and adds it to causes of a node of this
+    /// `CEStructure`.
     ///
-    /// This method is incremental: the polynomial is added to another
-    /// polynomial which is already, explicitly or implicitly (as the
-    /// default _&theta;_), attached to the `node_id` as node's
-    /// causes.
-    pub fn add_causes<'a, I>(&mut self, node_id: NodeID, poly_ids: I)
+    /// This method is incremental: new polynomial is added to old
+    /// polynomial that is already attached to the `node_id` as node's
+    /// causes (there is always some polynomial attached, if not
+    /// explicitly, then implicitly, as the default _&theta;_).
+    pub fn add_causes<'a, I>(&mut self, node_id: NodeID, poly_ids: I) -> Result<(), AcesError>
     where
         I: IntoIterator + 'a,
-        I::Item: IntoIterator<Item=&'a NodeID>,
+        I::Item: IntoIterator<Item = &'a NodeID>,
     {
-        let poly = Polynomial::from_nodes_in_context(
-            &self.context,
-            node::Face::Rx,
-            node_id,
-            poly_ids,
-        );
+        let poly =
+            Polynomial::from_nodes_in_context(&self.context, node::Face::Rx, node_id, poly_ids);
 
         let mut port = Port::new(node::Face::Rx, node_id);
         let port_id = self.context.lock().unwrap().share_port(&mut port);
 
         for &lid in poly.get_atomics() {
             if let Some(what_missing) = self.links.get_mut(&lid) {
-                if *what_missing == Some(node::Face::Rx) {
+                if *what_missing == LinkState::Thin(node::Face::Rx) {
                     // Fat link: occurs in causes and effects.
-                    *what_missing = None;
+                    *what_missing = LinkState::Fat;
                     self.num_thin_links -= 1;
                 } else {
                     // Link reoccurrence in causes.
                 }
             } else {
                 // Thin, cause-only link: occurs in causes, but not in effects.
-                self.links.insert(lid, Some(node::Face::Tx));
+                self.links.insert(lid, LinkState::Thin(node::Face::Tx));
                 self.num_thin_links += 1;
             }
+        }
+
+        let mut ctx = self.context.lock().unwrap();
+
+        for mono in poly.get_monomials() {
+            let mut co_node_ids = Vec::new();
+
+            for lid in mono {
+                if let Some(link_state) = self.links.get(&lid) {
+                    match link_state {
+                        LinkState::Fat => {
+                            if let Some(link) = ctx.get_link(lid) {
+                                co_node_ids.push(link.get_tx_node_id());
+                            } else {
+                                return Err(AcesError::LinkMissingForID)
+                            }
+                        }
+                        LinkState::Thin(_) => {} // Don't push a thin link.
+                    }
+                } else {
+                    return Err(AcesError::UnlistedAtomicInMonomial)
+                }
+            }
+
+            let mut co_forks = Vec::new();
+
+            for nid in co_node_ids.iter() {
+                if let Some(fork_ids) = self.forks.get(nid) {
+                    for &fid in fork_ids {
+                        if let Some(fork) = ctx.get_fork(fid) {
+                            if fork.get_rx_node_ids().binary_search(nid).is_ok() {
+                                co_forks.push(fid);
+                            }
+                        }
+                    }
+                } else {
+                    // This co_node has no forks yet, a condition
+                    // which should have been detected above as a thin
+                    // link.
+                    return Err(AcesError::IncoherencyLeak)
+                }
+            }
+
+            let mut join = Join::new(co_node_ids, node_id, Default::default());
+            let join_id = ctx.share_join(&mut join);
+
+            match self.joins.entry(node_id) {
+                btree_map::Entry::Vacant(entry) => {
+                    entry.insert(vec![join_id]);
+                }
+                btree_map::Entry::Occupied(mut entry) => {
+                    let jids = entry.get_mut();
+
+                    if let Err(pos) = jids.binary_search(&join_id) {
+                        jids.insert(pos, join_id);
+                    } // else idempotency of addition.
+                }
+            }
+
+            // For all co_forks update co_joins by adding this Join.
+            for co_fork in co_forks.iter() {
+                match self.co_joins.entry(*co_fork) {
+                    btree_map::Entry::Vacant(entry) => {
+                        entry.insert(vec![join_id]);
+                    }
+                    btree_map::Entry::Occupied(mut entry) => {
+                        let jids = entry.get_mut();
+
+                        if let Err(pos) = jids.binary_search(&join_id) {
+                            jids.insert(pos, join_id);
+                        } // else idempotency of addition.
+                    }
+                }
+            }
+
+            self.co_forks.insert(join_id, co_forks);
         }
 
         // FIXME add to old if any
         self.causes.insert(port_id, poly);
 
         self.carrier.entry(node_id).or_insert_with(Default::default);
+
+        Ok(())
     }
 
-    /// Construct a [`Polynomial`] from a sequence of sequences of
-    /// [`NodeID`]s and add to effects of a node of this
+    /// Constructs new [`Polynomial`] from a sequence of sequences of
+    /// [`NodeID`]s and adds it to effects of a node of this
     /// `CEStructure`.
     ///
-    /// This method is incremental: the polynomial is added to another
-    /// polynomial which is already, explicitly or implicitly (as the
-    /// default _&theta;_), attached to the `node_id` as node's
-    /// effects.
-    pub fn add_effects<'a, I>(&mut self, node_id: NodeID, poly_ids: I)
+    /// This method is incremental: new polynomial is added to old
+    /// polynomial that is already attached to the `node_id` as node's
+    /// effects (there is always some polynomial attached, if not
+    /// explicitly, then implicitly, as the default _&theta;_).
+    pub fn add_effects<'a, I>(&mut self, node_id: NodeID, poly_ids: I) -> Result<(), AcesError>
     where
         I: IntoIterator + 'a,
-        I::Item: IntoIterator<Item=&'a NodeID>,
+        I::Item: IntoIterator<Item = &'a NodeID>,
     {
-        let poly = Polynomial::from_nodes_in_context(
-            &self.context,
-            node::Face::Tx,
-            node_id,
-            poly_ids,
-        );
+        let poly =
+            Polynomial::from_nodes_in_context(&self.context, node::Face::Tx, node_id, poly_ids);
 
         let mut port = Port::new(node::Face::Tx, node_id);
         let port_id = self.context.lock().unwrap().share_port(&mut port);
 
         for &lid in poly.get_atomics() {
             if let Some(what_missing) = self.links.get_mut(&lid) {
-                if *what_missing == Some(node::Face::Tx) {
+                if *what_missing == LinkState::Thin(node::Face::Tx) {
                     // Fat link: occurs in causes and effects.
-                    *what_missing = None;
+                    *what_missing = LinkState::Fat;
                     self.num_thin_links -= 1;
                 } else {
                     // Link reoccurrence in effects.
                 }
             } else {
                 // Thin, effect-only link: occurs in effects, but not in causes.
-                self.links.insert(lid, Some(node::Face::Rx));
+                self.links.insert(lid, LinkState::Thin(node::Face::Rx));
                 self.num_thin_links += 1;
             }
         }
@@ -150,6 +241,8 @@ impl CEStructure {
         self.effects.insert(port_id, poly);
 
         self.carrier.entry(node_id).or_insert_with(Default::default);
+
+        Ok(())
     }
 
     pub fn from_content(
@@ -166,7 +259,7 @@ impl CEStructure {
                     return Err(Box::new(AcesError::EmptyCausesOfInternalNode(node_name)))
                 }
 
-                ces.add_causes(node_id, poly_ids);
+                ces.add_causes(node_id, poly_ids)?;
             }
 
             if let Some(poly_ids) = content.get_effects_by_id(node_id) {
@@ -176,7 +269,7 @@ impl CEStructure {
                     return Err(Box::new(AcesError::EmptyEffectsOfInternalNode(node_name)))
                 }
 
-                ces.add_effects(node_id, poly_ids);
+                ces.add_effects(node_id, poly_ids)?;
             }
         }
 
@@ -254,6 +347,14 @@ impl CEStructure {
         let mut formula = sat::Formula::new(&self.context);
 
         // FIXME
+
+        // For each fork collect singularity constraints (anti-join
+        // and side-fork clauses), and for each tine of that fork
+        // collect all bijection constraints (cojoin clauses).
+
+        // For each join collect singularity constraints (anti-fork
+        // and side-join clauses), and for each lane of that join
+        // collect all bijection constraints (cofork clauses).
 
         formula
     }

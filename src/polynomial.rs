@@ -24,16 +24,16 @@ use crate::{
 /// `Polynomial`s may be compared and added using traits from
 /// [`std::cmp`] and [`std::ops`] standard modules, with the obvious
 /// exception of [`std::cmp::Ord`].  Note however that, in general,
-/// preventing [`Context`] or [`Port`] mismatch between polynomials
-/// is the responsibility of the caller of an operation.
-/// Implementation detects some, but not all, cases of mismatch and
-/// panics if it does so.
+/// preventing [`Context`] or [`Port`] mismatch between polynomials is
+/// the responsibility of the caller of an operation.  Implementation
+/// detects some, but not all, cases of mismatch and panics if it does
+/// so.
 #[derive(Clone, Debug)]
 pub struct Polynomial<T: Atomic + fmt::Debug> {
-    product: Vec<T>,
+    atomics: Vec<T>,
     weights: Vec<monomial::Weight>,
     // FIXME choose a better representation of a boolean matrix.
-    sum: Vec<BitVec>,
+    terms: Vec<BitVec>,
 }
 
 impl Polynomial<LinkID> {
@@ -47,7 +47,7 @@ impl Polynomial<LinkID> {
     ) -> Self
     where
         I: IntoIterator + 'a,
-        I::Item: IntoIterator<Item=&'a NodeID>,
+        I::Item: IntoIterator<Item = &'a NodeID>,
     {
         let mut result = Self::new();
         let mut port = Port::new(face, node_id);
@@ -84,50 +84,50 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
-            product: Default::default(),
+            atomics: Default::default(),
             weights: Default::default(),
-            sum:     Default::default(),
+            terms:   Default::default(),
         }
     }
 
     /// Resets this polynomial into _&theta;_.
     pub fn clear(&mut self) {
-        self.product.clear();
+        self.atomics.clear();
         self.weights.clear();
-        self.sum.clear();
+        self.terms.clear();
     }
 
     /// Multiplies this polynomial (all its monomials) by a
     /// single-element monomial.
     pub fn atomic_multiply(&mut self, atomic: T) {
         if self.is_empty() {
-            self.product.push(atomic);
+            self.atomics.push(atomic);
             self.weights.push(Default::default());
 
             let mut row = BitVec::new();
             row.push(true);
-            self.sum.push(row);
-        } else if atomic > *self.product.last().unwrap() {
-            self.product.push(atomic);
+            self.terms.push(row);
+        } else if atomic > *self.atomics.last().unwrap() {
+            self.atomics.push(atomic);
 
-            for row in self.sum.iter_mut() {
+            for row in self.terms.iter_mut() {
                 row.push(true);
             }
         } else {
-            match self.product.binary_search(&atomic) {
+            match self.atomics.binary_search(&atomic) {
                 Ok(ndx) => {
                     if !self.is_monomial() {
-                        for row in self.sum.iter_mut() {
+                        for row in self.terms.iter_mut() {
                             row.set(ndx, true);
                         }
                     }
                 }
                 Err(ndx) => {
-                    let old_len = self.product.len();
+                    let old_len = self.atomics.len();
 
-                    self.product.insert(ndx, atomic);
+                    self.atomics.insert(ndx, atomic);
 
-                    for row in self.sum.iter_mut() {
+                    for row in self.terms.iter_mut() {
                         row.push(false);
 
                         for i in ndx..old_len {
@@ -148,9 +148,9 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
     /// On success, returns `true` if this polynomial changed or
     /// `false` if it didn't, due to idempotency of addition.
     ///
-    /// Returns error if `ids` aren't given in strictly increasing
-    /// order, or in case of port mismatch, or if context mismatch
-    /// was detected.
+    /// Returns error if `atomics` aren't given in strictly increasing
+    /// order, or in case of port mismatch, or if context mismatch was
+    /// detected.
     pub fn add_atomics_sorted<I>(&mut self, atomics: I) -> Result<bool, Box<dyn Error>>
     where
         I: IntoIterator<Item = T>,
@@ -161,38 +161,38 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             for thing in atomics.into_iter() {
                 if let Some(prev) = prev_thing {
                     if thing <= prev {
-                        self.product.clear();
+                        self.atomics.clear();
 
                         return Err(Box::new(AcesError::AtomicsNotOrdered))
                     }
                 }
                 prev_thing = Some(thing);
 
-                self.product.push(thing);
+                self.atomics.push(thing);
             }
 
-            if self.product.is_empty() {
+            if self.atomics.is_empty() {
                 return Ok(false)
             } else {
                 self.weights.push(Default::default());
 
-                let row = BitVec::from_elem(self.product.len(), true);
-                self.sum.push(row);
+                let row = BitVec::from_elem(self.atomics.len(), true);
+                self.terms.push(row);
 
                 return Ok(true)
             }
         }
 
-        let mut new_row = BitVec::with_capacity(2 * self.product.len());
+        let mut new_row = BitVec::with_capacity(2 * self.atomics.len());
 
         let mut prev_thing = None;
         let mut no_new_things = true;
 
-        // These are used for error recovery; `old_sum` also helps in
+        // These are used for error recovery; `old_terms` also helps in
         // the implementation of inserting extra bits into rows of the
-        // sum.
-        let mut old_product = None;
-        let mut old_sum = None;
+        // `terms` matrix.
+        let mut old_atomics = None;
+        let mut old_terms = None;
 
         let mut ndx = 0;
 
@@ -201,12 +201,12 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
                 if thing <= prev {
                     // Error recovery.
 
-                    if let Some(old_product) = old_product {
-                        self.product = old_product;
+                    if let Some(old_atomics) = old_atomics {
+                        self.atomics = old_atomics;
                     }
 
-                    if let Some(old_sum) = old_sum {
-                        self.sum = old_sum;
+                    if let Some(old_terms) = old_terms {
+                        self.terms = old_terms;
                     }
 
                     return Err(Box::new(AcesError::AtomicsNotOrdered))
@@ -214,7 +214,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             }
             prev_thing = Some(thing);
 
-            match self.product[ndx..].binary_search(&thing) {
+            match self.atomics[ndx..].binary_search(&thing) {
                 Ok(i) => {
                     if i > 0 {
                         new_row.grow(i, false);
@@ -232,18 +232,18 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
                     }
                     new_row.push(true);
 
-                    self.product.insert(ndx, thing);
+                    self.atomics.insert(ndx, thing);
 
-                    if old_product.is_none() {
-                        old_product = Some(self.product.clone());
+                    if old_atomics.is_none() {
+                        old_atomics = Some(self.atomics.clone());
                     }
-                    if old_sum.is_none() {
-                        old_sum = Some(self.sum.clone());
+                    if old_terms.is_none() {
+                        old_terms = Some(self.terms.clone());
                     }
 
-                    let all_rows = old_sum.as_ref().unwrap();
+                    let all_rows = old_terms.as_ref().unwrap();
 
-                    for (row, tail_row) in self.sum.iter_mut().zip(all_rows.iter()) {
+                    for (row, tail_row) in self.terms.iter_mut().zip(all_rows.iter()) {
                         row.truncate(ndx);
                         row.push(false);
                         row.extend(tail_row.iter().skip(ndx));
@@ -255,7 +255,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
         }
 
         if no_new_things {
-            for row in self.sum.iter() {
+            for row in self.terms.iter() {
                 if *row == new_row {
                     return Ok(false)
                 }
@@ -263,7 +263,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
         }
 
         self.weights.push(Default::default());
-        self.sum.push(new_row);
+        self.terms.push(new_row);
 
         Ok(true)
     }
@@ -293,19 +293,19 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.sum.is_empty()
+        self.terms.is_empty()
     }
 
     pub fn is_atomic(&self) -> bool {
-        self.product.len() == 1
+        self.atomics.len() == 1
     }
 
     pub fn is_monomial(&self) -> bool {
-        self.sum.len() == 1
+        self.terms.len() == 1
     }
 
     pub fn num_monomials(&self) -> usize {
-        self.sum.len()
+        self.terms.len()
     }
 
     pub fn get_monomials(&self) -> Monomials<T> {
@@ -313,7 +313,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
     }
 
     pub fn get_atomics(&self) -> slice::Iter<T> {
-        self.product.iter()
+        self.atomics.iter()
     }
 
     /// Constructs the firing rule of this polynomial, the logical
@@ -330,7 +330,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             // rule is a single two-literal port-link clause.
 
             vec![sat::Clause::from_pair(
-                self.product[0].into_sat_literal(false),
+                self.atomics[0].into_sat_literal(false),
                 port_lit,
                 "atomic",
             )]
@@ -339,7 +339,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             // literals.  The rule is a sequence of _N_ two-literal
             // port-link clauses.
 
-            self.product
+            self.atomics
                 .iter()
                 .map(|id| sat::Clause::from_pair(id.into_sat_literal(false), port_lit, "monomial"))
                 .collect()
@@ -353,13 +353,13 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
 
             let mut clauses = Vec::new();
 
-            let num_monos = self.sum.len();
-            let num_nodes = self.product.len();
+            let num_monos = self.terms.len();
+            let num_nodes = self.atomics.len();
 
-            let clause_table_row = self.product.iter().map(|id| id.into_sat_literal(false));
+            let clause_table_row = self.atomics.iter().map(|id| id.into_sat_literal(false));
 
             let mut clause_table: Vec<_> = self
-                .sum
+                .terms
                 .iter()
                 .map(|mono| {
                     mono.iter()
@@ -380,7 +380,8 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             'outer: loop {
                 let lits = cursors.iter().enumerate().map(|(row, &col)| clause_table[row][col]);
 
-                if let Some(clause) = sat::Clause::from_literals_checked(lits, "polynomial term") {
+                if let Some(clause) = sat::Clause::from_literals_checked(lits, "polynomial subterm")
+                {
                     num_repeated_literals += num_monos + 1 - clause.len();
                     clauses.push(clause);
                 } else {
@@ -407,7 +408,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             }
 
             info!(
-                "Pushing {} polynomial term clauses (removed {} tautologies and {} repeated \
+                "Pushing {} polynomial subterm clauses (removed {} tautologies and {} repeated \
                  literals)",
                 clauses.len(),
                 num_tautologies,
@@ -421,7 +422,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
 
 impl<T: Atomic + fmt::Debug> cmp::PartialEq for Polynomial<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.product == other.product && self.sum == other.sum
+        self.atomics == other.atomics && self.terms == other.terms
     }
 }
 
@@ -529,7 +530,7 @@ impl<'a, T: Atomic + fmt::Debug> Iterator for Monomials<'a, T> {
     >;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(row) = self.poly.sum.get(self.ndx) {
+        if let Some(row) = self.poly.terms.get(self.ndx) {
             fn doit<T: Atomic>((l, b): (&T, bool)) -> Option<T> {
                 if b {
                     Some(*l)
@@ -540,7 +541,7 @@ impl<'a, T: Atomic + fmt::Debug> Iterator for Monomials<'a, T> {
 
             let mono = self
                 .poly
-                .product
+                .atomics
                 .iter()
                 .zip(row.iter())
                 .filter_map(doit as fn((&T, bool)) -> Option<T>);
