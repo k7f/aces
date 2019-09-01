@@ -9,7 +9,7 @@ use log::Level::Debug;
 use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
 use crate::{
     Atomic, Context, ContextHandle, Contextual, Polynomial, NodeID, PortID, LinkID, ForkID, JoinID,
-    Fork, Join, node, atom::AtomID,
+    Split, node, atom::AtomID,
 };
 
 trait CEVar {
@@ -675,14 +675,16 @@ impl Solution {
             solution.fork_set = fork_map
                 .into_iter()
                 .map(|(k, v)| {
-                    ctx.share_fork(&mut Fork::new(k, v, Default::default())) // FIXME
+                    ctx.share_fork(&mut Split::new_fork(k, v, Default::default()))
+                    // FIXME
                 })
                 .collect();
 
             solution.join_set = join_map
                 .into_iter()
                 .map(|(k, v)| {
-                    ctx.share_join(&mut Join::new(v, k, Default::default())) // FIXME
+                    ctx.share_join(&mut Split::new_join(k, v, Default::default()))
+                    // FIXME
                 })
                 .collect();
         }

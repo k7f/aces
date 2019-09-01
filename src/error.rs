@@ -100,7 +100,7 @@ impl Error for AcesError {
             EmptyEffectsOfInternalNode(_) => "Empty effect polynomial of internal node",
 
             UnlistedAtomicInMonomial => "Monomial contains an unlisted atomic",
-            IncoherencyLeak => "Unexpected incoherency of a c-e structure",
+            IncoherencyLeak => "Unexpected incoherence of a c-e structure",
         }
     }
 }

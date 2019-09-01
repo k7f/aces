@@ -18,7 +18,7 @@ impl TryFrom<sat::Solution> for FiringComponent {
 
         'outer_forks: for &fid in sol.get_fork_set() {
             let fork = ctx.get_fork(fid).ok_or(AcesError::ForkMissingForID)?;
-            let tx_node_id = fork.get_tx_node_id();
+            let tx_node_id = fork.get_host_id();
 
             for &node_id in sol.get_pre_set().iter() {
                 if node_id == tx_node_id {
@@ -36,7 +36,7 @@ impl TryFrom<sat::Solution> for FiringComponent {
 
         'outer_joins: for &jid in sol.get_join_set() {
             let join = ctx.get_join(jid).ok_or(AcesError::JoinMissingForID)?;
-            let rx_node_id = join.get_rx_node_id();
+            let rx_node_id = join.get_host_id();
 
             for &node_id in sol.get_post_set().iter() {
                 if node_id == rx_node_id {

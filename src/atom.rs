@@ -9,7 +9,7 @@ use crate::{ID, NodeID, Context, Contextual, InContext, node, monomial, sat, err
 /// SAT format.
 ///
 /// See [`ID`] for more details.
-pub(crate) type AtomID = ID;
+pub type AtomID = ID;
 
 /// An identifier of a [`Port`], a type derived from [`AtomID`].
 ///
@@ -24,6 +24,12 @@ impl PortID {
     #[inline]
     pub const fn get(self) -> AtomID {
         self.0
+    }
+}
+
+impl From<AtomID> for PortID {
+    fn from(id: AtomID) -> Self {
+        PortID(id)
     }
 }
 
@@ -56,6 +62,12 @@ impl LinkID {
     }
 }
 
+impl From<AtomID> for LinkID {
+    fn from(id: AtomID) -> Self {
+        LinkID(id)
+    }
+}
+
 impl From<LinkID> for AtomID {
     fn from(id: LinkID) -> Self {
         id.0
@@ -85,6 +97,12 @@ impl ForkID {
     }
 }
 
+impl From<AtomID> for ForkID {
+    fn from(id: AtomID) -> Self {
+        ForkID(id)
+    }
+}
+
 impl From<ForkID> for AtomID {
     fn from(id: ForkID) -> Self {
         id.0
@@ -111,6 +129,12 @@ impl JoinID {
     #[inline]
     pub const fn get(self) -> AtomID {
         self.0
+    }
+}
+
+impl From<AtomID> for JoinID {
+    fn from(id: AtomID) -> Self {
+        JoinID(id)
     }
 }
 
@@ -534,36 +558,50 @@ impl Contextual for Link {
 }
 
 #[derive(Clone, Debug)]
-pub struct Fork {
-    atom_id:     Option<AtomID>,
-    tx_node_id:  NodeID,
-    rx_node_ids: Vec<NodeID>,
-    weight:      monomial::Weight,
+pub struct Split {
+    atom_id:  Option<AtomID>,
+    face:     node::Face,
+    host_id:  NodeID,
+    suit_ids: Vec<NodeID>,
+    weight:   monomial::Weight,
 }
 
-impl Fork {
-    pub fn new(
-        tx_node_id: NodeID,
-        rx_node_ids: Vec<NodeID>, // FIXME
-        weight: monomial::Weight,
-    ) -> Self {
-        Self { atom_id: None, tx_node_id, rx_node_ids, weight }
+impl Split {
+    pub fn new_fork(host_id: NodeID, suit_ids: Vec<NodeID>, weight: monomial::Weight) -> Self {
+        Split { atom_id: None, face: node::Face::Tx, host_id, suit_ids, weight }
+    }
+
+    pub fn new_join(host_id: NodeID, suit_ids: Vec<NodeID>, weight: monomial::Weight) -> Self {
+        Split { atom_id: None, face: node::Face::Rx, host_id, suit_ids, weight }
     }
 
     pub fn get_atom_id(&self) -> AtomID {
-        self.atom_id.expect("Attempt to access an uninitialized fork")
+        match self.face {
+            node::Face::Tx => self.atom_id.expect("Attempt to access an uninitialized fork"),
+            node::Face::Rx => self.atom_id.expect("Attempt to access an uninitialized join"),
+        }
     }
 
-    pub fn get_fork_id(&self) -> ForkID {
-        ForkID(self.get_atom_id())
+    pub fn get_fork_id(&self) -> Option<ForkID> {
+        match self.face {
+            node::Face::Tx => Some(ForkID(self.get_atom_id())),
+            node::Face::Rx => None,
+        }
     }
 
-    pub fn get_tx_node_id(&self) -> NodeID {
-        self.tx_node_id
+    pub fn get_join_id(&self) -> Option<JoinID> {
+        match self.face {
+            node::Face::Tx => None,
+            node::Face::Rx => Some(JoinID(self.get_atom_id())),
+        }
     }
 
-    pub fn get_rx_node_ids(&self) -> &[NodeID] {
-        self.rx_node_ids.as_slice()
+    pub fn get_host_id(&self) -> NodeID {
+        self.host_id
+    }
+
+    pub fn get_suit_ids(&self) -> &[NodeID] {
+        self.suit_ids.as_slice()
     }
 
     pub fn get_weight(&self) -> monomial::Weight {
@@ -571,113 +609,58 @@ impl Fork {
     }
 }
 
-impl cmp::PartialEq for Fork {
+impl cmp::PartialEq for Split {
     fn eq(&self, other: &Self) -> bool {
-        let result = self.tx_node_id == other.tx_node_id && self.rx_node_ids == other.rx_node_ids;
+        let result = self.face == other.face
+            && self.host_id == other.host_id
+            && self.suit_ids == other.suit_ids;
 
         // FIXME
         if result && self.weight != other.weight {
-            panic!("Fork weight mismatch")
+            panic!("Split weight mismatch")
         }
 
         result
     }
 }
 
-impl cmp::Eq for Fork {}
+impl cmp::Eq for Split {}
 
-impl Contextual for Fork {
+impl Contextual for Split {
     fn format(&self, ctx: &Context, _dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
-        let tx_node_name = ctx
-            .get_node_name(self.get_tx_node_id())
-            .ok_or(AcesError::NodeMissingForFork(node::Face::Tx))?;
+        // FIXME check dock vs self.face
 
-        let rx_node_names: Result<Vec<_>, AcesError> = self
-            .get_rx_node_ids()
+        let host_name = ctx.get_node_name(self.get_host_id()).ok_or(match self.face {
+            node::Face::Tx => AcesError::NodeMissingForFork(node::Face::Tx),
+            node::Face::Rx => AcesError::NodeMissingForJoin(node::Face::Rx),
+        })?;
+
+        let suit_names: Result<Vec<_>, AcesError> = self
+            .get_suit_ids()
             .iter()
             .map(|&node_id| {
-                ctx.get_node_name(node_id).ok_or(AcesError::NodeMissingForFork(node::Face::Rx))
+                ctx.get_node_name(node_id).ok_or(match self.face {
+                    node::Face::Tx => AcesError::NodeMissingForFork(node::Face::Rx),
+                    node::Face::Rx => AcesError::NodeMissingForJoin(node::Face::Tx),
+                })
             })
             .collect();
 
-        Ok(format!("({} > {:?})", tx_node_name, rx_node_names?))
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Join {
-    atom_id:     Option<AtomID>,
-    tx_node_ids: Vec<NodeID>,
-    rx_node_id:  NodeID,
-    weight:      monomial::Weight,
-}
-
-impl Join {
-    pub fn new(
-        tx_node_ids: Vec<NodeID>, // FIXME
-        rx_node_id: NodeID,
-        weight: monomial::Weight,
-    ) -> Self {
-        Self { atom_id: None, tx_node_ids, rx_node_id, weight }
-    }
-
-    pub fn get_atom_id(&self) -> AtomID {
-        self.atom_id.expect("Attempt to access an uninitialized join")
-    }
-
-    pub fn get_join_id(&self) -> JoinID {
-        JoinID(self.get_atom_id())
-    }
-
-    pub fn get_tx_node_ids(&self) -> &[NodeID] {
-        self.tx_node_ids.as_slice()
-    }
-
-    pub fn get_rx_node_id(&self) -> NodeID {
-        self.rx_node_id
-    }
-
-    pub fn get_weight(&self) -> monomial::Weight {
-        self.weight
-    }
-}
-
-impl cmp::PartialEq for Join {
-    fn eq(&self, other: &Self) -> bool {
-        let result = self.tx_node_ids == other.tx_node_ids && self.rx_node_id == other.rx_node_id;
-
-        // FIXME
-        if result && self.weight != other.weight {
-            panic!("Join weight mismatch")
+        match self.face {
+            node::Face::Tx => Ok(format!("({} > {:?})", host_name, suit_names?)),
+            node::Face::Rx => Ok(format!("({:?} > {})", suit_names?, host_name)),
         }
-
-        result
     }
 }
 
-impl cmp::Eq for Join {}
-
-impl Contextual for Join {
-    fn format(&self, ctx: &Context, _dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
-        let tx_node_names: Result<Vec<_>, AcesError> = self
-            .get_tx_node_ids()
-            .iter()
-            .map(|&node_id| {
-                ctx.get_node_name(node_id).ok_or(AcesError::NodeMissingForJoin(node::Face::Tx))
-            })
-            .collect();
-
-        let rx_node_name = ctx
-            .get_node_name(self.get_rx_node_id())
-            .ok_or(AcesError::NodeMissingForJoin(node::Face::Rx))?;
-
-        Ok(format!("({:?} > {})", tx_node_names?, rx_node_name))
-    }
-}
+pub type Fork = Split;
+pub type Join = Split;
 
 /// A trait of an identifier convertible into [`NodeID`] and into
 /// [`sat::Literal`].
-pub trait Atomic: Contextual + Copy + PartialEq + Eq + PartialOrd + Ord {
+pub trait Atomic:
+    From<AtomID> + Into<AtomID> + Contextual + Copy + PartialEq + Eq + PartialOrd + Ord
+{
     fn into_node_id(this: InContext<Self>) -> Option<NodeID>;
 
     fn into_sat_literal(self, negated: bool) -> sat::Literal;
@@ -715,7 +698,7 @@ impl Atomic for ForkID {
         let ctx = this.get_context();
         let fid = this.get_thing();
 
-        ctx.get_fork(*fid).map(|fork| fork.get_tx_node_id())
+        ctx.get_fork(*fid).map(|fork| fork.get_host_id())
     }
 
     fn into_sat_literal(self, negated: bool) -> sat::Literal {
@@ -728,7 +711,7 @@ impl Atomic for JoinID {
         let ctx = this.get_context();
         let jid = this.get_thing();
 
-        ctx.get_join(*jid).map(|join| join.get_rx_node_id())
+        ctx.get_join(*jid).map(|join| join.get_host_id())
     }
 
     fn into_sat_literal(self, negated: bool) -> sat::Literal {

@@ -31,6 +31,12 @@ impl NodeID {
     }
 }
 
+impl From<ID> for NodeID {
+    fn from(id: ID) -> Self {
+        NodeID(id)
+    }
+}
+
 impl From<NodeID> for ID {
     fn from(id: NodeID) -> Self {
         id.0

@@ -24,7 +24,7 @@ pub use error::AcesError;
 pub use context::{Context, ContextHandle, Contextual, InContext, InContextMut};
 pub use content::{Content, ContentOrigin, PartialContent, CompilableAsContent};
 pub use node::NodeID;
-pub use atom::{Port, Link, Fork, Join, PortID, LinkID, ForkID, JoinID, Atomic};
+pub use atom::{Port, Link, Split, Fork, Join, AtomID, PortID, LinkID, ForkID, JoinID, Atomic};
 pub use polynomial::{Polynomial, Monomials};
 pub use ces::CEStructure;
 pub use firing::FiringComponent;

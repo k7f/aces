@@ -8,8 +8,8 @@ use std::{
 };
 
 use crate::{
-    ContextHandle, Port, Fork, Join, NodeID, PortID, LinkID, ForkID, JoinID, Polynomial,
-    FiringComponent, Content, content::content_from_str, node, sat, AcesError,
+    ContextHandle, Port, Split, AtomID, NodeID, PortID, LinkID, Polynomial, FiringComponent,
+    Content, content::content_from_str, node, sat, AcesError,
 };
 
 #[derive(PartialEq, Debug)]
@@ -55,10 +55,10 @@ pub struct CEStructure {
     carrier:        BTreeMap<NodeID, node::Capacity>,
     links:          BTreeMap<LinkID, LinkState>,
     num_thin_links: u32,
-    forks:          BTreeMap<NodeID, Vec<ForkID>>,
-    joins:          BTreeMap<NodeID, Vec<JoinID>>,
-    co_forks:       BTreeMap<JoinID, Vec<ForkID>>,
-    co_joins:       BTreeMap<ForkID, Vec<JoinID>>,
+    forks:          BTreeMap<NodeID, Vec<AtomID>>,
+    joins:          BTreeMap<NodeID, Vec<AtomID>>,
+    co_forks:       BTreeMap<AtomID, Vec<AtomID>>,
+    co_joins:       BTreeMap<AtomID, Vec<AtomID>>,
 }
 
 impl CEStructure {
@@ -81,6 +81,128 @@ impl CEStructure {
             co_forks:       Default::default(),
             co_joins:       Default::default(),
         }
+    }
+
+    fn add_split_to_host(&mut self, split_id: AtomID, face: node::Face, node_id: NodeID) {
+        let split_entry = match face {
+            node::Face::Tx => self.forks.entry(node_id),
+            node::Face::Rx => self.joins.entry(node_id),
+        };
+
+        match split_entry {
+            btree_map::Entry::Vacant(entry) => {
+                entry.insert(vec![split_id]);
+            }
+            btree_map::Entry::Occupied(mut entry) => {
+                let sids = entry.get_mut();
+
+                if let Err(pos) = sids.binary_search(&split_id) {
+                    sids.insert(pos, split_id);
+                } // else idempotency of addition.
+            }
+        }
+    }
+
+    fn add_split_to_suit(&mut self, split_id: AtomID, face: node::Face, co_split_ids: &[AtomID]) {
+        for &co_split_id in co_split_ids.iter() {
+            let split_entry = match face {
+                node::Face::Tx => self.co_forks.entry(co_split_id),
+                node::Face::Rx => self.co_joins.entry(co_split_id),
+            };
+
+            match split_entry {
+                btree_map::Entry::Vacant(entry) => {
+                    entry.insert(vec![split_id]);
+                }
+                btree_map::Entry::Occupied(mut entry) => {
+                    let sids = entry.get_mut();
+
+                    if let Err(pos) = sids.binary_search(&split_id) {
+                        sids.insert(pos, split_id);
+                    } // else idempotency of addition.
+                }
+            }
+        }
+    }
+
+    fn create_splits(
+        &mut self,
+        face: node::Face,
+        node_id: NodeID,
+        poly: &Polynomial<LinkID>,
+    ) -> Result<(), AcesError> {
+        use node::Face::{Tx, Rx};
+
+        for mono in poly.get_monomials() {
+            let mut co_node_ids = Vec::new();
+
+            for lid in mono {
+                if let Some(link_state) = self.links.get(&lid) {
+                    match link_state {
+                        LinkState::Fat => {
+                            let ctx = self.context.lock().unwrap();
+
+                            if let Some(link) = ctx.get_link(lid) {
+                                co_node_ids.push(link.get_tx_node_id());
+                            } else {
+                                return Err(AcesError::LinkMissingForID)
+                            }
+                        }
+                        LinkState::Thin(_) => {} // Don't push a thin link.
+                    }
+                } else {
+                    return Err(AcesError::UnlistedAtomicInMonomial)
+                }
+            }
+
+            let mut co_splits = Vec::new();
+
+            for nid in co_node_ids.iter() {
+                if let Some(split_ids) = match face {
+                    Tx => self.joins.get(nid),
+                    Rx => self.forks.get(nid),
+                } {
+                    let ctx = self.context.lock().unwrap();
+
+                    for &sid in split_ids {
+                        if let Some(split) = match face {
+                            Tx => ctx.get_join(sid.into()),
+                            Rx => ctx.get_fork(sid.into()),
+                        } {
+                            if split.get_suit_ids().binary_search(nid).is_ok() {
+                                co_splits.push(sid);
+                            }
+                        }
+                    }
+                } else {
+                    // This co_node has no co_splits yet, a condition
+                    // which should have been detected above as a thin
+                    // link.
+                    return Err(AcesError::IncoherencyLeak)
+                }
+            }
+
+            let split_id: AtomID = match face {
+                Tx => {
+                    let mut fork = Split::new_fork(node_id, co_node_ids, Default::default());
+                    self.context.lock().unwrap().share_fork(&mut fork).into()
+                }
+                Rx => {
+                    let mut join = Split::new_join(node_id, co_node_ids, Default::default());
+                    self.context.lock().unwrap().share_join(&mut join).into()
+                }
+            };
+
+            self.add_split_to_host(split_id, face, node_id);
+            self.add_split_to_suit(split_id, face, co_splits.as_slice());
+
+            match face {
+                Tx => self.co_joins.insert(split_id, co_splits),
+                Rx => self.co_forks.insert(split_id, co_splits),
+            };
+        }
+
+        Ok(())
     }
 
     /// Constructs new [`Polynomial`] from a sequence of sequences of
@@ -118,81 +240,7 @@ impl CEStructure {
             }
         }
 
-        let mut ctx = self.context.lock().unwrap();
-
-        for mono in poly.get_monomials() {
-            let mut co_node_ids = Vec::new();
-
-            for lid in mono {
-                if let Some(link_state) = self.links.get(&lid) {
-                    match link_state {
-                        LinkState::Fat => {
-                            if let Some(link) = ctx.get_link(lid) {
-                                co_node_ids.push(link.get_tx_node_id());
-                            } else {
-                                return Err(AcesError::LinkMissingForID)
-                            }
-                        }
-                        LinkState::Thin(_) => {} // Don't push a thin link.
-                    }
-                } else {
-                    return Err(AcesError::UnlistedAtomicInMonomial)
-                }
-            }
-
-            let mut co_forks = Vec::new();
-
-            for nid in co_node_ids.iter() {
-                if let Some(fork_ids) = self.forks.get(nid) {
-                    for &fid in fork_ids {
-                        if let Some(fork) = ctx.get_fork(fid) {
-                            if fork.get_rx_node_ids().binary_search(nid).is_ok() {
-                                co_forks.push(fid);
-                            }
-                        }
-                    }
-                } else {
-                    // This co_node has no forks yet, a condition
-                    // which should have been detected above as a thin
-                    // link.
-                    return Err(AcesError::IncoherencyLeak)
-                }
-            }
-
-            let mut join = Join::new(co_node_ids, node_id, Default::default());
-            let join_id = ctx.share_join(&mut join);
-
-            match self.joins.entry(node_id) {
-                btree_map::Entry::Vacant(entry) => {
-                    entry.insert(vec![join_id]);
-                }
-                btree_map::Entry::Occupied(mut entry) => {
-                    let jids = entry.get_mut();
-
-                    if let Err(pos) = jids.binary_search(&join_id) {
-                        jids.insert(pos, join_id);
-                    } // else idempotency of addition.
-                }
-            }
-
-            // For all co_forks update co_joins by adding this Join.
-            for co_fork in co_forks.iter() {
-                match self.co_joins.entry(*co_fork) {
-                    btree_map::Entry::Vacant(entry) => {
-                        entry.insert(vec![join_id]);
-                    }
-                    btree_map::Entry::Occupied(mut entry) => {
-                        let jids = entry.get_mut();
-
-                        if let Err(pos) = jids.binary_search(&join_id) {
-                            jids.insert(pos, join_id);
-                        } // else idempotency of addition.
-                    }
-                }
-            }
-
-            self.co_forks.insert(join_id, co_forks);
-        }
+        self.create_splits(node::Face::Rx, node_id, &poly)?;
 
         // FIXME add to old if any
         self.causes.insert(port_id, poly);
@@ -236,6 +284,8 @@ impl CEStructure {
                 self.num_thin_links += 1;
             }
         }
+
+        self.create_splits(node::Face::Tx, node_id, &poly)?;
 
         // FIXME add to old if any
         self.effects.insert(port_id, poly);
