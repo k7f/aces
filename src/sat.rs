@@ -355,6 +355,42 @@ impl Formula {
         }
     }
 
+    /// Adds an _antisplit_ rule to this formula.
+    ///
+    /// This set of clauses constrains nodes to a single part of a
+    /// firing component, source or sink, so that the induced graph of
+    /// any firing component is bipartite.  The `Formula` should
+    /// contain one clause for each fork-join pair of each internal
+    /// node of the c-e structure under analysis.
+    pub fn add_antisplits(&mut self, split_ids: &[AtomID], antisplit_ids: &[AtomID]) {
+        for &split_id in split_ids.iter() {
+            let split_lit = Lit::from_atom_id(split_id, true);
+
+            for &antisplit_id in antisplit_ids.iter() {
+                let antisplit_lit = Lit::from_atom_id(antisplit_id, true);
+
+                let clause = Clause::from_pair(split_lit, antisplit_lit, "antisplit");
+                self.add_clause(clause);
+            }
+        }
+    }
+
+    /// Adds a _sidesplit_ rule to this formula.
+    ///
+    /// This rule enforces monomiality of firing components.
+    pub fn add_sidesplits(&mut self, sidesplit_ids: &[AtomID]) {
+        for (pos, &split_id) in sidesplit_ids.iter().enumerate() {
+            let split_lit = Lit::from_atom_id(split_id, true);
+
+            for &sidesplit_id in sidesplit_ids[pos + 1..].iter() {
+                let sidesplit_lit = Lit::from_atom_id(sidesplit_id, true);
+
+                let clause = Clause::from_pair(split_lit, sidesplit_lit, "sidesplit");
+                self.add_clause(clause);
+            }
+        }
+    }
+
     fn get_variables(&self) -> &BTreeSet<Var> {
         &self.variables
     }

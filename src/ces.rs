@@ -396,15 +396,19 @@ impl CEStructure {
     pub fn get_fork_join_formula(&self) -> sat::Formula {
         let mut formula = sat::Formula::new(&self.context);
 
-        // FIXME
+        for (node_id, fork_atom_ids) in self.forks.iter() {
+            if let Some(join_atom_ids) = self.joins.get(&node_id) {
+                formula.add_antisplits(fork_atom_ids.as_slice(), join_atom_ids.as_slice());
+            }
 
-        // For each fork collect singularity constraints (anti-join
-        // and side-fork clauses), and for each tine of that fork
-        // collect all bijection constraints (cojoin clauses).
+            formula.add_sidesplits(fork_atom_ids.as_slice());
+        }
 
-        // For each join collect singularity constraints (anti-fork
-        // and side-join clauses), and for each lane of that join
-        // collect all bijection constraints (cofork clauses).
+        for (_, join_atom_ids) in self.joins.iter() {
+            formula.add_sidesplits(join_atom_ids.as_slice());
+        }
+
+        // FIXME formula.add_cosplits()
 
         formula
     }
