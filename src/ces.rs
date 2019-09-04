@@ -6,10 +6,10 @@ use std::{
     path::Path,
     error::Error,
 };
-
+use log::Level::Trace;
 use crate::{
-    ContextHandle, Port, Split, AtomID, NodeID, PortID, LinkID, Polynomial, FiringComponent,
-    Content, content::content_from_str, node, sat, AcesError,
+    ContextHandle, Port, Split, AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Polynomial,
+    FiringComponent, Content, content::content_from_str, node, sat, AcesError,
 };
 
 #[derive(PartialEq, Debug)]
@@ -57,8 +57,8 @@ pub struct CEStructure {
     num_thin_links: u32,
     forks:          BTreeMap<NodeID, Vec<AtomID>>,
     joins:          BTreeMap<NodeID, Vec<AtomID>>,
-    co_forks:       BTreeMap<AtomID, Vec<AtomID>>,
-    co_joins:       BTreeMap<AtomID, Vec<AtomID>>,
+    co_forks:       BTreeMap<AtomID, Vec<AtomID>>, // Joins -> 2^Forks
+    co_joins:       BTreeMap<AtomID, Vec<AtomID>>, // Forks -> 2^Joins
 }
 
 impl CEStructure {
@@ -110,6 +110,27 @@ impl CEStructure {
                 node::Face::Rx => self.co_joins.entry(co_split_id),
             };
 
+            if log_enabled!(Trace) {
+                let ctx = self.context.lock().unwrap();
+
+                match face {
+                    node::Face::Tx => {
+                        trace!(
+                            "Old join's co_forks[{}] -> {}",
+                            ctx.with(&JoinID(co_split_id)),
+                            ctx.with(&ForkID(split_id))
+                        );
+                    }
+                    node::Face::Rx => {
+                        trace!(
+                            "Old fork's co_joins[{}] -> {}",
+                            ctx.with(&ForkID(co_split_id)),
+                            ctx.with(&JoinID(split_id))
+                        );
+                    }
+                }
+            }
+
             match split_entry {
                 btree_map::Entry::Vacant(entry) => {
                     entry.insert(vec![split_id]);
@@ -135,20 +156,23 @@ impl CEStructure {
 
         for mono in poly.get_monomials() {
             let mut co_node_ids = Vec::new();
+            let mut fat_co_node_ids = Vec::new();
 
             for lid in mono {
                 if let Some(link_state) = self.links.get(&lid) {
-                    match link_state {
-                        LinkState::Fat => {
-                            let ctx = self.context.lock().unwrap();
+                    let ctx = self.context.lock().unwrap();
 
-                            if let Some(link) = ctx.get_link(lid) {
-                                co_node_ids.push(link.get_tx_node_id());
-                            } else {
-                                return Err(AcesError::LinkMissingForID)
+                    if let Some(link) = ctx.get_link(lid) {
+                        co_node_ids.push(link.get_node_id(!face));
+
+                        match link_state {
+                            LinkState::Fat => {
+                                fat_co_node_ids.push(link.get_node_id(!face));
                             }
+                            LinkState::Thin(_) => {} // Don't push a thin link.
                         }
-                        LinkState::Thin(_) => {} // Don't push a thin link.
+                    } else {
+                        return Err(AcesError::LinkMissingForID)
                     }
                 } else {
                     return Err(AcesError::UnlistedAtomicInMonomial)
@@ -157,7 +181,7 @@ impl CEStructure {
 
             let mut co_splits = Vec::new();
 
-            for nid in co_node_ids.iter() {
+            for nid in fat_co_node_ids.iter() {
                 if let Some(split_ids) = match face {
                     Tx => self.joins.get(nid),
                     Rx => self.forks.get(nid),
@@ -169,7 +193,7 @@ impl CEStructure {
                             Tx => ctx.get_join(sid.into()),
                             Rx => ctx.get_fork(sid.into()),
                         } {
-                            if split.get_suit_ids().binary_search(nid).is_ok() {
+                            if split.get_suit_ids().binary_search(&node_id).is_ok() {
                                 co_splits.push(sid);
                             }
                         }
@@ -194,12 +218,36 @@ impl CEStructure {
             };
 
             self.add_split_to_host(split_id, face, node_id);
-            self.add_split_to_suit(split_id, face, co_splits.as_slice());
 
-            match face {
-                Tx => self.co_joins.insert(split_id, co_splits),
-                Rx => self.co_forks.insert(split_id, co_splits),
-            };
+            if !co_splits.is_empty() {
+                self.add_split_to_suit(split_id, face, co_splits.as_slice());
+
+                if log_enabled!(Trace) {
+                    let ctx = self.context.lock().unwrap();
+
+                    match face {
+                        Tx => {
+                            trace!(
+                                "New fork's co_joins[{}] -> {:?}",
+                                ctx.with(&ForkID(split_id)),
+                                co_splits
+                            );
+                        }
+                        Rx => {
+                            trace!(
+                                "New join's co_forks[{}] -> {:?}",
+                                ctx.with(&JoinID(split_id)),
+                                co_splits
+                            );
+                        }
+                    }
+                }
+
+                match face {
+                    Tx => self.co_joins.insert(split_id, co_splits),
+                    Rx => self.co_forks.insert(split_id, co_splits),
+                };
+            }
         }
 
         Ok(())
@@ -397,7 +445,7 @@ impl CEStructure {
         let mut formula = sat::Formula::new(&self.context);
 
         for (node_id, fork_atom_ids) in self.forks.iter() {
-            if let Some(join_atom_ids) = self.joins.get(&node_id) {
+            if let Some(join_atom_ids) = self.joins.get(node_id) {
                 formula.add_antisplits(fork_atom_ids.as_slice(), join_atom_ids.as_slice());
             }
 
@@ -408,7 +456,13 @@ impl CEStructure {
             formula.add_sidesplits(join_atom_ids.as_slice());
         }
 
-        // FIXME formula.add_cosplits()
+        for (&join_id, co_fork_ids) in self.co_forks.iter() {
+            formula.add_cosplits(join_id, co_fork_ids.as_slice());
+        }
+
+        for (&fork_id, co_join_ids) in self.co_joins.iter() {
+            formula.add_cosplits(fork_id, co_join_ids.as_slice());
+        }
 
         formula
     }
@@ -421,6 +475,12 @@ impl CEStructure {
                 self.get_name().unwrap_or("anonymous").to_owned(),
             )))
         } else {
+            // FIXME choose one or the other
+            let formula = self.get_fork_join_formula();
+
+            debug!("FJ Raw {:?}", formula);
+            info!("FJ Formula: {}", formula);
+
             let formula = self.get_port_link_formula();
 
             debug!("Raw {:?}", formula);

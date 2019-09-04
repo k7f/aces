@@ -37,6 +37,10 @@ impl Contextual for Var {
             result.write_fmt(format_args!("{}", port.format(ctx, dock)?))?;
         } else if let Some(link) = ctx.get_link(LinkID(atom_id)) {
             result.write_fmt(format_args!("{}", link.format(ctx, dock)?))?;
+        } else if let Some(fork) = ctx.get_fork(ForkID(atom_id)) {
+            result.write_fmt(format_args!("{}", fork.format(ctx, dock)?))?;
+        } else if let Some(join) = ctx.get_join(JoinID(atom_id)) {
+            result.write_fmt(format_args!("{}", join.format(ctx, dock)?))?;
         } else {
             result.push_str("???");
         }
@@ -389,6 +393,10 @@ impl Formula {
                 self.add_clause(clause);
             }
         }
+    }
+
+    pub fn add_cosplits(&mut self, split_id: AtomID, cosplit_ids: &[AtomID]) {
+        println!("add_cosplits {} -> {:?}", split_id, cosplit_ids);
     }
 
     fn get_variables(&self) -> &BTreeSet<Var> {

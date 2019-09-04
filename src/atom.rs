@@ -1,4 +1,4 @@
-use std::{cmp, collections::BTreeMap, error::Error};
+use std::{cmp, fmt, collections::BTreeMap, error::Error};
 use crate::{ID, NodeID, Context, Contextual, InContext, node, monomial, sat, error::AcesError};
 
 /// An abstract structural identifier serving as the common base of
@@ -557,7 +557,7 @@ impl Contextual for Link {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Split {
     atom_id:  Option<AtomID>,
     face:     node::Face,
@@ -606,6 +606,27 @@ impl Split {
 
     pub fn get_weight(&self) -> monomial::Weight {
         self.weight
+    }
+}
+
+impl fmt::Debug for Split {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} {{ atom_id: ",
+            match self.face {
+                node::Face::Tx => "Fork",
+                node::Face::Rx => "Join",
+            }
+        )?;
+        self.atom_id.fmt(f)?;
+        write!(f, ", host_id: ")?;
+        self.host_id.fmt(f)?;
+        write!(f, ", suit_ids: ")?;
+        self.suit_ids.fmt(f)?;
+        write!(f, ", weight: ")?;
+        self.weight.fmt(f)?;
+        write!(f, " }}")
     }
 }
 
