@@ -312,13 +312,30 @@ impl AtomSpace {
     }
 
     #[inline]
+    pub(crate) fn get_split(&self, aid: AtomID) -> Option<&Split> {
+        match self.get_atom(aid) {
+            Some(Atom::Fork(a)) => Some(a),
+            Some(Atom::Join(a)) => Some(a),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn get_split_mut(&mut self, aid: AtomID) -> Option<&mut Split> {
+        match self.get_atom_mut(aid) {
+            Some(Atom::Fork(a)) => Some(a),
+            Some(Atom::Join(a)) => Some(a),
+            _ => None,
+        }
+    }
+
+    #[inline]
     pub(crate) fn get_fork(&self, fid: ForkID) -> Option<&Fork> {
         match self.get_atom(fid.into()) {
             Some(Atom::Fork(a)) => Some(a),
             _ => None,
         }
     }
-
     #[inline]
     pub(crate) fn get_fork_mut(&mut self, fid: ForkID) -> Option<&mut Fork> {
         match self.get_atom_mut(fid.into()) {

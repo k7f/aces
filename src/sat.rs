@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeSet, BTreeMap, HashSet},
     convert::TryInto,
-    ops,
+    mem, ops,
     fmt::{self, Write},
     error::Error,
 };
@@ -9,8 +9,14 @@ use log::Level::Debug;
 use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
 use crate::{
     Atomic, Context, ContextHandle, Contextual, Polynomial, NodeID, PortID, LinkID, ForkID, JoinID,
-    Split, node, atom::AtomID,
+    Split, node, atom::AtomID, error::AcesError,
 };
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub(crate) enum Encoding {
+    PortLink,
+    ForkJoin,
+}
 
 trait CEVar {
     fn from_atom_id(atom_id: AtomID) -> Self;
@@ -245,12 +251,19 @@ impl Clause {
         }
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.lits.is_empty()
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.lits.len()
+    }
+
+    #[inline]
+    pub fn get_literals(&self) -> &[Lit] {
+        self.lits.as_slice()
     }
 }
 
@@ -276,16 +289,16 @@ impl Formula {
     }
 
     fn add_clause(&mut self, clause: Clause) {
-        if clause.lits.is_empty() {
-            debug!("Empty {} clause, not added to formula", clause.info);
+        if clause.is_empty() {
+            panic!("Empty {} clause, not added to formula", clause.info);
         } else {
             if log_enabled!(Debug) {
                 let ctx = self.context.lock().unwrap();
                 debug!("Add (to formula) {} clause: {}", clause.info, ctx.with(&clause))
             }
 
-            self.cnf.add_clause(clause.lits.as_slice());
-            self.variables.extend(clause.lits.iter().map(|lit| lit.var()));
+            self.cnf.add_clause(clause.get_literals());
+            self.variables.extend(clause.get_literals().iter().map(|lit| lit.var()));
         }
     }
 
@@ -395,8 +408,37 @@ impl Formula {
         }
     }
 
-    pub fn add_cosplits(&mut self, split_id: AtomID, cosplit_ids: &[AtomID]) {
-        println!("add_cosplits {} -> {:?}", split_id, cosplit_ids);
+    pub fn add_cosplits(
+        &mut self,
+        split_id: AtomID,
+        cosplit_ids: Vec<Vec<AtomID>>,
+    ) -> Result<(), AcesError> {
+        if cosplit_ids.len() < 2 {
+            if let Some(coterm) = cosplit_ids.get(0) {
+                if coterm.len() < 2 {
+                    if let Some(&cosplit_id) = coterm.get(0) {
+                        let split_lit = Lit::from_atom_id(split_id, true);
+                        let cosplit_lit = Lit::from_atom_id(cosplit_id, false);
+                        let clause = Clause::from_pair(split_lit, cosplit_lit, "cosplit");
+                        self.add_clause(clause);
+
+                        Ok(())
+                    } else {
+                        Err(AcesError::IncoherencyLeak)
+                    }
+                } else {
+                    println!("add_cosplits {} -> {:?} (single co-term)", split_id, coterm);
+
+                    Ok(())
+                }
+            } else {
+                Err(AcesError::IncoherencyLeak)
+            }
+        } else {
+            println!("add_cosplits {} -> {:?}", split_id, cosplit_ids);
+
+            Ok(())
+        }
     }
 
     fn get_variables(&self) -> &BTreeSet<Var> {
@@ -441,12 +483,54 @@ impl fmt::Display for Formula {
     }
 }
 
+pub(crate) enum ModelSearchResult {
+    Reset,
+    Found(Vec<Lit>),
+    Done,
+    Failed(SolverError),
+}
+
+impl ModelSearchResult {
+    #[allow(dead_code)]
+    pub(crate) fn get_model(&self) -> Option<&[Lit]> {
+        match self {
+            ModelSearchResult::Found(ref v) => Some(v.as_slice()),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub(crate) fn take(&mut self) -> Self {
+        mem::replace(self, ModelSearchResult::Reset)
+    }
+
+    pub(crate) fn take_error(&mut self) -> Option<SolverError> {
+        let old_result = match self {
+            ModelSearchResult::Failed(_) => mem::replace(self, ModelSearchResult::Reset),
+            _ => return None,
+        };
+
+        if let ModelSearchResult::Failed(err) = old_result {
+            Some(err)
+        } else {
+            unreachable!()
+        }
+    }
+}
+
+impl Default for ModelSearchResult {
+    fn default() -> Self {
+        ModelSearchResult::Reset
+    }
+}
+
 pub struct Solver<'a> {
     context:      ContextHandle,
     engine:       varisat::Solver<'a>,
     port_vars:    BTreeSet<Var>,
     is_sat:       Option<bool>,
-    last_result:  Option<Result<bool, SolverError>>,
+    last_model:   ModelSearchResult,
     only_minimal: bool,
     min_residue:  BTreeSet<Var>,
     assumptions:  Vec<Lit>,
@@ -459,7 +543,7 @@ impl<'a> Solver<'a> {
             engine:       Default::default(),
             port_vars:    Default::default(),
             is_sat:       None,
-            last_result:  None,
+            last_model:   Default::default(),
             only_minimal: false,
             min_residue:  Default::default(),
             assumptions:  Default::default(),
@@ -468,7 +552,7 @@ impl<'a> Solver<'a> {
 
     pub fn reset(&mut self) -> Result<(), SolverError> {
         self.is_sat = None;
-        self.last_result = None;
+        self.last_model = ModelSearchResult::Reset;
         self.min_residue.clear();
         self.assumptions.clear();
         self.engine.close_proof()
@@ -478,16 +562,20 @@ impl<'a> Solver<'a> {
         self.only_minimal = only_minimal;
     }
 
-    fn add_clause(&mut self, clause: Clause) {
-        if clause.lits.is_empty() {
-            debug!("Empty {} clause, not added to solver", clause.info);
+    fn add_clause(&mut self, clause: Clause) -> bool {
+        if clause.is_empty() {
+            panic!("Empty {} clause, not added to solver", clause.info);
+
+            false
         } else {
             if log_enabled!(Debug) {
                 let ctx = self.context.lock().unwrap();
                 debug!("Add (to solver) {} clause: {}", clause.info, ctx.with(&clause));
             }
 
-            self.engine.add_clause(clause.lits.as_slice());
+            self.engine.add_clause(clause.get_literals());
+
+            true
         }
     }
 
@@ -510,11 +598,11 @@ impl<'a> Solver<'a> {
     /// disjunction of all [`Port`] variables known by the solver.
     ///
     /// [`Port`]: crate::Port
-    pub fn inhibit_empty_solution(&mut self) {
+    pub fn inhibit_empty_solution(&mut self) -> bool {
         let lits = self.port_vars.iter().map(|&var| Lit::from_var(var, true));
         let clause = Clause::from_literals(lits, "void inhibition");
 
-        self.add_clause(clause);
+        self.add_clause(clause)
     }
 
     /// Adds a _model inhibition_ clause which will remove a specific
@@ -523,14 +611,25 @@ impl<'a> Solver<'a> {
     /// The blocking clause is constructed by negating the given
     /// `model`, i.e. by taking the disjunction of all literals and
     /// reversing polarity of each.
-    fn inhibit_model(&mut self, model: &[Lit]) {
+    pub fn inhibit_model(&mut self, model: &[Lit]) -> bool {
         let anti_lits = model.iter().map(|&lit| !lit);
+        let clause = Clause::from_literals(anti_lits, "model inhibition");
 
-        let anti_clause = Clause::from_literals(anti_lits, "model inhibition");
-        self.add_clause(anti_clause);
+        self.add_clause(clause)
     }
 
-    fn reduce_model(&mut self, model: &[Lit]) {
+    pub fn inhibit_last_model(&mut self) -> bool {
+        if let ModelSearchResult::Found(ref model) = self.last_model {
+            let anti_lits = model.iter().map(|&lit| !lit);
+            let clause = Clause::from_literals(anti_lits, "model inhibition");
+
+            self.add_clause(clause)
+        } else {
+            false
+        }
+    }
+
+    pub fn reduce_model(&mut self, model: &[Lit]) -> bool {
         let mut reducing_lits = Vec::new();
 
         for &lit in model.iter() {
@@ -544,8 +643,12 @@ impl<'a> Solver<'a> {
             }
         }
 
-        let reducing_clause = Clause::from_literals(reducing_lits.into_iter(), "model reduction");
-        self.add_clause(reducing_clause);
+        if reducing_lits.is_empty() {
+            false
+        } else {
+            let clause = Clause::from_literals(reducing_lits.into_iter(), "model reduction");
+            self.add_clause(clause)
+        }
     }
 
     pub fn solve(&mut self) -> Option<bool> {
@@ -558,14 +661,32 @@ impl<'a> Solver<'a> {
 
         let result = self.engine.solve();
 
-        let is_sat = result.as_ref().ok().copied();
-
         if self.is_sat.is_none() {
-            self.is_sat = is_sat;
+            self.is_sat = result.as_ref().ok().copied();
         }
-        self.last_result = Some(result);
 
-        is_sat
+        match result {
+            Ok(is_sat) => {
+                if is_sat {
+                    if let Some(model) = self.engine.model() {
+                        self.last_model = ModelSearchResult::Found(model);
+                        Some(true)
+                    } else {
+                        warn!("Solver reported SAT without a model");
+
+                        self.last_model = ModelSearchResult::Done;
+                        Some(false)
+                    }
+                } else {
+                    self.last_model = ModelSearchResult::Done;
+                    Some(false)
+                }
+            }
+            Err(err) => {
+                self.last_model = ModelSearchResult::Failed(err);
+                None
+            }
+        }
     }
 
     pub fn is_sat(&self) -> Option<bool> {
@@ -577,33 +698,33 @@ impl<'a> Solver<'a> {
     /// hasn't been called yet.
     ///
     /// Note, that even if last call to [`solve()`] was indeed
-    /// interrupted, a subsequent invocation of [`take_last_result()`]
+    /// interrupted, a subsequent invocation of [`take_last_error()`]
     /// resets this to return `false` until next [`solve()`].
     ///
     /// [`solve()`]: Solver::solve()
-    /// [`take_last_result()`]: Solver::take_last_result()
+    /// [`take_last_error()`]: Solver::take_last_error()
     pub fn was_interrupted(&self) -> bool {
-        if let Some(result) = self.last_result.as_ref() {
-            if let Err(err) = result {
-                return err.is_recoverable()
-            }
+        if let ModelSearchResult::Failed(ref err) = self.last_model {
+            err.is_recoverable()
+        } else {
+            false
         }
-        false
     }
 
     pub fn get_solution(&self) -> Option<Solution> {
         self.engine.model().map(|model| Solution::from_model(&self.context, model))
     }
 
-    /// Returns the result of last call to [`solve()`].
+    /// Returns the error reported by last call to [`solve()`], if
+    /// solving has failed; otherwise returns `None`.
     ///
-    /// Note, that this may be invoked successfully only once for
-    /// every call to [`solve()`], because, in varisat 0.2,
+    /// Note, that this may be invoked only once for every
+    /// unsuccessful call to [`solve()`], because, in varisat 0.2,
     /// `varisat::solver::SolverError` can't be cloned.
     ///
     /// [`solve()`]: Solver::solve()
-    pub fn take_last_result(&mut self) -> Option<Result<bool, SolverError>> {
-        self.last_result.take()
+    pub fn take_last_error(&mut self) -> Option<SolverError> {
+        self.last_model.take_error()
     }
 }
 
@@ -613,52 +734,48 @@ impl Iterator for Solver<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.only_minimal {
             self.assumptions.clear();
-        } else if let Some(is_sat) = self.is_sat {
-            if is_sat {
-                if let Some(model) = self.engine.model() {
-                    self.inhibit_model(&model);
-                }
-            }
-        }
 
-        self.solve().and_then(|is_sat| {
-            if is_sat {
-                self.engine.model().map(|top_model| {
-                    if self.only_minimal {
-                        trace!("Top model: {:?}", top_model);
+            self.solve();
 
-                        self.min_residue.clear();
-                        self.assumptions.clear();
+            if let ModelSearchResult::Found(ref top_model) = self.last_model {
+                let top_model = top_model.clone();
 
-                        self.reduce_model(&top_model);
+                trace!("Top model: {:?}", top_model);
 
-                        while let Some(is_sat) = self.solve() {
-                            if is_sat {
-                                if let Some(model) = self.engine.model() {
-                                    trace!("Reduced model: {:?}", model);
+                self.min_residue.clear();
+                self.assumptions.clear();
 
-                                    self.reduce_model(&model);
-                                } else {
-                                    break
-                                }
-                            } else {
-                                break
-                            }
-                        }
+                let mut model = top_model.clone();
 
-                        let min_model = top_model.iter().map(|lit| {
-                            Lit::from_var(lit.var(), !self.min_residue.contains(&lit.var()))
-                        });
+                while self.reduce_model(&model) {
+                    self.solve();
 
-                        Solution::from_model(&self.context, min_model)
+                    if let ModelSearchResult::Found(ref reduced_model) = self.last_model {
+                        trace!("Reduced model: {:?}", reduced_model);
+                        model = reduced_model.clone();
                     } else {
-                        Solution::from_model(&self.context, top_model)
+                        break
                     }
-                })
+                }
+
+                let min_model = top_model
+                    .iter()
+                    .map(|lit| Lit::from_var(lit.var(), !self.min_residue.contains(&lit.var())));
+
+                Some(Solution::from_model(&self.context, min_model))
             } else {
                 None
             }
-        })
+        } else {
+            self.inhibit_last_model();
+            self.solve();
+
+            if let ModelSearchResult::Found(ref model) = self.last_model {
+                Some(Solution::from_model(&self.context, model.iter().copied()))
+            } else {
+                None
+            }
+        }
     }
 }
 

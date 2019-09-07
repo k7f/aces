@@ -47,18 +47,20 @@ impl Default for Resolution {
 /// [`Context`]: crate::Context
 #[derive(Debug)]
 pub struct CEStructure {
-    context:        ContextHandle,
-    content:        Option<Box<dyn Content>>,
-    resolution:     Resolution,
-    causes:         BTreeMap<PortID, Polynomial<LinkID>>,
-    effects:        BTreeMap<PortID, Polynomial<LinkID>>,
-    carrier:        BTreeMap<NodeID, node::Capacity>,
-    links:          BTreeMap<LinkID, LinkState>,
-    num_thin_links: u32,
-    forks:          BTreeMap<NodeID, Vec<AtomID>>,
-    joins:          BTreeMap<NodeID, Vec<AtomID>>,
-    co_forks:       BTreeMap<AtomID, Vec<AtomID>>, // Joins -> 2^Forks
-    co_joins:       BTreeMap<AtomID, Vec<AtomID>>, // Forks -> 2^Joins
+    context:         ContextHandle,
+    content:         Option<Box<dyn Content>>,
+    resolution:      Resolution,
+    causes:          BTreeMap<PortID, Polynomial<LinkID>>,
+    effects:         BTreeMap<PortID, Polynomial<LinkID>>,
+    carrier:         BTreeMap<NodeID, node::Capacity>,
+    links:           BTreeMap<LinkID, LinkState>,
+    num_thin_links:  u32,
+    encoding_to_use: Option<sat::Encoding>,
+    forks:           BTreeMap<NodeID, Vec<AtomID>>,
+    joins:           BTreeMap<NodeID, Vec<AtomID>>,
+    // FIXME define `struct Cosplits`, grouped on demand (cf. `group_cosplits`)
+    co_forks:        BTreeMap<AtomID, Vec<AtomID>>, // Joins -> 2^Forks
+    co_joins:        BTreeMap<AtomID, Vec<AtomID>>, // Forks -> 2^Joins
 }
 
 impl CEStructure {
@@ -68,18 +70,19 @@ impl CEStructure {
     /// [`Context`]: crate::Context
     pub fn new(ctx: &ContextHandle) -> Self {
         Self {
-            context:        ctx.clone(),
-            content:        Default::default(),
-            resolution:     Default::default(),
-            causes:         Default::default(),
-            effects:        Default::default(),
-            carrier:        Default::default(),
-            links:          Default::default(),
-            num_thin_links: 0,
-            forks:          Default::default(),
-            joins:          Default::default(),
-            co_forks:       Default::default(),
-            co_joins:       Default::default(),
+            context:         ctx.clone(),
+            content:         None,
+            resolution:      Default::default(),
+            causes:          Default::default(),
+            effects:         Default::default(),
+            carrier:         Default::default(),
+            links:           Default::default(),
+            num_thin_links:  0,
+            encoding_to_use: None,
+            forks:           Default::default(),
+            joins:           Default::default(),
+            co_forks:        Default::default(),
+            co_joins:        Default::default(),
         }
     }
 
@@ -422,7 +425,7 @@ impl CEStructure {
         self.num_thin_links == 0
     }
 
-    pub fn get_port_link_formula(&self) -> sat::Formula {
+    pub fn get_port_link_formula(&self) -> Result<sat::Formula, Box<dyn Error>> {
         let mut formula = sat::Formula::new(&self.context);
 
         for (&pid, poly) in self.causes.iter() {
@@ -438,10 +441,44 @@ impl CEStructure {
             formula.add_link_coherence(lid);
         }
 
-        formula
+        Ok(formula)
     }
 
-    pub fn get_fork_join_formula(&self) -> sat::Formula {
+    fn group_cosplits(&self, cosplit_ids: &[AtomID]) -> Result<Vec<Vec<AtomID>>, AcesError> {
+        if cosplit_ids.len() < 2 {
+            if cosplit_ids.is_empty() {
+                Err(AcesError::IncoherencyLeak)
+            } else {
+                Ok(vec![cosplit_ids.to_vec()])
+            }
+        } else {
+            let ctx = self.context.lock().unwrap();
+            let mut cohost_map = BTreeMap::new();
+
+            for &cosplit_id in cosplit_ids.iter() {
+                let split = ctx.get_split(cosplit_id).ok_or(AcesError::SplitMissingForID)?;
+
+                match cohost_map.entry(split.get_host_id()) {
+                    btree_map::Entry::Vacant(entry) => {
+                        entry.insert(vec![cosplit_id]);
+                    }
+                    btree_map::Entry::Occupied(mut entry) => {
+                        let sids = entry.get_mut();
+
+                        if let Err(pos) = sids.binary_search(&cosplit_id) {
+                            sids.insert(pos, cosplit_id);
+                        } else {
+                            warn!("Multiple occurrences of {} in cosplit array", ctx.with(split));
+                        }
+                    }
+                }
+            }
+
+            Ok(cohost_map.into_iter().map(|(_, v)| v).collect())
+        }
+    }
+
+    pub fn get_fork_join_formula(&self) -> Result<sat::Formula, Box<dyn Error>> {
         let mut formula = sat::Formula::new(&self.context);
 
         for (node_id, fork_atom_ids) in self.forks.iter() {
@@ -456,15 +493,17 @@ impl CEStructure {
             formula.add_sidesplits(join_atom_ids.as_slice());
         }
 
-        for (&join_id, co_fork_ids) in self.co_forks.iter() {
-            formula.add_cosplits(join_id, co_fork_ids.as_slice());
+        for (&join_id, cofork_ids) in self.co_forks.iter() {
+            let cosplits = self.group_cosplits(cofork_ids.as_slice())?;
+            formula.add_cosplits(join_id, cosplits)?;
         }
 
-        for (&fork_id, co_join_ids) in self.co_joins.iter() {
-            formula.add_cosplits(fork_id, co_join_ids.as_slice());
+        for (&fork_id, cojoin_ids) in self.co_joins.iter() {
+            let cosplits = self.group_cosplits(cojoin_ids.as_slice())?;
+            formula.add_cosplits(fork_id, cosplits)?;
         }
 
-        formula
+        Ok(formula)
     }
 
     pub fn solve(&mut self, minimal_mode: bool) -> Result<(), Box<dyn Error>> {
@@ -475,13 +514,15 @@ impl CEStructure {
                 self.get_name().unwrap_or("anonymous").to_owned(),
             )))
         } else {
-            // FIXME choose one or the other
-            let formula = self.get_fork_join_formula();
-
-            debug!("FJ Raw {:?}", formula);
-            info!("FJ Formula: {}", formula);
-
-            let formula = self.get_port_link_formula();
+            let formula = if let Some(encoding) = self.encoding_to_use {
+                match encoding {
+                    sat::Encoding::PortLink => self.get_port_link_formula()?,
+                    sat::Encoding::ForkJoin => self.get_fork_join_formula()?,
+                }
+            } else {
+                // FIXME choose one or the other, heuristically
+                self.get_port_link_formula()?
+            };
 
             debug!("Raw {:?}", formula);
             info!("Formula: {}", formula);
@@ -511,7 +552,7 @@ impl CEStructure {
             } else if solver.was_interrupted() {
                 warn!("Solving was interrupted");
                 self.resolution = Resolution::Unsolved;
-            } else if let Some(Err(err)) = solver.take_last_result() {
+            } else if let Some(err) = solver.take_last_error() {
                 error!("Solving failed: {}", err);
                 self.resolution = Resolution::Unsolved;
             } else {

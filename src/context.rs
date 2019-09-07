@@ -4,7 +4,7 @@ use std::{
     error::Error,
 };
 use crate::{
-    ContentOrigin, Port, Link, Fork, Join, ID, NodeID, PortID, LinkID, ForkID, JoinID, node,
+    ContentOrigin, Port, Link, Split, Fork, Join, ID, NodeID, PortID, LinkID, ForkID, JoinID, node,
     name::NameSpace,
     atom::{AtomSpace, AtomID},
 };
@@ -162,6 +162,14 @@ impl Context {
 
     pub fn get_link_mut(&mut self, link_id: LinkID) -> Option<&mut Link> {
         self.atoms.get_link_mut(link_id)
+    }
+
+    pub fn get_split(&self, atom_id: AtomID) -> Option<&Split> {
+        self.atoms.get_split(atom_id)
+    }
+
+    pub fn get_split_mut(&mut self, atom_id: AtomID) -> Option<&mut Split> {
+        self.atoms.get_split_mut(atom_id)
     }
 
     pub fn get_fork(&self, fork_id: ForkID) -> Option<&Fork> {
