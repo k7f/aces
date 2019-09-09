@@ -57,7 +57,7 @@ impl TryFrom<sat::Solution> for FiringComponent {
 }
 
 impl Contextual for FiringComponent {
-    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let mut result = String::new();
 
         if self.pre_set.is_empty() {
@@ -67,7 +67,7 @@ impl Contextual for FiringComponent {
 
             for node_id in self.pre_set.keys() {
                 result.push(' ');
-                result.push_str(node_id.format(ctx, dock)?.as_str());
+                result.push_str(node_id.format(ctx)?.as_str());
             }
 
             result.push_str(" } => {");
@@ -78,7 +78,7 @@ impl Contextual for FiringComponent {
         } else {
             for node_id in self.post_set.keys() {
                 result.push(' ');
-                result.push_str(node_id.format(ctx, dock)?.as_str());
+                result.push_str(node_id.format(ctx)?.as_str());
             }
 
             result.push_str(" }");

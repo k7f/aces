@@ -34,6 +34,7 @@ pub struct Polynomial<T: Atomic + fmt::Debug> {
     weights: Vec<monomial::Weight>,
     // FIXME choose a better representation of a boolean matrix.
     terms: Vec<BitVec>,
+    dock:  Option<node::Face>,
 }
 
 impl Polynomial<LinkID> {
@@ -49,7 +50,7 @@ impl Polynomial<LinkID> {
         I: IntoIterator + 'a,
         I::Item: IntoIterator<Item = &'a NodeID>,
     {
-        let mut result = Self::new();
+        let mut result = Self::new_docked(face);
         let mut port = Port::new(face, node_id);
         let pid = ctx.lock().unwrap().share_port(&mut port);
         let host = port.get_node_id();
@@ -87,6 +88,19 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             atomics: Default::default(),
             weights: Default::default(),
             terms:   Default::default(),
+            dock:    None,
+        }
+    }
+
+    /// Creates an empty polynomial, _&theta;_, docked at a given
+    /// [`node::Face`].
+    #[allow(clippy::new_without_default)]
+    pub fn new_docked(dock: node::Face) -> Self {
+        Self {
+            atomics: Default::default(),
+            weights: Default::default(),
+            terms:   Default::default(),
+            dock:    Some(dock),
         }
     }
 
@@ -276,20 +290,24 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
     /// Returns error in case of port mismatch, or if context mismatch
     /// was detected.
     pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, Box<dyn Error>> {
-        // FIXME optimize.  There are two special cases: when `self`
-        // is a superpolynomial, and when it is a subpolynomial of
-        // `other`.  First case is a nop; the second: clear followed
-        // by clone.
+        if self.dock == other.dock {
+            // FIXME optimize.  There are two special cases: when `self`
+            // is a superpolynomial, and when it is a subpolynomial of
+            // `other`.  First case is a nop; the second: clear followed
+            // by clone.
 
-        let mut changed = false;
+            let mut changed = false;
 
-        for mono in other.get_monomials() {
-            if self.add_atomics_sorted(mono)? {
-                changed = true;
+            for mono in other.get_monomials() {
+                if self.add_atomics_sorted(mono)? {
+                    changed = true;
+                }
             }
-        }
 
-        Ok(changed)
+            Ok(changed)
+        } else {
+            Err(Box::new(AcesError::PortMismatch))
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -431,7 +449,7 @@ impl<T: Atomic + fmt::Debug> cmp::Eq for Polynomial<T> {}
 impl<T: Atomic + fmt::Debug> cmp::PartialOrd for Polynomial<T> {
     #[allow(clippy::collapsible_if)]
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        // FIXME optimize
+        // FIXME optimize, handle errors
 
         if self.clone().add_polynomial(other).unwrap() {
             if other.clone().add_polynomial(self).unwrap() {
@@ -450,7 +468,7 @@ impl<T: Atomic + fmt::Debug> cmp::PartialOrd for Polynomial<T> {
 }
 
 impl Contextual for Polynomial<LinkID> {
-    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let mut result = String::new();
 
         let mut first_mono = true;
@@ -473,13 +491,13 @@ impl Contextual for Polynomial<LinkID> {
 
                 let link = ctx.get_link(id).ok_or(AcesError::LinkMissingForID)?;
 
-                let s = if let Some(face) = dock {
+                let s = if let Some(face) = self.dock {
                     match face {
-                        node::Face::Tx => link.get_rx_node_id().format(ctx, dock),
-                        node::Face::Rx => link.get_tx_node_id().format(ctx, dock),
+                        node::Face::Tx => link.get_rx_node_id().format(ctx),
+                        node::Face::Rx => link.get_tx_node_id().format(ctx),
                     }
                 } else {
-                    id.format(ctx, dock)
+                    id.format(ctx)
                 }?;
 
                 result.push_str(&s);
@@ -493,11 +511,7 @@ impl Contextual for Polynomial<LinkID> {
 impl<'a> InContextMut<'a, Polynomial<LinkID>> {
     pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, Box<dyn Error>> {
         if self.get_context() == other.get_context() {
-            if self.get_dock() == other.get_dock() {
-                self.get_thing_mut().add_polynomial(other.get_thing())
-            } else {
-                Err(Box::new(AcesError::PortMismatch))
-            }
+            self.get_thing_mut().add_polynomial(other.get_thing())
         } else {
             Err(Box::new(AcesError::ContextMismatch))
         }

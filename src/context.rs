@@ -4,9 +4,10 @@ use std::{
     error::Error,
 };
 use crate::{
-    ContentOrigin, Port, Link, Split, Fork, Join, ID, NodeID, PortID, LinkID, ForkID, JoinID, node,
+    ContentOrigin, Port, Link, Split, Fork, Join, ID, NodeID, AtomID, PortID, LinkID, ForkID,
+    JoinID,
     name::NameSpace,
-    atom::{AtomSpace, AtomID},
+    atom::{AtomSpace, Atom},
 };
 
 /// A handle to a [`Context`] instance.
@@ -114,80 +115,104 @@ impl Context {
 
     // Nodes
 
+    #[inline]
     pub fn share_node_name<S: AsRef<str>>(&mut self, node_name: S) -> NodeID {
         NodeID(self.nodes.share_name(node_name))
     }
 
+    #[inline]
     pub fn get_node_name(&self, node_id: NodeID) -> Option<&str> {
         self.nodes.get_name(node_id.get())
     }
 
+    #[inline]
     pub fn get_node_id<S: AsRef<str>>(&self, node_name: S) -> Option<NodeID> {
         self.nodes.get_id(node_name).map(NodeID)
     }
 
     // Atoms
 
+    #[inline]
+    pub(crate) fn get_atom(&self, atom_id: AtomID) -> Option<&Atom> {
+        self.atoms.get_atom(atom_id)
+    }
+
+    #[inline]
     pub(crate) fn is_port(&self, atom_id: AtomID) -> bool {
         self.atoms.is_port(atom_id)
     }
 
+    #[inline]
     pub fn share_port(&mut self, port: &mut Port) -> PortID {
         self.atoms.share_port(port)
     }
 
+    #[inline]
     pub fn share_link(&mut self, link: &mut Link) -> LinkID {
         self.atoms.share_link(link)
     }
 
+    #[inline]
     pub fn share_fork(&mut self, fork: &mut Fork) -> ForkID {
         self.atoms.share_fork(fork)
     }
 
+    #[inline]
     pub fn share_join(&mut self, join: &mut Join) -> JoinID {
         self.atoms.share_join(join)
     }
 
+    #[inline]
     pub fn get_port(&self, port_id: PortID) -> Option<&Port> {
         self.atoms.get_port(port_id)
     }
 
+    #[inline]
     pub fn get_port_mut(&mut self, port_id: PortID) -> Option<&mut Port> {
         self.atoms.get_port_mut(port_id)
     }
 
+    #[inline]
     pub fn get_link(&self, link_id: LinkID) -> Option<&Link> {
         self.atoms.get_link(link_id)
     }
 
+    #[inline]
     pub fn get_link_mut(&mut self, link_id: LinkID) -> Option<&mut Link> {
         self.atoms.get_link_mut(link_id)
     }
 
+    #[inline]
     pub fn get_split(&self, atom_id: AtomID) -> Option<&Split> {
         self.atoms.get_split(atom_id)
     }
 
+    #[inline]
     pub fn get_split_mut(&mut self, atom_id: AtomID) -> Option<&mut Split> {
         self.atoms.get_split_mut(atom_id)
     }
 
+    #[inline]
     pub fn get_fork(&self, fork_id: ForkID) -> Option<&Fork> {
         self.atoms.get_fork(fork_id)
     }
 
+    #[inline]
     pub fn get_fork_mut(&mut self, fork_id: ForkID) -> Option<&mut Fork> {
         self.atoms.get_fork_mut(fork_id)
     }
 
+    #[inline]
     pub fn get_join(&self, join_id: JoinID) -> Option<&Join> {
         self.atoms.get_join(join_id)
     }
 
+    #[inline]
     pub fn get_join_mut(&mut self, join_id: JoinID) -> Option<&mut Join> {
         self.atoms.get_join_mut(join_id)
     }
 
+    #[inline]
     pub fn get_antiport_id(&self, port_id: PortID) -> Option<PortID> {
         self.atoms.get_antiport_id(port_id)
     }
@@ -248,7 +273,25 @@ impl cmp::PartialOrd for Context {
 ///
 /// See [`InContext`] for more details.
 pub trait Contextual {
-    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>>;
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>>;
+}
+
+impl<T: Contextual> Contextual for Vec<T> {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        let mut elts = self.iter();
+
+        if let Some(elt) = elts.next() {
+            let mut elts_repr = elt.format(ctx)?;
+
+            for elt in elts {
+                elts_repr.push_str(&format!(", {}", ctx.with(elt)));
+            }
+
+            Ok(format!("{{{}}}", elts_repr))
+        } else {
+            Ok("{{}}".to_owned())
+        }
+    }
 }
 
 /// A short-term binding of [`Context`] and any immutable object of a
@@ -259,7 +302,6 @@ pub trait Contextual {
 /// like names etc.
 pub struct InContext<'a, D: Contextual> {
     context: &'a Context,
-    dock:    Option<node::Face>,
     thing:   &'a D,
 }
 
@@ -270,11 +312,6 @@ impl<D: Contextual> InContext<'_, D> {
     }
 
     #[inline]
-    pub fn get_dock(&self) -> Option<node::Face> {
-        self.dock
-    }
-
-    #[inline]
     pub fn get_thing(&self) -> &D {
         self.thing
     }
@@ -282,7 +319,7 @@ impl<D: Contextual> InContext<'_, D> {
 
 impl<'a, D: Contextual> fmt::Display for InContext<'a, D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.thing.format(self.context, self.dock).expect("Can't display"))
+        write!(f, "{}", self.thing.format(self.context).expect("Can't display"))
     }
 }
 
@@ -294,7 +331,6 @@ impl<'a, D: Contextual> fmt::Display for InContext<'a, D> {
 /// like names etc.
 pub struct InContextMut<'a, D: Contextual> {
     context: &'a Context,
-    dock:    Option<node::Face>,
     thing:   &'a mut D,
 }
 
@@ -302,11 +338,6 @@ impl<D: Contextual> InContextMut<'_, D> {
     #[inline]
     pub fn get_context(&self) -> &Context {
         self.context
-    }
-
-    #[inline]
-    pub fn get_dock(&self) -> Option<node::Face> {
-        self.dock
     }
 
     #[inline]
@@ -322,32 +353,18 @@ impl<D: Contextual> InContextMut<'_, D> {
 
 impl<'a, D: Contextual> fmt::Display for InContextMut<'a, D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.thing.format(self.context, self.dock).expect("Can't display"))
+        write!(f, "{}", self.thing.format(self.context).expect("Can't display"))
     }
 }
 
 impl Context {
+    #[inline]
     pub fn with<'a, T: Contextual>(&'a self, thing: &'a T) -> InContext<'a, T> {
-        InContext { context: self, dock: None, thing }
+        InContext { context: self, thing }
     }
 
+    #[inline]
     pub fn with_mut<'a, T: Contextual>(&'a self, thing: &'a mut T) -> InContextMut<'a, T> {
-        InContextMut { context: self, dock: None, thing }
-    }
-
-    pub fn with_docked<'a, T: Contextual>(
-        &'a self,
-        face: node::Face,
-        thing: &'a T,
-    ) -> InContext<'a, T> {
-        InContext { context: self, dock: Some(face), thing }
-    }
-
-    pub fn with_docked_mut<'a, T: Contextual>(
-        &'a self,
-        face: node::Face,
-        thing: &'a mut T,
-    ) -> InContextMut<'a, T> {
-        InContextMut { context: self, dock: Some(face), thing }
+        InContextMut { context: self, thing }
     }
 }

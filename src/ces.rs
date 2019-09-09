@@ -59,8 +59,8 @@ pub struct CEStructure {
     forks:           BTreeMap<NodeID, Vec<AtomID>>,
     joins:           BTreeMap<NodeID, Vec<AtomID>>,
     // FIXME define `struct Cosplits`, grouped on demand (cf. `group_cosplits`)
-    co_forks:        BTreeMap<AtomID, Vec<AtomID>>, // Joins -> 2^Forks
-    co_joins:        BTreeMap<AtomID, Vec<AtomID>>, // Forks -> 2^Joins
+    co_forks: BTreeMap<AtomID, Vec<AtomID>>, // Joins -> 2^Forks
+    co_joins: BTreeMap<AtomID, Vec<AtomID>>, // Forks -> 2^Joins
 }
 
 impl CEStructure {

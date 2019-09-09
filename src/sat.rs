@@ -1,15 +1,14 @@
 use std::{
     collections::{BTreeSet, BTreeMap, HashSet},
     convert::TryInto,
-    mem, ops,
-    fmt::{self, Write},
+    mem, ops, fmt,
     error::Error,
 };
 use log::Level::Debug;
 use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
 use crate::{
-    Atomic, Context, ContextHandle, Contextual, Polynomial, NodeID, PortID, LinkID, ForkID, JoinID,
-    Split, node, atom::AtomID, error::AcesError,
+    Atomic, Context, ContextHandle, Contextual, Polynomial, NodeID, AtomID, PortID, LinkID, ForkID,
+    JoinID, Split, node, atom::Atom, error::AcesError,
 };
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -35,23 +34,20 @@ impl CEVar for Var {
 }
 
 impl Contextual for Var {
-    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
-        let mut result = String::new();
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let atom_id = self.into_atom_id();
 
-        if let Some(port) = ctx.get_port(PortID(atom_id)) {
-            result.write_fmt(format_args!("{}", port.format(ctx, dock)?))?;
-        } else if let Some(link) = ctx.get_link(LinkID(atom_id)) {
-            result.write_fmt(format_args!("{}", link.format(ctx, dock)?))?;
-        } else if let Some(fork) = ctx.get_fork(ForkID(atom_id)) {
-            result.write_fmt(format_args!("{}", fork.format(ctx, dock)?))?;
-        } else if let Some(join) = ctx.get_join(JoinID(atom_id)) {
-            result.write_fmt(format_args!("{}", join.format(ctx, dock)?))?;
+        if let Some(atom) = ctx.get_atom(atom_id) {
+            match atom {
+                Atom::Tx(port) | Atom::Rx(port) => Ok(format!("{}", ctx.with(port))),
+                Atom::Link(link) => Ok(format!("{}", ctx.with(link))),
+                Atom::Fork(fork) => Ok(format!("{}", ctx.with(fork))),
+                Atom::Join(join) => Ok(format!("{}", ctx.with(join))),
+                Atom::Bottom => Err(Box::new(AcesError::BottomAtomAccess)),
+            }
         } else {
-            result.push_str("???");
+            Err(Box::new(AcesError::AtomMissingForID))
         }
-
-        Ok(result)
     }
 }
 
@@ -60,8 +56,8 @@ impl Contextual for Var {
 pub struct Variable(pub(crate) Var);
 
 impl Contextual for Variable {
-    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
-        self.0.format(ctx, dock)
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        self.0.format(ctx)
     }
 }
 
@@ -82,29 +78,11 @@ impl CELit for Lit {
 }
 
 impl Contextual for Lit {
-    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         if self.is_negative() {
-            Ok(format!("~{}", self.var().format(ctx, dock)?))
+            Ok(format!("~{}", self.var().format(ctx)?))
         } else {
-            self.var().format(ctx, dock)
-        }
-    }
-}
-
-impl Contextual for Vec<Lit> {
-    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
-        let mut liter = self.iter();
-
-        if let Some(lit) = liter.next() {
-            let mut litxt = lit.format(ctx, dock)?;
-
-            for lit in liter {
-                litxt.push_str(&format!(", {}", ctx.with(lit)));
-            }
-
-            Ok(format!("{{{}}}", litxt))
-        } else {
-            Ok("{{}}".to_owned())
+            self.var().format(ctx)
         }
     }
 }
@@ -167,8 +145,8 @@ impl ops::BitXor<bool> for Literal {
 }
 
 impl Contextual for Literal {
-    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
-        self.0.format(ctx, dock)
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        self.0.format(ctx)
     }
 }
 
@@ -268,8 +246,8 @@ impl Clause {
 }
 
 impl Contextual for Clause {
-    fn format(&self, ctx: &Context, dock: Option<node::Face>) -> Result<String, Box<dyn Error>> {
-        self.lits.format(ctx, dock)
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        self.lits.format(ctx)
     }
 }
 
@@ -880,11 +858,15 @@ impl Solution {
 
 impl fmt::Debug for Solution {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let ctx = self.context.lock().unwrap();
         write!(
             f,
-            "Solution {{ model: {:?}, pre_set: {:?}, post_set: {:?}, fork_set: {:?}, join_set: \
-             {:?} }}",
-            self.model, self.pre_set, self.post_set, self.fork_set, self.join_set
+            "Solution {{ model: {:?}, pre_set: {}, post_set: {}, fork_set: {}, join_set: {} }}",
+            self.model,
+            ctx.with(&self.pre_set),
+            ctx.with(&self.post_set),
+            ctx.with(&self.fork_set),
+            ctx.with(&self.join_set),
         )
     }
 }
