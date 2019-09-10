@@ -76,7 +76,7 @@ impl From<LinkID> for AtomID {
 
 impl Contextual for LinkID {
     fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
-        let link = ctx.get_link(*self).ok_or(AcesError::LinkMissingForID)?;
+        let link = ctx.get_link(*self).ok_or(AcesError::LinkMissingForID(*self))?;
         link.format(ctx)
     }
 }
@@ -296,6 +296,14 @@ impl AtomSpace {
     }
 
     #[inline]
+    pub(crate) fn is_link(&self, atom_id: AtomID) -> bool {
+        match self.get_atom(atom_id) {
+            Some(Atom::Link(_)) => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
     pub(crate) fn get_link(&self, lid: LinkID) -> Option<&Link> {
         match self.get_atom(lid.into()) {
             Some(Atom::Link(a)) => Some(a),
@@ -308,6 +316,14 @@ impl AtomSpace {
         match self.get_atom_mut(lid.into()) {
             Some(Atom::Link(a)) => Some(a),
             _ => None,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn is_split(&self, atom_id: AtomID) -> bool {
+        match self.get_atom(atom_id) {
+            Some(Atom::Fork(_)) | Some(Atom::Join(_)) => true,
+            _ => false,
         }
     }
 
@@ -330,6 +346,14 @@ impl AtomSpace {
     }
 
     #[inline]
+    pub(crate) fn is_fork(&self, atom_id: AtomID) -> bool {
+        match self.get_atom(atom_id) {
+            Some(Atom::Fork(_)) => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
     pub(crate) fn get_fork(&self, fid: ForkID) -> Option<&Fork> {
         match self.get_atom(fid.into()) {
             Some(Atom::Fork(a)) => Some(a),
@@ -341,6 +365,14 @@ impl AtomSpace {
         match self.get_atom_mut(fid.into()) {
             Some(Atom::Fork(a)) => Some(a),
             _ => None,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn is_join(&self, atom_id: AtomID) -> bool {
+        match self.get_atom(atom_id) {
+            Some(Atom::Join(_)) => true,
+            _ => false,
         }
     }
 

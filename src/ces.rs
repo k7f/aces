@@ -175,7 +175,7 @@ impl CEStructure {
                             LinkState::Thin(_) => {} // Don't push a thin link.
                         }
                     } else {
-                        return Err(AcesError::LinkMissingForID)
+                        return Err(AcesError::LinkMissingForID(lid))
                     }
                 } else {
                     return Err(AcesError::UnlistedAtomicInMonomial)
@@ -429,16 +429,16 @@ impl CEStructure {
         let mut formula = sat::Formula::new(&self.context);
 
         for (&pid, poly) in self.causes.iter() {
-            formula.add_polynomial(pid, poly);
-            formula.add_antiport(pid);
+            formula.add_polynomial(pid, poly)?;
+            formula.add_antiport(pid)?;
         }
 
         for (&pid, poly) in self.effects.iter() {
-            formula.add_polynomial(pid, poly);
+            formula.add_polynomial(pid, poly)?;
         }
 
         for (&lid, _) in self.links.iter() {
-            formula.add_link_coherence(lid);
+            formula.add_link_coherence(lid)?;
         }
 
         Ok(formula)
@@ -483,14 +483,14 @@ impl CEStructure {
 
         for (node_id, fork_atom_ids) in self.forks.iter() {
             if let Some(join_atom_ids) = self.joins.get(node_id) {
-                formula.add_antisplits(fork_atom_ids.as_slice(), join_atom_ids.as_slice());
+                formula.add_antisplits(fork_atom_ids.as_slice(), join_atom_ids.as_slice())?;
             }
 
-            formula.add_sidesplits(fork_atom_ids.as_slice());
+            formula.add_sidesplits(fork_atom_ids.as_slice())?;
         }
 
         for (_, join_atom_ids) in self.joins.iter() {
-            formula.add_sidesplits(join_atom_ids.as_slice());
+            formula.add_sidesplits(join_atom_ids.as_slice())?;
         }
 
         for (&join_id, cofork_ids) in self.co_forks.iter() {
@@ -528,8 +528,8 @@ impl CEStructure {
             info!("Formula: {}", formula);
 
             let mut solver = sat::Solver::new(&self.context);
-            solver.add_formula(&formula);
-            solver.inhibit_empty_solution();
+            solver.add_formula(&formula)?;
+            solver.inhibit_empty_solution()?;
 
             info!("Start of {}-solution search", if minimal_mode { "min" } else { "all" });
             solver.set_minimal_mode(minimal_mode);

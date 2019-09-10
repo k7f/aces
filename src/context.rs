@@ -138,8 +138,28 @@ impl Context {
     }
 
     #[inline]
-    pub(crate) fn is_port(&self, atom_id: AtomID) -> bool {
+    pub fn is_port(&self, atom_id: AtomID) -> bool {
         self.atoms.is_port(atom_id)
+    }
+
+    #[inline]
+    pub fn is_link(&self, atom_id: AtomID) -> bool {
+        self.atoms.is_link(atom_id)
+    }
+
+    #[inline]
+    pub fn is_split(&self, atom_id: AtomID) -> bool {
+        self.atoms.is_split(atom_id)
+    }
+
+    #[inline]
+    pub fn is_fork(&self, atom_id: AtomID) -> bool {
+        self.atoms.is_fork(atom_id)
+    }
+
+    #[inline]
+    pub fn is_join(&self, atom_id: AtomID) -> bool {
+        self.atoms.is_join(atom_id)
     }
 
     #[inline]

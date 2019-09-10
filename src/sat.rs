@@ -156,6 +156,12 @@ pub struct Clause {
 }
 
 impl Clause {
+    pub fn from_vec<S: AsRef<str>>(lits: Vec<Lit>, info: S) -> Self {
+        let info = info.as_ref().to_owned();
+
+        Clause { lits, info }
+    }
+
     pub fn from_literals<I, S>(literals: I, info: S) -> Self
     where
         I: IntoIterator + Clone,
@@ -266,9 +272,10 @@ impl Formula {
         }
     }
 
-    fn add_clause(&mut self, clause: Clause) {
+    /// Only for internal use.
+    fn add_clause(&mut self, clause: Clause) -> Result<(), AcesError> {
         if clause.is_empty() {
-            panic!("Empty {} clause, not added to formula", clause.info);
+            Err(AcesError::EmptyClauseRejectedByFormula(clause.info.clone()))
         } else {
             if log_enabled!(Debug) {
                 let ctx = self.context.lock().unwrap();
@@ -277,6 +284,8 @@ impl Formula {
 
             self.cnf.add_clause(clause.get_literals());
             self.variables.extend(clause.get_literals().iter().map(|lit| lit.var()));
+
+            Ok(())
         }
     }
 
@@ -287,7 +296,7 @@ impl Formula {
     /// firing component is bipartite.  The `Formula` should contain
     /// one such clause for each internal node of the c-e structure
     /// under analysis.
-    pub fn add_antiport(&mut self, port_id: PortID) {
+    pub fn add_antiport(&mut self, port_id: PortID) -> Result<(), AcesError> {
         let (port_lit, antiport_lit) = {
             if let Some(antiport_id) = self.context.lock().unwrap().get_antiport_id(port_id) {
                 (
@@ -295,12 +304,12 @@ impl Formula {
                     Lit::from_atom_id(antiport_id.into(), true),
                 )
             } else {
-                return // this isn't an internal node
+                return Ok(()) // this isn't an internal node
             }
         };
 
         let clause = Clause::from_pair(port_lit, antiport_lit, "internal node");
-        self.add_clause(clause);
+        self.add_clause(clause)
     }
 
     /// Adds a _link coherence_ rule to this `Formula`.
@@ -311,9 +320,9 @@ impl Formula {
     /// `Formula` should contain one such rule for each link of the
     /// c-e structure under analysis.
     ///
-    /// Panics if `link_id` doesn't identify any `Link` in the
-    /// `Context` of this `Formula`.
-    pub fn add_link_coherence(&mut self, link_id: LinkID) {
+    /// Returns an error if `link_id` doesn't identify any `Link` in
+    /// the `Context` of this `Formula`.
+    pub fn add_link_coherence(&mut self, link_id: LinkID) -> Result<(), AcesError> {
         let link_lit = Lit::from_atom_id(link_id.into(), true);
 
         let (tx_port_lit, rx_port_lit) = {
@@ -328,26 +337,28 @@ impl Formula {
                     Lit::from_atom_id(rx_port_id.into(), false),
                 )
             } else {
-                panic!("There is no link with ID {:?}.", link_id)
+                return Err(AcesError::LinkMissingForID(link_id))
             }
         };
 
         let clause = Clause::from_pair(link_lit, tx_port_lit, "link coherence (Tx side)");
-        self.add_clause(clause);
+        self.add_clause(clause)?;
 
         let clause = Clause::from_pair(link_lit, rx_port_lit, "link coherence (Rx side)");
-        self.add_clause(clause);
+        self.add_clause(clause)
     }
 
     /// Adds a _polynomial_ rule to this formula.
-    pub fn add_polynomial(&mut self, port_id: PortID, poly: &Polynomial<LinkID>) {
+    pub fn add_polynomial(&mut self, port_id: PortID, poly: &Polynomial<LinkID>) -> Result<(), AcesError> {
         if !poly.is_empty() {
             let port_lit = port_id.into_sat_literal(true);
 
             for clause in poly.as_sat_clauses(port_lit) {
-                self.add_clause(clause);
+                self.add_clause(clause)?;
             }
         }
+
+        Ok(())
     }
 
     /// Adds an _antisplit_ rule to this formula.
@@ -357,7 +368,7 @@ impl Formula {
     /// any firing component is bipartite.  The `Formula` should
     /// contain one clause for each fork-join pair of each internal
     /// node of the c-e structure under analysis.
-    pub fn add_antisplits(&mut self, split_ids: &[AtomID], antisplit_ids: &[AtomID]) {
+    pub fn add_antisplits(&mut self, split_ids: &[AtomID], antisplit_ids: &[AtomID]) -> Result<(), AcesError> {
         for &split_id in split_ids.iter() {
             let split_lit = Lit::from_atom_id(split_id, true);
 
@@ -365,15 +376,17 @@ impl Formula {
                 let antisplit_lit = Lit::from_atom_id(antisplit_id, true);
 
                 let clause = Clause::from_pair(split_lit, antisplit_lit, "antisplit");
-                self.add_clause(clause);
+                self.add_clause(clause)?;
             }
         }
+
+        Ok(())
     }
 
     /// Adds a _sidesplit_ rule to this formula.
     ///
     /// This rule enforces monomiality of firing components.
-    pub fn add_sidesplits(&mut self, sidesplit_ids: &[AtomID]) {
+    pub fn add_sidesplits(&mut self, sidesplit_ids: &[AtomID]) -> Result<(), AcesError> {
         for (pos, &split_id) in sidesplit_ids.iter().enumerate() {
             let split_lit = Lit::from_atom_id(split_id, true);
 
@@ -381,9 +394,11 @@ impl Formula {
                 let sidesplit_lit = Lit::from_atom_id(sidesplit_id, true);
 
                 let clause = Clause::from_pair(split_lit, sidesplit_lit, "sidesplit");
-                self.add_clause(clause);
+                self.add_clause(clause)?;
             }
         }
+
+        Ok(())
     }
 
     pub fn add_cosplits(
@@ -398,9 +413,8 @@ impl Formula {
                         let split_lit = Lit::from_atom_id(split_id, true);
                         let cosplit_lit = Lit::from_atom_id(cosplit_id, false);
                         let clause = Clause::from_pair(split_lit, cosplit_lit, "cosplit");
-                        self.add_clause(clause);
 
-                        Ok(())
+                        self.add_clause(clause)
                     } else {
                         Err(AcesError::IncoherencyLeak)
                     }
@@ -635,11 +649,9 @@ impl<'a> Solver<'a> {
     }
 
     /// Only for internal use.
-    fn add_clause(&mut self, clause: Clause) -> bool {
+    fn add_clause(&mut self, clause: Clause) -> Result<(), AcesError> {
         if clause.is_empty() {
-            panic!("Empty {} clause, not added to solver", clause.info);
-
-            false
+            Err(AcesError::EmptyClauseRejectedBySolver(clause.info.clone()))
         } else {
             if log_enabled!(Debug) {
                 let ctx = self.context.lock().unwrap();
@@ -648,15 +660,17 @@ impl<'a> Solver<'a> {
 
             self.engine.add_clause(clause.get_literals());
 
-            true
+            Ok(())
         }
     }
 
-    pub fn add_formula(&mut self, formula: &Formula) {
+    pub fn add_formula(&mut self, formula: &Formula) -> Result<(), AcesError> {
         self.engine.add_formula(&formula.cnf);
 
-        let all_vars = formula.get_variables();
-        self.all_vars.extend(all_vars);
+        let new_vars = formula.get_variables();
+        self.all_vars.extend(new_vars);
+
+        Ok(())
     }
 
     /// Blocks empty solution models by adding a _void inhibition_
@@ -668,45 +682,69 @@ impl<'a> Solver<'a> {
     /// disjunction of all [`Port`] variables known by the solver.
     ///
     /// [`Port`]: crate::Port
-    pub fn inhibit_empty_solution(&mut self) -> bool {
+    pub fn inhibit_empty_solution(&mut self) -> Result<(), AcesError> {
         let clause = {
             let ctx = self.context.lock().unwrap();
-            let port_vars = self.all_vars.iter().filter(|var| ctx.is_port(var.into_atom_id()));
+            let mut all_lits: Vec<_> =
+                self.all_vars.iter().filter_map(|&var| ctx.is_port(var.into_atom_id()).then(Lit::from_var(var, true))).collect();
+            let mut fork_lits: Vec<_> =
+                self.all_vars.iter().filter_map(|&var| ctx.is_fork(var.into_atom_id()).then(Lit::from_var(var, true))).collect();
+            let mut join_lits: Vec<_> =
+                self.all_vars.iter().filter_map(|&var| ctx.is_join(var.into_atom_id()).then(Lit::from_var(var, true))).collect();
 
-            let lits = port_vars.map(|&var| Lit::from_var(var, true));
-            Clause::from_literals(lits, "void inhibition")
+            // Include all fork variables or all join variables,
+            // depending on in which case the clause grows less.
+            if fork_lits.len() > join_lits.len() {
+                if join_lits.is_empty() {
+                    return Err(AcesError::IncoherencyLeak)
+                } else {
+                    all_lits.append(&mut join_lits);
+                }
+            } else if !fork_lits.is_empty() {
+                all_lits.append(&mut fork_lits);
+            } else if !join_lits.is_empty() {
+                return Err(AcesError::IncoherencyLeak)
+            }
+                
+            Clause::from_vec(all_lits, "void inhibition")
         };
 
         self.add_clause(clause)
     }
 
-    // FIXME filter out unregistered variables
     /// Adds a _model inhibition_ clause which will remove a specific
     /// `model` from solution space.
     ///
     /// The blocking clause is constructed by negating the given
-    /// `model`, i.e. by taking the disjunction of all literals and
-    /// reversing polarity of each.
-    pub fn inhibit_model(&mut self, model: &[Lit]) -> bool {
-        let anti_lits = model.iter().map(|&lit| !lit);
+    /// `model`, i.e. by taking the disjunction of all _explicit_
+    /// literals and reversing polarity of each.  A literal is
+    /// explicit iff its variable has been _registered_ by occurring
+    /// in a formula passed to a call to [`add_formula()`].
+    ///
+    /// [`add_formula()`]: Solver::add_formula()
+    pub fn inhibit_model(&mut self, model: &[Lit]) -> Result<(), AcesError> {
+        let anti_lits = model.iter().filter_map(|&lit| {
+            self.all_vars.contains(&lit.var()).then(!lit)
+        });
         let clause = Clause::from_literals(anti_lits, "model inhibition");
 
         self.add_clause(clause)
     }
 
-    // FIXME filter out unregistered variables
-    pub fn inhibit_last_model(&mut self) -> bool {
+    pub fn inhibit_last_model(&mut self) -> Result<(), AcesError> {
         if let ModelSearchResult::Found(ref model) = self.last_model {
-            let anti_lits = model.iter().map(|&lit| !lit);
+            let anti_lits = model.iter().filter_map(|&lit| {
+                self.all_vars.contains(&lit.var()).then(!lit)
+            });
             let clause = Clause::from_literals(anti_lits, "model inhibition");
 
             self.add_clause(clause)
         } else {
-            false
+            Err(AcesError::NoModelToInhibit)
         }
     }
 
-    pub fn reduce_model(&mut self, model: &[Lit]) -> bool {
+    pub fn reduce_model(&mut self, model: &[Lit]) -> Result<bool, AcesError> {
         let mut reducing_lits = Vec::new();
 
         for &lit in model.iter() {
@@ -721,10 +759,12 @@ impl<'a> Solver<'a> {
         }
 
         if reducing_lits.is_empty() {
-            false
+            Ok(false)
         } else {
             let clause = Clause::from_literals(reducing_lits.into_iter(), "model reduction");
-            self.add_clause(clause)
+            self.add_clause(clause)?;
+
+            Ok(true)
         }
     }
 
@@ -824,7 +864,16 @@ impl Iterator for Solver<'_> {
 
                 let mut model = top_model.clone();
 
-                while self.reduce_model(&model) {
+                loop {
+                    match self.reduce_model(&model) {
+                        Ok(true) => {}
+                        Ok(false) => break,
+                        Err(err) => {
+                            warn!("{} in solver's iteration", err);
+                            return None
+                        }
+                    }
+
                     self.solve();
 
                     if let ModelSearchResult::Found(ref reduced_model) = self.last_model {
@@ -843,8 +892,11 @@ impl Iterator for Solver<'_> {
             } else {
                 None
             }
+        } else if let Err(err) = self.inhibit_last_model() {
+            warn!("{} in solver's iteration", err);
+
+            None
         } else {
-            self.inhibit_last_model();
             self.solve();
 
             if let ModelSearchResult::Found(ref model) = self.last_model {

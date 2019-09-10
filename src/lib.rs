@@ -1,3 +1,4 @@
+#![feature(bool_to_option)]
 #![allow(clippy::toplevel_ref_arg)]
 
 #[macro_use]

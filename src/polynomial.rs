@@ -489,7 +489,7 @@ impl Contextual for Polynomial<LinkID> {
                     result.push('·');
                 }
 
-                let link = ctx.get_link(id).ok_or(AcesError::LinkMissingForID)?;
+                let link = ctx.get_link(id).ok_or(AcesError::LinkMissingForID(id))?;
 
                 let s = if let Some(face) = self.dock {
                     match face {
