@@ -39,10 +39,10 @@ impl Contextual for Var {
 
         if let Some(atom) = ctx.get_atom(atom_id) {
             match atom {
-                Atom::Tx(port) | Atom::Rx(port) => Ok(format!("{}", ctx.with(port))),
-                Atom::Link(link) => Ok(format!("{}", ctx.with(link))),
-                Atom::Fork(fork) => Ok(format!("{}", ctx.with(fork))),
-                Atom::Join(join) => Ok(format!("{}", ctx.with(join))),
+                Atom::Tx(port) | Atom::Rx(port) => Ok(format!("{}:{}", atom_id, ctx.with(port))),
+                Atom::Link(link) => Ok(format!("{}:{}", atom_id, ctx.with(link))),
+                Atom::Fork(fork) => Ok(format!("{}:{}", atom_id, ctx.with(fork))),
+                Atom::Join(join) => Ok(format!("{}:{}", atom_id, ctx.with(join))),
                 Atom::Bottom => Err(Box::new(AcesError::BottomAtomAccess)),
             }
         } else {
@@ -503,15 +503,93 @@ impl Default for ModelSearchResult {
     }
 }
 
+#[derive(Default, Debug)]
+struct Assumptions {
+    literals:      Vec<Lit>,
+    permanent_len: usize,
+}
+
+impl Assumptions {
+    fn block_variable(&mut self, var: Var) {
+        let lit = Lit::from_var(var, false);
+
+        let pos = if self.permanent_len > 0 {
+            match self.literals[..self.permanent_len].binary_search(&lit) {
+                Ok(_) => return,
+                Err(pos) => pos,
+            }
+        } else {
+            0
+        };
+
+        self.literals.insert(pos, lit);
+        self.permanent_len += 1;
+    }
+
+    fn unblock_variable(&mut self, var: Var) -> bool {
+        let lit = Lit::from_var(var, false);
+
+        if self.permanent_len > 0 {
+            match self.literals[..self.permanent_len].binary_search(&lit) {
+                Ok(pos) => {
+                    self.literals.remove(pos);
+                    self.permanent_len -= 1;
+                    true
+                }
+                Err(_) => false,
+            }
+        } else {
+            false
+        }
+    }
+
+    fn unblock_all_variables(&mut self) {
+        if self.permanent_len > 0 {
+            let new_literals = self.literals.split_off(self.permanent_len);
+
+            self.literals = new_literals;
+            self.permanent_len = 0;
+        }
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.literals.len() == self.permanent_len
+    }
+
+    #[inline]
+    fn reset(&mut self) {
+        self.literals.truncate(self.permanent_len);
+    }
+
+    #[inline]
+    fn add(&mut self, lit: Lit) {
+        self.literals.push(lit);
+    }
+
+    #[inline]
+    fn get_literals(&self) -> &[Lit] {
+        assert!(self.literals.len() >= self.permanent_len);
+
+        self.literals.as_slice()
+    }
+}
+
+impl Contextual for Assumptions {
+    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+        self.literals.format(ctx)
+    }
+}
+
 pub struct Solver<'a> {
     context:      ContextHandle,
     engine:       varisat::Solver<'a>,
-    port_vars:    BTreeSet<Var>,
+    all_vars:     BTreeSet<Var>,
     is_sat:       Option<bool>,
     last_model:   ModelSearchResult,
     only_minimal: bool,
     min_residue:  BTreeSet<Var>,
-    assumptions:  Vec<Lit>,
+    assumptions:  Assumptions,
 }
 
 impl<'a> Solver<'a> {
@@ -519,7 +597,7 @@ impl<'a> Solver<'a> {
         Self {
             context:      ctx.clone(),
             engine:       Default::default(),
-            port_vars:    Default::default(),
+            all_vars:     Default::default(),
             is_sat:       None,
             last_model:   Default::default(),
             only_minimal: false,
@@ -532,7 +610,7 @@ impl<'a> Solver<'a> {
         self.is_sat = None;
         self.last_model = ModelSearchResult::Reset;
         self.min_residue.clear();
-        self.assumptions.clear();
+        self.assumptions.reset();
         self.engine.close_proof()
     }
 
@@ -540,6 +618,23 @@ impl<'a> Solver<'a> {
         self.only_minimal = only_minimal;
     }
 
+    pub fn block_atom_id(&mut self, atom_id: AtomID) {
+        let var = Var::from_atom_id(atom_id);
+
+        self.assumptions.block_variable(var);
+    }
+
+    pub fn unblock_atom_id(&mut self, atom_id: AtomID) -> bool {
+        let var = Var::from_atom_id(atom_id);
+
+        self.assumptions.unblock_variable(var)
+    }
+
+    pub fn unblock_all_atoms(&mut self) {
+        self.assumptions.unblock_all_variables();
+    }
+
+    /// Only for internal use.
     fn add_clause(&mut self, clause: Clause) -> bool {
         if clause.is_empty() {
             panic!("Empty {} clause, not added to solver", clause.info);
@@ -561,10 +656,7 @@ impl<'a> Solver<'a> {
         self.engine.add_formula(&formula.cnf);
 
         let all_vars = formula.get_variables();
-        let ctx = self.context.lock().unwrap();
-        let port_vars = all_vars.iter().filter(|var| ctx.is_port(var.into_atom_id()));
-
-        self.port_vars.extend(port_vars);
+        self.all_vars.extend(all_vars);
     }
 
     /// Blocks empty solution models by adding a _void inhibition_
@@ -577,12 +669,18 @@ impl<'a> Solver<'a> {
     ///
     /// [`Port`]: crate::Port
     pub fn inhibit_empty_solution(&mut self) -> bool {
-        let lits = self.port_vars.iter().map(|&var| Lit::from_var(var, true));
-        let clause = Clause::from_literals(lits, "void inhibition");
+        let clause = {
+            let ctx = self.context.lock().unwrap();
+            let port_vars = self.all_vars.iter().filter(|var| ctx.is_port(var.into_atom_id()));
+
+            let lits = port_vars.map(|&var| Lit::from_var(var, true));
+            Clause::from_literals(lits, "void inhibition")
+        };
 
         self.add_clause(clause)
     }
 
+    // FIXME filter out unregistered variables
     /// Adds a _model inhibition_ clause which will remove a specific
     /// `model` from solution space.
     ///
@@ -596,6 +694,7 @@ impl<'a> Solver<'a> {
         self.add_clause(clause)
     }
 
+    // FIXME filter out unregistered variables
     pub fn inhibit_last_model(&mut self) -> bool {
         if let ModelSearchResult::Found(ref model) = self.last_model {
             let anti_lits = model.iter().map(|&lit| !lit);
@@ -615,7 +714,7 @@ impl<'a> Solver<'a> {
                 if lit.is_positive() {
                     reducing_lits.push(!lit);
                 } else {
-                    self.assumptions.push(lit);
+                    self.assumptions.add(lit);
                     self.min_residue.insert(lit.var());
                 }
             }
@@ -635,7 +734,7 @@ impl<'a> Solver<'a> {
             debug!("Solving under assumptions: {}", ctx.with(&self.assumptions));
         }
 
-        self.engine.assume(self.assumptions.as_slice());
+        self.engine.assume(self.assumptions.get_literals());
 
         let result = self.engine.solve();
 
@@ -711,7 +810,7 @@ impl Iterator for Solver<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.only_minimal {
-            self.assumptions.clear();
+            self.assumptions.reset();
 
             self.solve();
 
@@ -721,7 +820,7 @@ impl Iterator for Solver<'_> {
                 trace!("Top model: {:?}", top_model);
 
                 self.min_residue.clear();
-                self.assumptions.clear();
+                self.assumptions.reset();
 
                 let mut model = top_model.clone();
 
