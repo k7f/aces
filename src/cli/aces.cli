@@ -11,6 +11,24 @@ args:
         short: a
         multiple: false
         global: false
+    - ENCODING:
+        help: Preferred encoding
+        long: encoding
+        short: e
+        takes_value: true
+        possible_values: [PL, FJ]
+        multiple: false
+        global: false
+    - PORT_LINK:
+        help: Prefer port-link encoding
+        long: port-link
+        multiple: false
+        global: false
+    - FORK_JOIN:
+        help: Prefer fork-join encoding
+        long: fork-join
+        multiple: false
+        global: false
     - log:
         help: Turn on logging to file
         long: log

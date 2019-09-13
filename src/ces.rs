@@ -86,6 +86,10 @@ impl CEStructure {
         }
     }
 
+    pub fn set_encoding(&mut self, encoding: sat::Encoding) {
+        self.encoding_to_use = Some(encoding);
+    }
+
     fn add_split_to_host(&mut self, split_id: AtomID, face: node::Face, node_id: NodeID) {
         let split_entry = match face {
             node::Face::Tx => self.forks.entry(node_id),

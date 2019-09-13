@@ -38,9 +38,7 @@ impl fmt::Display for AcesError {
         use AcesError::*;
 
         match self {
-            LinkMissingForID(link_id) => {
-                write!(f, "There is no link with ID {:?}", link_id)
-            }
+            LinkMissingForID(link_id) => write!(f, "There is no link with ID {:?}", link_id),
             NodeMissingForPort(face) => write!(
                 f,
                 "Missing node for {} port",

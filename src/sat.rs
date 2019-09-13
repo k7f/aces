@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub(crate) enum Encoding {
+pub enum Encoding {
     PortLink,
     ForkJoin,
 }
@@ -349,7 +349,11 @@ impl Formula {
     }
 
     /// Adds a _polynomial_ rule to this formula.
-    pub fn add_polynomial(&mut self, port_id: PortID, poly: &Polynomial<LinkID>) -> Result<(), AcesError> {
+    pub fn add_polynomial(
+        &mut self,
+        port_id: PortID,
+        poly: &Polynomial<LinkID>,
+    ) -> Result<(), AcesError> {
         if !poly.is_empty() {
             let port_lit = port_id.into_sat_literal(true);
 
@@ -368,7 +372,11 @@ impl Formula {
     /// any firing component is bipartite.  The `Formula` should
     /// contain one clause for each fork-join pair of each internal
     /// node of the c-e structure under analysis.
-    pub fn add_antisplits(&mut self, split_ids: &[AtomID], antisplit_ids: &[AtomID]) -> Result<(), AcesError> {
+    pub fn add_antisplits(
+        &mut self,
+        split_ids: &[AtomID],
+        antisplit_ids: &[AtomID],
+    ) -> Result<(), AcesError> {
         for &split_id in split_ids.iter() {
             let split_lit = Lit::from_atom_id(split_id, true);
 
@@ -685,12 +693,21 @@ impl<'a> Solver<'a> {
     pub fn inhibit_empty_solution(&mut self) -> Result<(), AcesError> {
         let clause = {
             let ctx = self.context.lock().unwrap();
-            let mut all_lits: Vec<_> =
-                self.all_vars.iter().filter_map(|&var| ctx.is_port(var.into_atom_id()).then(Lit::from_var(var, true))).collect();
-            let mut fork_lits: Vec<_> =
-                self.all_vars.iter().filter_map(|&var| ctx.is_fork(var.into_atom_id()).then(Lit::from_var(var, true))).collect();
-            let mut join_lits: Vec<_> =
-                self.all_vars.iter().filter_map(|&var| ctx.is_join(var.into_atom_id()).then(Lit::from_var(var, true))).collect();
+            let mut all_lits: Vec<_> = self
+                .all_vars
+                .iter()
+                .filter_map(|&var| ctx.is_port(var.into_atom_id()).then(Lit::from_var(var, true)))
+                .collect();
+            let mut fork_lits: Vec<_> = self
+                .all_vars
+                .iter()
+                .filter_map(|&var| ctx.is_fork(var.into_atom_id()).then(Lit::from_var(var, true)))
+                .collect();
+            let mut join_lits: Vec<_> = self
+                .all_vars
+                .iter()
+                .filter_map(|&var| ctx.is_join(var.into_atom_id()).then(Lit::from_var(var, true)))
+                .collect();
 
             // Include all fork variables or all join variables,
             // depending on in which case the clause grows less.
@@ -705,7 +722,7 @@ impl<'a> Solver<'a> {
             } else if !join_lits.is_empty() {
                 return Err(AcesError::IncoherencyLeak)
             }
-                
+
             Clause::from_vec(all_lits, "void inhibition")
         };
 
@@ -723,9 +740,8 @@ impl<'a> Solver<'a> {
     ///
     /// [`add_formula()`]: Solver::add_formula()
     pub fn inhibit_model(&mut self, model: &[Lit]) -> Result<(), AcesError> {
-        let anti_lits = model.iter().filter_map(|&lit| {
-            self.all_vars.contains(&lit.var()).then(!lit)
-        });
+        let anti_lits =
+            model.iter().filter_map(|&lit| self.all_vars.contains(&lit.var()).then(!lit));
         let clause = Clause::from_literals(anti_lits, "model inhibition");
 
         self.add_clause(clause)
@@ -733,9 +749,8 @@ impl<'a> Solver<'a> {
 
     pub fn inhibit_last_model(&mut self) -> Result<(), AcesError> {
         if let ModelSearchResult::Found(ref model) = self.last_model {
-            let anti_lits = model.iter().filter_map(|&lit| {
-                self.all_vars.contains(&lit.var()).then(!lit)
-            });
+            let anti_lits =
+                model.iter().filter_map(|&lit| self.all_vars.contains(&lit.var()).then(!lit));
             let clause = Clause::from_literals(anti_lits, "model inhibition");
 
             self.add_clause(clause)
