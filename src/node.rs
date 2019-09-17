@@ -20,7 +20,7 @@ use crate::{ID, Context, Contextual, InContext, Atomic, sat, error::AcesError};
 /// [`ForkID`]: crate::ForkID
 /// [`JoinID`]: crate::JoinID
 /// [`CEStructure`]: crate::CEStructure
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[repr(transparent)]
 pub struct NodeID(pub(crate) ID);
 
@@ -60,7 +60,7 @@ impl Atomic for NodeID {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Face {
     Tx,
     Rx,

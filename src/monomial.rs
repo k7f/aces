@@ -14,7 +14,7 @@
 /// post-set nodes, so that node capacities aren't exceeded.  The
 /// _&omega;_ weight attached to effects of a node indicates that any
 /// token in that node inhibits firing.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[repr(transparent)]
 pub struct Weight(usize);
 

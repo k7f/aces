@@ -8,7 +8,7 @@ use log::Level::Debug;
 use varisat::{Var, Lit, CnfFormula, ExtendFormula, solver::SolverError};
 use crate::{
     Atomic, Context, ContextHandle, Contextual, Polynomial, NodeID, AtomID, PortID, LinkID, ForkID,
-    JoinID, Split, node, atom::Atom, error::AcesError,
+    JoinID, Split, atom::Atom, error::AcesError,
 };
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -844,7 +844,13 @@ impl<'a> Solver<'a> {
     }
 
     pub fn get_solution(&self) -> Option<Solution> {
-        self.engine.model().map(|model| Solution::from_model(&self.context, model))
+        self.engine.model().and_then(|model| match Solution::from_model(&self.context, model) {
+            Ok(solution) => Some(solution),
+            Err(err) => {
+                warn!("{} in solver's solution ctor", err);
+                None
+            }
+        })
     }
 
     /// Returns the error reported by last call to [`solve()`], if
@@ -903,7 +909,13 @@ impl Iterator for Solver<'_> {
                     .iter()
                     .map(|lit| Lit::from_var(lit.var(), !self.min_residue.contains(&lit.var())));
 
-                Some(Solution::from_model(&self.context, min_model))
+                match Solution::from_model(&self.context, min_model) {
+                    Ok(solution) => Some(solution),
+                    Err(err) => {
+                        warn!("{} in solver's iteration", err);
+                        None
+                    }
+                }
             } else {
                 None
             }
@@ -915,7 +927,13 @@ impl Iterator for Solver<'_> {
             self.solve();
 
             if let ModelSearchResult::Found(ref model) = self.last_model {
-                Some(Solution::from_model(&self.context, model.iter().copied()))
+                match Solution::from_model(&self.context, model.iter().copied()) {
+                    Ok(solution) => Some(solution),
+                    Err(err) => {
+                        warn!("{} in solver's iteration", err);
+                        None
+                    }
+                }
             } else {
                 None
             }
@@ -944,7 +962,10 @@ impl Solution {
         }
     }
 
-    fn from_model<I: IntoIterator<Item = Lit>>(ctx: &ContextHandle, model: I) -> Self {
+    fn from_model<I: IntoIterator<Item = Lit>>(
+        ctx: &ContextHandle,
+        model: I,
+    ) -> Result<Self, AcesError> {
         let mut solution = Self::new(ctx);
         let mut fork_map = BTreeMap::new();
         let mut join_map = BTreeMap::new();
@@ -956,20 +977,23 @@ impl Solution {
                 let (atom_id, _) = lit.into_atom_id();
                 let ctx = solution.context.lock().unwrap();
 
-                if let Some(port) = ctx.get_port(PortID(atom_id)) {
-                    let node_id = port.get_node_id();
+                if let Some(atom) = ctx.get_atom(atom_id) {
+                    match atom {
+                        Atom::Tx(port) => solution.pre_set.push(port.get_node_id()),
+                        Atom::Rx(port) => solution.post_set.push(port.get_node_id()),
+                        Atom::Link(link) => {
+                            let tx_node_id = link.get_tx_node_id();
+                            let rx_node_id = link.get_rx_node_id();
 
-                    if port.get_face() == node::Face::Tx {
-                        solution.pre_set.push(node_id);
-                    } else {
-                        solution.post_set.push(node_id);
+                            fork_map.entry(tx_node_id).or_insert_with(Vec::new).push(rx_node_id);
+                            join_map.entry(rx_node_id).or_insert_with(Vec::new).push(tx_node_id);
+                        }
+                        Atom::Fork(fork) => {}
+                        Atom::Join(join) => {}
+                        Atom::Bottom => return Err(AcesError::BottomAtomAccess),
                     }
-                } else if let Some(link) = ctx.get_link(LinkID(atom_id)) {
-                    let tx_node_id = link.get_tx_node_id();
-                    let rx_node_id = link.get_rx_node_id();
-
-                    fork_map.entry(tx_node_id).or_insert_with(Vec::new).push(rx_node_id);
-                    join_map.entry(rx_node_id).or_insert_with(Vec::new).push(tx_node_id);
+                } else {
+                    return Err(AcesError::AtomMissingForID)
                 }
             }
         }
@@ -994,7 +1018,7 @@ impl Solution {
                 .collect();
         }
 
-        solution
+        Ok(solution)
     }
 
     pub fn get_context(&self) -> &ContextHandle {

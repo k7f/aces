@@ -137,6 +137,12 @@ impl Context {
         self.atoms.get_atom(atom_id)
     }
 
+    #[allow(dead_code)]
+    #[inline]
+    pub(crate) fn get_atom_id(&self, atom: &Atom) -> Option<AtomID> {
+        self.atoms.get_atom_id(atom)
+    }
+
     #[inline]
     pub fn is_port(&self, atom_id: AtomID) -> bool {
         self.atoms.is_port(atom_id)
@@ -188,18 +194,8 @@ impl Context {
     }
 
     #[inline]
-    pub fn get_port_mut(&mut self, port_id: PortID) -> Option<&mut Port> {
-        self.atoms.get_port_mut(port_id)
-    }
-
-    #[inline]
     pub fn get_link(&self, link_id: LinkID) -> Option<&Link> {
         self.atoms.get_link(link_id)
-    }
-
-    #[inline]
-    pub fn get_link_mut(&mut self, link_id: LinkID) -> Option<&mut Link> {
-        self.atoms.get_link_mut(link_id)
     }
 
     #[inline]
@@ -208,28 +204,13 @@ impl Context {
     }
 
     #[inline]
-    pub fn get_split_mut(&mut self, atom_id: AtomID) -> Option<&mut Split> {
-        self.atoms.get_split_mut(atom_id)
-    }
-
-    #[inline]
     pub fn get_fork(&self, fork_id: ForkID) -> Option<&Fork> {
         self.atoms.get_fork(fork_id)
     }
 
     #[inline]
-    pub fn get_fork_mut(&mut self, fork_id: ForkID) -> Option<&mut Fork> {
-        self.atoms.get_fork_mut(fork_id)
-    }
-
-    #[inline]
     pub fn get_join(&self, join_id: JoinID) -> Option<&Join> {
         self.atoms.get_join(join_id)
-    }
-
-    #[inline]
-    pub fn get_join_mut(&mut self, join_id: JoinID) -> Option<&mut Join> {
-        self.atoms.get_join_mut(join_id)
     }
 
     #[inline]

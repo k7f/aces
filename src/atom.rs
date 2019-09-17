@@ -1,4 +1,8 @@
-use std::{cmp, fmt, collections::BTreeMap, error::Error};
+use std::{
+    cmp, fmt, hash,
+    collections::{BTreeMap, HashMap},
+    error::Error,
+};
 use crate::{ID, NodeID, Context, Contextual, InContext, node, monomial, sat, error::AcesError};
 
 /// An abstract structural identifier serving as the common base of
@@ -16,7 +20,7 @@ pub type AtomID = ID;
 /// There is a trivial bijection between values of this type and
 /// numeric codes of DIMACS variables.  This mapping simplifies the
 /// construction of SAT queries and interpretation of solutions.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[repr(transparent)]
 pub struct PortID(pub(crate) AtomID);
 
@@ -151,14 +155,17 @@ impl Contextual for JoinID {
     }
 }
 
-/// A collection of [`Atom`]s ([`PortID`]s, [`LinkID`]s, [`ForkID`]s
-/// and [`JoinID`]s) and a mapping from [`NodeID`]s to [`PortID`]s.
+/// A collection of [`Atom`]s: [`Port`]s, [`Link`]s, [`Fork`]s and
+/// [`Join`]s.
 ///
-/// For the reverse mapping, from [`PortID`]s to [`NodeID`]s, call
+/// [`AtomSpace`] maintains a mapping from [`Atom`]s to [`AtomID`]s,
+/// its inverse, and a mapping from [`NodeID`]s to [`PortID`]s.  For
+/// the reverse mapping, from [`PortID`]s to [`NodeID`]s, call
 /// [`AtomSpace::get_port()`] followed by [`Port::get_node_id()`].
 #[derive(Clone, Debug)]
 pub(crate) struct AtomSpace {
     atoms:          Vec<Atom>,
+    atom_ids:       HashMap<Atom, AtomID>,
     source_nodes:   BTreeMap<NodeID, PortID>,
     sink_nodes:     BTreeMap<NodeID, PortID>,
     internal_nodes: BTreeMap<NodeID, (PortID, PortID)>,
@@ -168,6 +175,7 @@ impl Default for AtomSpace {
     fn default() -> Self {
         Self {
             atoms:          vec![Atom::Bottom],
+            atom_ids:       Default::default(),
             source_nodes:   Default::default(),
             sink_nodes:     Default::default(),
             internal_nodes: Default::default(),
@@ -177,20 +185,25 @@ impl Default for AtomSpace {
 
 impl AtomSpace {
     fn do_share_atom(&mut self, mut new_atom: Atom) -> AtomID {
-        for old_atom in self.atoms.iter() {
-            if old_atom == &new_atom {
-                if new_atom.do_get_atom_id().is_some() {
-                    panic!("Attempt to reset ID of atom {:?}", new_atom);
-                }
-                return old_atom.get_atom_id()
+        if let Some(old_atom_id) = self.get_atom_id(&new_atom) {
+            if new_atom.get_atom_id().is_none() {
+                trace!("Resharing: {:?}", new_atom);
+
+                old_atom_id
+            } else {
+                panic!("Attempt to reset ID of atom {:?}", new_atom);
             }
+        } else {
+            let atom_id = unsafe { AtomID::new_unchecked(self.atoms.len()) };
+            new_atom.set_atom_id(atom_id);
+
+            trace!("New share: {:?}", new_atom);
+
+            self.atoms.push(new_atom.clone());
+            self.atom_ids.insert(new_atom, atom_id);
+
+            atom_id
         }
-
-        let atom_id = unsafe { AtomID::new_unchecked(self.atoms.len()) };
-        new_atom.set_atom_id(atom_id);
-        self.atoms.push(new_atom);
-
-        atom_id
     }
 
     pub(crate) fn share_port(&mut self, port: &mut Port) -> PortID {
@@ -265,8 +278,8 @@ impl AtomSpace {
     }
 
     #[inline]
-    pub(crate) fn get_atom_mut(&mut self, atom_id: AtomID) -> Option<&mut Atom> {
-        self.atoms.get_mut(atom_id.get())
+    pub(crate) fn get_atom_id(&self, atom: &Atom) -> Option<AtomID> {
+        self.atom_ids.get(atom).copied()
     }
 
     #[inline]
@@ -280,15 +293,6 @@ impl AtomSpace {
     #[inline]
     pub(crate) fn get_port(&self, pid: PortID) -> Option<&Port> {
         match self.get_atom(pid.into()) {
-            Some(Atom::Tx(a)) => Some(a),
-            Some(Atom::Rx(a)) => Some(a),
-            _ => None,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn get_port_mut(&mut self, pid: PortID) -> Option<&mut Port> {
-        match self.get_atom_mut(pid.into()) {
             Some(Atom::Tx(a)) => Some(a),
             Some(Atom::Rx(a)) => Some(a),
             _ => None,
@@ -312,14 +316,6 @@ impl AtomSpace {
     }
 
     #[inline]
-    pub(crate) fn get_link_mut(&mut self, lid: LinkID) -> Option<&mut Link> {
-        match self.get_atom_mut(lid.into()) {
-            Some(Atom::Link(a)) => Some(a),
-            _ => None,
-        }
-    }
-
-    #[inline]
     pub(crate) fn is_split(&self, atom_id: AtomID) -> bool {
         match self.get_atom(atom_id) {
             Some(Atom::Fork(_)) | Some(Atom::Join(_)) => true,
@@ -330,15 +326,6 @@ impl AtomSpace {
     #[inline]
     pub(crate) fn get_split(&self, aid: AtomID) -> Option<&Split> {
         match self.get_atom(aid) {
-            Some(Atom::Fork(a)) => Some(a),
-            Some(Atom::Join(a)) => Some(a),
-            _ => None,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn get_split_mut(&mut self, aid: AtomID) -> Option<&mut Split> {
-        match self.get_atom_mut(aid) {
             Some(Atom::Fork(a)) => Some(a),
             Some(Atom::Join(a)) => Some(a),
             _ => None,
@@ -360,13 +347,6 @@ impl AtomSpace {
             _ => None,
         }
     }
-    #[inline]
-    pub(crate) fn get_fork_mut(&mut self, fid: ForkID) -> Option<&mut Fork> {
-        match self.get_atom_mut(fid.into()) {
-            Some(Atom::Fork(a)) => Some(a),
-            _ => None,
-        }
-    }
 
     #[inline]
     pub(crate) fn is_join(&self, atom_id: AtomID) -> bool {
@@ -379,14 +359,6 @@ impl AtomSpace {
     #[inline]
     pub(crate) fn get_join(&self, jid: JoinID) -> Option<&Join> {
         match self.get_atom(jid.into()) {
-            Some(Atom::Join(a)) => Some(a),
-            _ => None,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn get_join_mut(&mut self, jid: JoinID) -> Option<&mut Join> {
-        match self.get_atom_mut(jid.into()) {
             Some(Atom::Join(a)) => Some(a),
             _ => None,
         }
@@ -418,7 +390,7 @@ impl AtomSpace {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, Debug)]
 pub(crate) enum Atom {
     Tx(Port),
     Rx(Port),
@@ -448,7 +420,7 @@ impl Atom {
         }
     }
 
-    fn do_get_atom_id(&self) -> Option<AtomID> {
+    fn get_atom_id(&self) -> Option<AtomID> {
         use Atom::*;
 
         match self {
@@ -459,10 +431,6 @@ impl Atom {
             Join(j) => j.atom_id,
             Bottom => panic!("Attempt to get ID of the bottom atom"),
         }
-    }
-
-    pub fn get_atom_id(&self) -> AtomID {
-        self.do_get_atom_id().expect("Attempt to access an uninitialized atom")
     }
 }
 
@@ -477,12 +445,26 @@ impl cmp::PartialEq for Atom {
             Link(l) => if let Link(o) = other { l == o } else { false },
             Fork(f) => if let Fork(o) = other { f == o } else { false },
             Join(j) => if let Join(o) = other { j == o } else { false },
-            Bottom => false, // irreflexive, hence no `impl cmp::Eq for Atom`
+            Bottom => panic!("Attempt to access the bottom atom"),
         }
     }
 }
 
-#[derive(Clone, Debug)]
+impl hash::Hash for Atom {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        use Atom::*;
+
+        match self {
+            Tx(p) | Rx(p) => p.hash(state),
+            Link(l) => l.hash(state),
+            Fork(f) => f.hash(state),
+            Join(j) => j.hash(state),
+            Bottom => panic!("Attempt to access the bottom atom"),
+        }
+    }
+}
+
+#[derive(Clone, Eq, Debug)]
 pub struct Port {
     face:    node::Face,
     atom_id: Option<AtomID>,
@@ -513,7 +495,12 @@ impl cmp::PartialEq for Port {
     }
 }
 
-impl cmp::Eq for Port {}
+impl hash::Hash for Port {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.face.hash(state);
+        self.node_id.hash(state);
+    }
+}
 
 impl Contextual for Port {
     fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
@@ -525,7 +512,7 @@ impl Contextual for Port {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, Debug)]
 pub struct Link {
     atom_id:    Option<AtomID>,
     tx_port_id: PortID,
@@ -591,7 +578,14 @@ impl cmp::PartialEq for Link {
     }
 }
 
-impl cmp::Eq for Link {}
+impl hash::Hash for Link {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.tx_port_id.hash(state);
+        self.tx_node_id.hash(state);
+        self.rx_port_id.hash(state);
+        self.rx_node_id.hash(state);
+    }
+}
 
 impl Contextual for Link {
     fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
@@ -606,7 +600,7 @@ impl Contextual for Link {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq)]
 pub struct Split {
     atom_id:  Option<AtomID>,
     face:     node::Face,
@@ -694,7 +688,13 @@ impl cmp::PartialEq for Split {
     }
 }
 
-impl cmp::Eq for Split {}
+impl hash::Hash for Split {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.face.hash(state);
+        self.host_id.hash(state);
+        self.suit_ids.hash(state);
+    }
+}
 
 impl Contextual for Split {
     fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
