@@ -5,6 +5,8 @@ use crate::{
     monomial, sat, error::AcesError,
 };
 
+// FIXME sort rows as a way to fix Eq and, perhaps, to open some
+// optimization opportunities.
 /// A formal polynomial.
 ///
 /// Internally a `Polynomial` is represented as a vector of _N_
@@ -326,6 +328,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
         self.terms.len()
     }
 
+    /// Creates a [`Monomials`] iterator.
     pub fn get_monomials(&self) -> Monomials<T> {
         Monomials { poly: self, ndx: 0 }
     }
@@ -524,8 +527,8 @@ impl<'a> ops::AddAssign<&Self> for InContextMut<'a, Polynomial<LinkID>> {
     }
 }
 
-/// An iterator yielding monomials of a [`Polynomial`] as sequences of
-/// [`Atomic`] identifiers.
+/// An iterator yielding monomials of a [`Polynomial`] as ordered
+/// sequences of [`Atomic`] identifiers.
 ///
 /// This is a two-level iterator: the yielded items are themselves
 /// iterators.  It borrows the [`Polynomial`] being iterated over and

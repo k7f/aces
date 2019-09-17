@@ -5,6 +5,7 @@ use crate::{node, LinkID};
 pub enum AcesError {
     ContextMismatch,
     PortMismatch,
+    SplitMismatch,
     NodeMissingForID,
     AtomMissingForID,
     PortMissingForID,
@@ -93,7 +94,8 @@ impl Error for AcesError {
 
         match self {
             ContextMismatch => "Context mismatch",
-            PortMismatch => "Port mismatch",
+            PortMismatch => "Port (dock) mismatch",
+            SplitMismatch => "Split (fork/join) mismatch",
             NodeMissingForID => "Node is missing for ID",
             AtomMissingForID => "Atom is missing for ID",
             PortMissingForID => "Port is missing for ID",

@@ -165,6 +165,7 @@ impl CEStructure {
             let mut co_node_ids = Vec::new();
             let mut fat_co_node_ids = Vec::new();
 
+            // Link sequence, ordered by conode ID.
             for lid in mono {
                 if let Some(link_state) = self.links.get(&lid) {
                     let ctx = self.context.lock().unwrap();

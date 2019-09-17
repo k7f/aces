@@ -610,12 +610,22 @@ pub struct Split {
 }
 
 impl Split {
+    fn new(
+        face: node::Face,
+        host_id: NodeID,
+        suit_ids: Vec<NodeID>,
+        weight: monomial::Weight,
+    ) -> Self {
+        // FIXME assert suit_ids are sorted
+        Split { atom_id: None, face, host_id, suit_ids, weight }
+    }
+
     pub fn new_fork(host_id: NodeID, suit_ids: Vec<NodeID>, weight: monomial::Weight) -> Self {
-        Split { atom_id: None, face: node::Face::Tx, host_id, suit_ids, weight }
+        Split::new(node::Face::Tx, host_id, suit_ids, weight)
     }
 
     pub fn new_join(host_id: NodeID, suit_ids: Vec<NodeID>, weight: monomial::Weight) -> Self {
-        Split { atom_id: None, face: node::Face::Rx, host_id, suit_ids, weight }
+        Split::new(node::Face::Rx, host_id, suit_ids, weight)
     }
 
     pub fn get_atom_id(&self) -> AtomID {

@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeSet, BTreeMap, HashSet},
+    iter::FromIterator,
     convert::TryInto,
     mem, ops, fmt,
     error::Error,
@@ -409,6 +410,7 @@ impl Formula {
         Ok(())
     }
 
+    // FIXME
     pub fn add_cosplits(
         &mut self,
         split_id: AtomID,
@@ -967,8 +969,13 @@ impl Solution {
         model: I,
     ) -> Result<Self, AcesError> {
         let mut solution = Self::new(ctx);
-        let mut fork_map = BTreeMap::new();
-        let mut join_map = BTreeMap::new();
+
+        let mut pre_set: BTreeSet<NodeID> = BTreeSet::new();
+        let mut post_set: BTreeSet<NodeID> = BTreeSet::new();
+        let mut fork_map: BTreeMap<NodeID, BTreeSet<NodeID>> = BTreeMap::new();
+        let mut join_map: BTreeMap<NodeID, BTreeSet<NodeID>> = BTreeMap::new();
+        let mut fork_set: BTreeSet<ForkID> = BTreeSet::new();
+        let mut join_set: BTreeSet<JoinID> = BTreeSet::new();
 
         for lit in model {
             solution.model.push(lit);
@@ -979,17 +986,41 @@ impl Solution {
 
                 if let Some(atom) = ctx.get_atom(atom_id) {
                     match atom {
-                        Atom::Tx(port) => solution.pre_set.push(port.get_node_id()),
-                        Atom::Rx(port) => solution.post_set.push(port.get_node_id()),
+                        Atom::Tx(port) => {
+                            pre_set.insert(port.get_node_id());
+                        }
+                        Atom::Rx(port) => {
+                            post_set.insert(port.get_node_id());
+                        }
                         Atom::Link(link) => {
                             let tx_node_id = link.get_tx_node_id();
                             let rx_node_id = link.get_rx_node_id();
 
-                            fork_map.entry(tx_node_id).or_insert_with(Vec::new).push(rx_node_id);
-                            join_map.entry(rx_node_id).or_insert_with(Vec::new).push(tx_node_id);
+                            fork_map
+                                .entry(tx_node_id)
+                                .or_insert_with(BTreeSet::new)
+                                .insert(rx_node_id);
+                            join_map
+                                .entry(rx_node_id)
+                                .or_insert_with(BTreeSet::new)
+                                .insert(tx_node_id);
                         }
-                        Atom::Fork(fork) => {}
-                        Atom::Join(join) => {}
+                        Atom::Fork(fork) => {
+                            if let Some(fork_id) = fork.get_fork_id() {
+                                pre_set.insert(fork.get_host_id());
+                                fork_set.insert(fork_id);
+                            } else {
+                                return Err(AcesError::SplitMismatch)
+                            }
+                        }
+                        Atom::Join(join) => {
+                            if let Some(join_id) = join.get_join_id() {
+                                post_set.insert(join.get_host_id());
+                                join_set.insert(join_id);
+                            } else {
+                                return Err(AcesError::SplitMismatch)
+                            }
+                        }
                         Atom::Bottom => return Err(AcesError::BottomAtomAccess),
                     }
                 } else {
@@ -1001,22 +1032,21 @@ impl Solution {
         {
             let mut ctx = solution.context.lock().unwrap();
 
-            solution.fork_set = fork_map
-                .into_iter()
-                .map(|(k, v)| {
-                    ctx.share_fork(&mut Split::new_fork(k, v, Default::default()))
-                    // FIXME
-                })
-                .collect();
+            fork_set.extend(fork_map.into_iter().map(|(host, suit)| {
+                let suit = Vec::from_iter(suit.into_iter());
+                ctx.share_fork(&mut Split::new_fork(host, suit, Default::default()))
+            }));
 
-            solution.join_set = join_map
-                .into_iter()
-                .map(|(k, v)| {
-                    ctx.share_join(&mut Split::new_join(k, v, Default::default()))
-                    // FIXME
-                })
-                .collect();
+            join_set.extend(join_map.into_iter().map(|(host, suit)| {
+                let suit = Vec::from_iter(suit.into_iter());
+                ctx.share_join(&mut Split::new_join(host, suit, Default::default()))
+            }));
         }
+
+        solution.pre_set.extend(pre_set.into_iter());
+        solution.post_set.extend(post_set.into_iter());
+        solution.fork_set.extend(fork_set.into_iter());
+        solution.join_set.extend(join_set.into_iter());
 
         Ok(solution)
     }
