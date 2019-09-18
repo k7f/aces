@@ -410,35 +410,32 @@ impl Formula {
         Ok(())
     }
 
-    // FIXME
     pub fn add_cosplits(
         &mut self,
         split_id: AtomID,
         cosplit_ids: Vec<Vec<AtomID>>,
     ) -> Result<(), AcesError> {
-        if cosplit_ids.len() < 2 {
-            if let Some(coterm) = cosplit_ids.get(0) {
-                if coterm.len() < 2 {
-                    if let Some(&cosplit_id) = coterm.get(0) {
-                        let split_lit = Lit::from_atom_id(split_id, true);
-                        let cosplit_lit = Lit::from_atom_id(cosplit_id, false);
-                        let clause = Clause::from_pair(split_lit, cosplit_lit, "cosplit");
+        let split_lit = Lit::from_atom_id(split_id, true);
 
-                        self.add_clause(clause)
-                    } else {
-                        Err(AcesError::IncoherencyLeak)
-                    }
-                } else {
-                    println!("add_cosplits {} -> {:?} (single co-term)", split_id, coterm);
-
-                    Ok(())
-                }
-            } else {
-                Err(AcesError::IncoherencyLeak)
-            }
+        if cosplit_ids.is_empty() {
+            Err(AcesError::IncoherencyLeak)
         } else {
-            println!("add_cosplits {} -> {:?}", split_id, cosplit_ids);
+            for choice in cosplit_ids.iter() {
+                if choice.is_empty() {
+                    return Err(AcesError::IncoherencyLeak)
+                } else {
+                    // Relying on reduction to minimal model when
+                    // solving, co-split rules are encoded below as
+                    // plain disjunctions instead of exclusive choice.
+                    // FIXME reconsider.
+                    let lits = Some(split_lit).into_iter().chain(
+                        choice.iter().map(|cosplit_id| Lit::from_atom_id(*cosplit_id, false)),
+                    );
+                    let clause = Clause::from_literals(lits, "cosplit");
 
+                    self.add_clause(clause)?;
+                }
+            }
             Ok(())
         }
     }
@@ -1029,19 +1026,17 @@ impl Solution {
             }
         }
 
-        {
-            let mut ctx = solution.context.lock().unwrap();
+        fork_set.extend(fork_map.into_iter().map(|(host, suit)| {
+            let suit = Vec::from_iter(suit.into_iter());
+            let mut fork = Split::new_fork(host, suit, Default::default());
+            solution.context.lock().unwrap().share_fork(&mut fork)
+        }));
 
-            fork_set.extend(fork_map.into_iter().map(|(host, suit)| {
-                let suit = Vec::from_iter(suit.into_iter());
-                ctx.share_fork(&mut Split::new_fork(host, suit, Default::default()))
-            }));
-
-            join_set.extend(join_map.into_iter().map(|(host, suit)| {
-                let suit = Vec::from_iter(suit.into_iter());
-                ctx.share_join(&mut Split::new_join(host, suit, Default::default()))
-            }));
-        }
+        join_set.extend(join_map.into_iter().map(|(host, suit)| {
+            let suit = Vec::from_iter(suit.into_iter());
+            let mut join = Split::new_join(host, suit, Default::default());
+            solution.context.lock().unwrap().share_join(&mut join)
+        }));
 
         solution.pre_set.extend(pre_set.into_iter());
         solution.post_set.extend(post_set.into_iter());

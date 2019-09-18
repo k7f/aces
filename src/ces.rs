@@ -449,6 +449,12 @@ impl CEStructure {
         Ok(formula)
     }
 
+    /// Given a flat list of co-splits, groups them by their host
+    /// nodes (i.e. by suit members of the considered split), and
+    /// returns a vector of vectors of [`AtomID`]s.
+    ///
+    /// The result, if interpreted in terms of SAT encoding, is a
+    /// conjunction of exclusive choices of co-splits.
     fn group_cosplits(&self, cosplit_ids: &[AtomID]) -> Result<Vec<Vec<AtomID>>, AcesError> {
         if cosplit_ids.len() < 2 {
             if cosplit_ids.is_empty() {
@@ -458,12 +464,13 @@ impl CEStructure {
             }
         } else {
             let ctx = self.context.lock().unwrap();
-            let mut cohost_map = BTreeMap::new();
+            let mut cohost_map: BTreeMap<NodeID, Vec<AtomID>> = BTreeMap::new();
 
             for &cosplit_id in cosplit_ids.iter() {
-                let split = ctx.get_split(cosplit_id).ok_or(AcesError::SplitMissingForID)?;
+                let cosplit = ctx.get_split(cosplit_id).ok_or(AcesError::SplitMissingForID)?;
+                let cohost_id = cosplit.get_host_id();
 
-                match cohost_map.entry(split.get_host_id()) {
+                match cohost_map.entry(cohost_id) {
                     btree_map::Entry::Vacant(entry) => {
                         entry.insert(vec![cosplit_id]);
                     }
@@ -473,7 +480,7 @@ impl CEStructure {
                         if let Err(pos) = sids.binary_search(&cosplit_id) {
                             sids.insert(pos, cosplit_id);
                         } else {
-                            warn!("Multiple occurrences of {} in cosplit array", ctx.with(split));
+                            warn!("Multiple occurrences of {} in cosplit array", ctx.with(cosplit));
                         }
                     }
                 }

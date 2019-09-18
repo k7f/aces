@@ -5,7 +5,7 @@ aces
 ![Rust](https://img.shields.io/badge/rust-nightly-brightgreen.svg)
 ![MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 
-Algebra of [Cause-Effect
+[Algebra of Cause-Effect
 Structures](https://link.springer.com/book/10.1007/978-3-030-20461-7)
 &mdash; an implementation of the theory.  This is the core library and
 a set of command-line tools of the

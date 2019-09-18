@@ -616,7 +616,20 @@ impl Split {
         suit_ids: Vec<NodeID>,
         weight: monomial::Weight,
     ) -> Self {
-        // FIXME assert suit_ids are sorted
+        if cfg!(debug_assertions) {
+            let mut sit = suit_ids.iter();
+
+            if let Some(nid) = sit.next() {
+                let mut prev_nid = *nid;
+
+                for &nid in sit {
+                    assert!(prev_nid < nid, "Unordered suit");
+                    prev_nid = nid;
+                }
+            } else {
+                panic!("Empty suit")
+            }
+        }
         Split { atom_id: None, face, host_id, suit_ids, weight }
     }
 
