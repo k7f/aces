@@ -47,11 +47,13 @@ pub struct Context {
 }
 
 impl Context {
-    /// Creates a new toplevel `Context` instance and returns a
+    /// Creates a new toplevel `Context` instance and returns the
     /// corresponding [`ContextHandle`].
     ///
-    /// Calling this method is the only public way of creating
-    /// toplevel `Context` instances.
+    /// Calling this method, or its variant, [`new_interactive()`], is
+    /// the only public way of creating toplevel `Context` instances.
+    ///
+    /// [`new_interactive()`]: [`Context::new_interactive()`]
     pub fn new_toplevel<S: AsRef<str>>(name: S, origin: ContentOrigin) -> ContextHandle {
         let magic_id = rand::random();
 
@@ -70,6 +72,18 @@ impl Context {
         Arc::new(Mutex::new(ctx))
     }
 
+    /// Creates a new toplevel `Context` instance, sets content origin
+    /// to [`ContentOrigin::Interactive`] and returns the
+    /// corresponding [`ContextHandle`].
+    ///
+    /// This is a specialized variant of the [`new_toplevel()`]
+    /// method.
+    ///
+    /// [`new_toplevel()`]: [`Context::new_toplevel()`]
+    pub fn new_interactive<S: AsRef<str>>(name: S) -> ContextHandle {
+        Context::new_toplevel(name, ContentOrigin::Interactive)
+    }
+
     pub fn reset(&mut self, new_origin: ContentOrigin) {
         self.origin = new_origin;
         // FIXME clear
@@ -80,7 +94,7 @@ impl Context {
     ///
     /// Calling this method is the only public way of creating derived
     /// `Context` instances.
-    pub fn new_derived<S: AsRef<str>>(name: S, parent: ContextHandle) -> ContextHandle {
+    pub fn new_derived<S: AsRef<str>>(name: S, parent: &ContextHandle) -> ContextHandle {
         let ctx = {
             let mut parent = parent.lock().unwrap();
 
@@ -219,15 +233,15 @@ impl Context {
     }
 }
 
-impl cmp::PartialEq for Context {
+impl PartialEq for Context {
     fn eq(&self, other: &Self) -> bool {
         self.magic_id == other.magic_id && self.name_id == other.name_id
     }
 }
 
-impl cmp::Eq for Context {}
+impl Eq for Context {}
 
-impl cmp::PartialOrd for Context {
+impl PartialOrd for Context {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         if self.magic_id == other.magic_id {
             if other.globals.get_id(self.get_name()) == Some(self.name_id) {
@@ -367,5 +381,45 @@ impl Context {
     #[inline]
     pub fn with_mut<'a, T: Contextual>(&'a self, thing: &'a mut T) -> InContextMut<'a, T> {
         InContextMut { context: self, thing }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::node;
+
+    fn new_port(ctx: &ContextHandle, face: node::Face, host_name: &str) -> (Port, PortID) {
+        let mut ctx = ctx.lock().unwrap();
+        let node_id = ctx.share_node_name(host_name);
+        let mut port = Port::new(face, node_id);
+        let port_id = ctx.share_port(&mut port);
+
+        (port, port_id)
+    }
+
+    #[test]
+    fn test_partial_order() {
+        let toplevel = Context::new_interactive("toplevel");
+        let derived = Context::new_derived("derived", &toplevel);
+
+        assert_eq!(
+            toplevel.lock().unwrap().partial_cmp(&derived.lock().unwrap()),
+            Some(cmp::Ordering::Greater)
+        );
+    }
+
+    #[test]
+    fn test_derivation() {
+        let toplevel = Context::new_interactive("toplevel");
+        let (a_port, a_port_id) = new_port(&toplevel, node::Face::Tx, "a");
+
+        let derived = Context::new_derived("derived", &toplevel);
+        let (b_port, b_port_id) = new_port(&toplevel, node::Face::Tx, "b");
+        let (_, z_port_id) = new_port(&derived, node::Face::Rx, "z");
+
+        assert_eq!(derived.lock().unwrap().get_port(a_port_id), Some(&a_port));
+        assert_eq!(derived.lock().unwrap().get_port(b_port_id), Some(&b_port));
+        assert_eq!(toplevel.lock().unwrap().get_port(z_port_id), None);
     }
 }

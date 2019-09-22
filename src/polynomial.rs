@@ -441,15 +441,15 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
     }
 }
 
-impl<T: Atomic + fmt::Debug> cmp::PartialEq for Polynomial<T> {
+impl<T: Atomic + fmt::Debug> PartialEq for Polynomial<T> {
     fn eq(&self, other: &Self) -> bool {
         self.atomics == other.atomics && self.terms == other.terms
     }
 }
 
-impl<T: Atomic + fmt::Debug> cmp::Eq for Polynomial<T> {}
+impl<T: Atomic + fmt::Debug> Eq for Polynomial<T> {}
 
-impl<T: Atomic + fmt::Debug> cmp::PartialOrd for Polynomial<T> {
+impl<T: Atomic + fmt::Debug> PartialOrd for Polynomial<T> {
     #[allow(clippy::collapsible_if)]
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         // FIXME optimize, handle errors

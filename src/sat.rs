@@ -3,6 +3,7 @@ use std::{
     iter::FromIterator,
     convert::TryInto,
     mem, ops, fmt,
+    sync::Arc,
     error::Error,
 };
 use log::Level::Debug;
@@ -424,10 +425,10 @@ impl Formula {
                 if choice.is_empty() {
                     return Err(AcesError::IncoherencyLeak)
                 } else {
-                    // Relying on reduction to minimal model when
-                    // solving, co-split rules are encoded below as
-                    // plain disjunctions instead of exclusive choice.
-                    // FIXME reconsider.
+                    // Co-split rules are encoded below as plain
+                    // disjunctions instead of exclusive choice,
+                    // because we rely on reduction to minimal model
+                    // when solving.  FIXME reconsider.
                     let lits = Some(split_lit).into_iter().chain(
                         choice.iter().map(|cosplit_id| Lit::from_atom_id(*cosplit_id, false)),
                     );
@@ -442,6 +443,21 @@ impl Formula {
 
     fn get_variables(&self) -> &BTreeSet<Var> {
         &self.variables
+    }
+}
+
+impl Eq for Formula {}
+
+impl PartialEq for Formula {
+    fn eq(&self, other: &Self) -> bool {
+        if Arc::ptr_eq(&self.context, &other.context) {
+            self.cnf == other.cnf
+        } else {
+            let ref ctx = self.context.lock().unwrap();
+            let ref other_ctx = other.context.lock().unwrap();
+
+            ctx.partial_cmp(other_ctx).is_some() && self.cnf == other.cnf
+        }
     }
 }
 
@@ -918,16 +934,20 @@ impl Iterator for Solver<'_> {
             } else {
                 None
             }
-        } else if let Err(err) = self.inhibit_last_model() {
-            warn!("{} in solver's iteration", err);
-
-            None
         } else {
             self.solve();
 
             if let ModelSearchResult::Found(ref model) = self.last_model {
                 match Solution::from_model(&self.context, model.iter().copied()) {
-                    Ok(solution) => Some(solution),
+                    Ok(solution) => {
+                        if let Err(err) = self.inhibit_last_model() {
+                            warn!("{} in solver's iteration", err);
+
+                            None
+                        } else {
+                            Some(solution)
+                        }
+                    }
                     Err(err) => {
                         warn!("{} in solver's iteration", err);
                         None
@@ -1115,5 +1135,48 @@ impl fmt::Display for Solution {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn new_fork_id(ctx: &ContextHandle, host_name: &str, suit_names: &[&str]) -> ForkID {
+        let mut ctx = ctx.lock().unwrap();
+        let host_id = ctx.share_node_name(host_name);
+        let suit_ids = suit_names.iter().map(|n| ctx.share_node_name(n)).collect();
+        let mut fork = Split::new_fork(host_id, suit_ids, Default::default());
+        ctx.share_fork(&mut fork)
+    }
+
+    fn new_join_id(ctx: &ContextHandle, host_name: &str, suit_names: &[&str]) -> JoinID {
+        let mut ctx = ctx.lock().unwrap();
+        let host_id = ctx.share_node_name(host_name);
+        let suit_ids = suit_names.iter().map(|n| ctx.share_node_name(n)).collect();
+        let mut join = Split::new_join(host_id, suit_ids, Default::default());
+        ctx.share_join(&mut join)
+    }
+
+    #[test]
+    fn test_cosplits() {
+        let ctx = Context::new_interactive("test_cosplits");
+        let a_fork_id = new_fork_id(&ctx, "a", &["z"]);
+        let z_join_id = new_join_id(&ctx, "z", &["a"]);
+
+        let mut test_formula = Formula::new(&ctx);
+        let mut ref_formula = Formula::new(&ctx);
+
+        test_formula.add_cosplits(a_fork_id.get(), vec![vec![z_join_id.get()]]).unwrap();
+
+        ref_formula
+            .add_clause(Clause::from_pair(
+                Lit::from_atom_id(a_fork_id.get(), true),
+                Lit::from_atom_id(z_join_id.get(), false),
+                "",
+            ))
+            .unwrap();
+
+        assert_eq!(test_formula, ref_formula);
     }
 }

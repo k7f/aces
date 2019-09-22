@@ -1,5 +1,5 @@
 use std::{
-    cmp, fmt, hash,
+    fmt, hash,
     collections::{BTreeMap, HashMap},
     error::Error,
 };
@@ -434,7 +434,7 @@ impl Atom {
     }
 }
 
-impl cmp::PartialEq for Atom {
+impl PartialEq for Atom {
     #[rustfmt::skip]
     fn eq(&self, other: &Self) -> bool {
         use Atom::*;
@@ -489,7 +489,7 @@ impl Port {
     }
 }
 
-impl cmp::PartialEq for Port {
+impl PartialEq for Port {
     fn eq(&self, other: &Self) -> bool {
         self.node_id == other.node_id
     }
@@ -572,7 +572,7 @@ impl Link {
     }
 }
 
-impl cmp::PartialEq for Link {
+impl PartialEq for Link {
     fn eq(&self, other: &Self) -> bool {
         self.tx_port_id == other.tx_port_id && self.rx_node_id == other.rx_node_id
     }
@@ -696,7 +696,7 @@ impl fmt::Debug for Split {
     }
 }
 
-impl cmp::PartialEq for Split {
+impl PartialEq for Split {
     fn eq(&self, other: &Self) -> bool {
         let result = self.face == other.face
             && self.host_id == other.host_id
@@ -829,7 +829,7 @@ mod tests {
     #[should_panic(expected = "uninitialized")]
     fn test_atom_uninitialized() {
         let atom = Atom::Tx(new_tx_port(1));
-        let _ = atom.get_atom_id();
+        let _ = atom.get_atom_id().expect("uninitialized");
     }
 
     #[test]
@@ -855,6 +855,6 @@ mod tests {
         let atom = Atom::Tx(new_tx_port(1));
         let atom_id = atoms.do_share_atom(atom);
         let atom = atoms.get_atom(atom_id).unwrap();
-        assert_eq!(atom.get_atom_id(), atom_id);
+        assert_eq!(atom.get_atom_id().unwrap(), atom_id);
     }
 }
