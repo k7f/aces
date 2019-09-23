@@ -53,7 +53,7 @@ impl Context {
     /// Calling this method, or its variant, [`new_interactive()`], is
     /// the only public way of creating toplevel `Context` instances.
     ///
-    /// [`new_interactive()`]: [`Context::new_interactive()`]
+    /// [`new_interactive()`]: Context::new_interactive()
     pub fn new_toplevel<S: AsRef<str>>(name: S, origin: ContentOrigin) -> ContextHandle {
         let magic_id = rand::random();
 
@@ -79,7 +79,7 @@ impl Context {
     /// This is a specialized variant of the [`new_toplevel()`]
     /// method.
     ///
-    /// [`new_toplevel()`]: [`Context::new_toplevel()`]
+    /// [`new_toplevel()`]: Context::new_toplevel()
     pub fn new_interactive<S: AsRef<str>>(name: S) -> ContextHandle {
         Context::new_toplevel(name, ContentOrigin::Interactive)
     }
@@ -414,12 +414,16 @@ mod tests {
         let toplevel = Context::new_interactive("toplevel");
         let (a_port, a_port_id) = new_port(&toplevel, node::Face::Tx, "a");
 
-        let derived = Context::new_derived("derived", &toplevel);
-        let (b_port, b_port_id) = new_port(&toplevel, node::Face::Tx, "b");
-        let (_, z_port_id) = new_port(&derived, node::Face::Rx, "z");
+        {
+            let derived = Context::new_derived("derived", &toplevel);
+            let (_, z_port_id) = new_port(&derived, node::Face::Rx, "z");
 
-        assert_eq!(derived.lock().unwrap().get_port(a_port_id), Some(&a_port));
-        assert_eq!(derived.lock().unwrap().get_port(b_port_id), Some(&b_port));
-        assert_eq!(toplevel.lock().unwrap().get_port(z_port_id), None);
+            assert_eq!(derived.lock().unwrap().get_port(a_port_id), Some(&a_port));
+            assert_eq!(toplevel.lock().unwrap().get_port(z_port_id), None);
+        }
+
+        let (b_port, b_port_id) = new_port(&toplevel, node::Face::Tx, "b");
+
+        assert_eq!(toplevel.lock().unwrap().get_port(b_port_id), Some(&b_port));
     }
 }
