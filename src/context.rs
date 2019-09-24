@@ -8,6 +8,7 @@ use crate::{
     JoinID,
     name::NameSpace,
     atom::{AtomSpace, Atom},
+    sat, solver,
 };
 
 /// A handle to a [`Context`] instance.
@@ -44,6 +45,7 @@ pub struct Context {
     pub(crate) globals:  NameSpace,
     pub(crate) nodes:    NameSpace,
     pub(crate) atoms:    AtomSpace,
+    solver_options:      solver::Options,
 }
 
 impl Context {
@@ -67,6 +69,7 @@ impl Context {
             globals,
             nodes: Default::default(),
             atoms: Default::default(),
+            solver_options: Default::default(),
         };
 
         Arc::new(Mutex::new(ctx))
@@ -108,8 +111,9 @@ impl Context {
             let globals = parent.globals.clone();
             let nodes = parent.nodes.clone();
             let atoms = parent.atoms.clone();
+            let solver_options = parent.solver_options.clone();
 
-            Self { magic_id, name_id, origin, globals, nodes, atoms }
+            Self { magic_id, name_id, origin, globals, nodes, atoms, solver_options }
         };
 
         Arc::new(Mutex::new(ctx))
@@ -230,6 +234,24 @@ impl Context {
     #[inline]
     pub fn get_antiport_id(&self, port_id: PortID) -> Option<PortID> {
         self.atoms.get_antiport_id(port_id)
+    }
+
+    // Solver options
+
+    pub fn set_encoding(&mut self, encoding: sat::Encoding) {
+        self.solver_options.sat_encoding = Some(encoding);
+    }
+
+    pub fn get_encoding(&self) -> Option<sat::Encoding> {
+        self.solver_options.sat_encoding
+    }
+
+    pub fn set_reduction(&mut self, all_solutions: bool) {
+        self.solver_options.all_solutions = Some(all_solutions);
+    }
+
+    pub fn get_reduction(&self) -> Option<bool> {
+        self.solver_options.all_solutions
     }
 }
 

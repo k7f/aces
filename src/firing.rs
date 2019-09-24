@@ -1,5 +1,5 @@
 use std::{collections::BTreeMap, convert::TryFrom, error::Error};
-use crate::{Context, Contextual, NodeID, ForkID, JoinID, node, sat, AcesError};
+use crate::{Context, Contextual, NodeID, ForkID, JoinID, node, Solution, AcesError};
 
 #[derive(Default, Debug)]
 pub struct FiringComponent {
@@ -7,11 +7,11 @@ pub struct FiringComponent {
     post_set: BTreeMap<NodeID, JoinID>,
 }
 
-impl TryFrom<sat::Solution> for FiringComponent {
+impl TryFrom<Solution> for FiringComponent {
     type Error = AcesError;
 
     #[allow(clippy::map_entry)]
-    fn try_from(sol: sat::Solution) -> Result<Self, Self::Error> {
+    fn try_from(sol: Solution) -> Result<Self, Self::Error> {
         let ctx = sol.get_context().lock().unwrap();
         let mut pre_set = BTreeMap::new();
         let mut post_set = BTreeMap::new();

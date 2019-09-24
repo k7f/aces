@@ -3,11 +3,11 @@ use crate::{Context, ContentOrigin, CEStructure, sat};
 use super::{App, Command};
 
 pub struct Describe {
-    verbosity:          u64,
-    delayed_warnings:   Vec<String>, // Delayed until after logger's setup.
-    main_path:          String,
-    minimal_mode:       bool,
-    requested_encoding: Option<sat::Encoding>,
+    verbosity:           u64,
+    delayed_warnings:    Vec<String>, // Delayed until after logger's setup.
+    main_path:           String,
+    requested_encoding:  Option<sat::Encoding>,
+    requested_reduction: Option<bool>,
 }
 
 impl Describe {
@@ -15,7 +15,6 @@ impl Describe {
         let verbosity = app.occurrences_of("verbose").max(app.occurrences_of("log"));
         let mut delayed_warnings = Vec::new();
         let main_path = app.value_of("MAIN_PATH").unwrap_or_else(|| unreachable!()).to_owned();
-        let minimal_mode = !app.is_present("all");
 
         let requested_encoding = {
             let short_encoding = app.value_of("ENCODING").map(|v| match v {
@@ -46,7 +45,21 @@ impl Describe {
             }
         };
 
-        Box::new(Self { verbosity, delayed_warnings, main_path, minimal_mode, requested_encoding })
+        let requested_reduction = {
+            if app.is_present("all") {
+                Some(true)
+            } else {
+                None
+            }
+        };
+
+        Box::new(Self {
+            verbosity,
+            delayed_warnings,
+            main_path,
+            requested_encoding,
+            requested_reduction,
+        })
     }
 }
 
@@ -82,18 +95,22 @@ impl Command for Describe {
 
         let ctx = Context::new_toplevel("describe", ContentOrigin::cex_script(&self.main_path));
 
-        let mut ces = CEStructure::from_file(&ctx, &self.main_path)?;
-
         if let Some(encoding) = self.requested_encoding {
-            ces.set_encoding(encoding);
+            ctx.lock().unwrap().set_encoding(encoding);
         }
+
+        if let Some(reduction) = self.requested_reduction {
+            ctx.lock().unwrap().set_reduction(reduction);
+        }
+
+        let mut ces = CEStructure::from_file(&ctx, &self.main_path)?;
 
         trace!("{:?}", ctx.lock().unwrap());
         trace!("{:?}", ces);
         // FIXME impl Display
         // info!("{}", ces);
 
-        ces.solve(self.minimal_mode)?;
+        ces.solve()?;
 
         if let Some(fcs) = ces.get_firing_components() {
             println!("Firing components:");

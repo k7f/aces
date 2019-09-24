@@ -9,7 +9,7 @@ use std::{
 use log::Level::Trace;
 use crate::{
     ContextHandle, Port, Split, AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Polynomial,
-    FiringComponent, Content, content::content_from_str, node, sat, AcesError,
+    FiringComponent, Content, content::content_from_str, node, sat, Solver, AcesError,
 };
 
 #[derive(PartialEq, Debug)]
@@ -47,17 +47,16 @@ impl Default for Resolution {
 /// [`Context`]: crate::Context
 #[derive(Debug)]
 pub struct CEStructure {
-    context:         ContextHandle,
-    content:         Option<Box<dyn Content>>,
-    resolution:      Resolution,
-    causes:          BTreeMap<PortID, Polynomial<LinkID>>,
-    effects:         BTreeMap<PortID, Polynomial<LinkID>>,
-    carrier:         BTreeMap<NodeID, node::Capacity>,
-    links:           BTreeMap<LinkID, LinkState>,
-    num_thin_links:  u32,
-    encoding_to_use: Option<sat::Encoding>,
-    forks:           BTreeMap<NodeID, Vec<AtomID>>,
-    joins:           BTreeMap<NodeID, Vec<AtomID>>,
+    context:        ContextHandle,
+    content:        Option<Box<dyn Content>>,
+    resolution:     Resolution,
+    causes:         BTreeMap<PortID, Polynomial<LinkID>>,
+    effects:        BTreeMap<PortID, Polynomial<LinkID>>,
+    carrier:        BTreeMap<NodeID, node::Capacity>,
+    links:          BTreeMap<LinkID, LinkState>,
+    num_thin_links: u32,
+    forks:          BTreeMap<NodeID, Vec<AtomID>>,
+    joins:          BTreeMap<NodeID, Vec<AtomID>>,
     // FIXME define `struct Cosplits`, grouped on demand (cf. `group_cosplits`)
     co_forks: BTreeMap<AtomID, Vec<AtomID>>, // Joins -> 2^Forks
     co_joins: BTreeMap<AtomID, Vec<AtomID>>, // Forks -> 2^Joins
@@ -70,24 +69,19 @@ impl CEStructure {
     /// [`Context`]: crate::Context
     pub fn new(ctx: &ContextHandle) -> Self {
         Self {
-            context:         ctx.clone(),
-            content:         None,
-            resolution:      Default::default(),
-            causes:          Default::default(),
-            effects:         Default::default(),
-            carrier:         Default::default(),
-            links:           Default::default(),
-            num_thin_links:  0,
-            encoding_to_use: None,
-            forks:           Default::default(),
-            joins:           Default::default(),
-            co_forks:        Default::default(),
-            co_joins:        Default::default(),
+            context:        ctx.clone(),
+            content:        None,
+            resolution:     Default::default(),
+            causes:         Default::default(),
+            effects:        Default::default(),
+            carrier:        Default::default(),
+            links:          Default::default(),
+            num_thin_links: 0,
+            forks:          Default::default(),
+            joins:          Default::default(),
+            co_forks:       Default::default(),
+            co_joins:       Default::default(),
         }
-    }
-
-    pub fn set_encoding(&mut self, encoding: sat::Encoding) {
-        self.encoding_to_use = Some(encoding);
     }
 
     fn add_split_to_host(&mut self, split_id: AtomID, face: node::Face, node_id: NodeID) {
@@ -518,7 +512,18 @@ impl CEStructure {
         Ok(formula)
     }
 
-    pub fn solve(&mut self, minimal_mode: bool) -> Result<(), Box<dyn Error>> {
+    pub fn get_formula(&self) -> Result<sat::Formula, Box<dyn Error>> {
+        // FIXME if not set, choose one or the other, heuristically
+        let encoding =
+            self.context.lock().unwrap().get_encoding().unwrap_or(sat::Encoding::PortLink);
+
+        match encoding {
+            sat::Encoding::PortLink => self.get_port_link_formula(),
+            sat::Encoding::ForkJoin => self.get_fork_join_formula(),
+        }
+    }
+
+    pub fn solve(&mut self) -> Result<(), Box<dyn Error>> {
         if !self.is_coherent() {
             self.resolution = Resolution::Incoherent;
 
@@ -526,25 +531,19 @@ impl CEStructure {
                 self.get_name().unwrap_or("anonymous").to_owned(),
             )))
         } else {
-            let formula = if let Some(encoding) = self.encoding_to_use {
-                match encoding {
-                    sat::Encoding::PortLink => self.get_port_link_formula()?,
-                    sat::Encoding::ForkJoin => self.get_fork_join_formula()?,
-                }
-            } else {
-                // FIXME choose one or the other, heuristically
-                self.get_port_link_formula()?
-            };
+            let formula = self.get_formula()?;
 
             debug!("Raw {:?}", formula);
             info!("Formula: {}", formula);
 
-            let mut solver = sat::Solver::new(&self.context);
+            let mut solver = Solver::new(&self.context);
             solver.add_formula(&formula)?;
             solver.inhibit_empty_solution()?;
 
-            info!("Start of {}-solution search", if minimal_mode { "min" } else { "all" });
-            solver.set_minimal_mode(minimal_mode);
+            let all_solutions = self.context.lock().unwrap().get_reduction().unwrap_or(false);
+
+            info!("Start of {}-solution search", if all_solutions { "all" } else { "min" });
+            //solver.set_minimal_mode(minimal_mode);
 
             if let Some(first_solution) = solver.next() {
                 let mut fcs = Vec::new();
