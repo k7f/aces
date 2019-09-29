@@ -5,28 +5,20 @@ args:
         required: false
         default_value: data/arrow.cex
         index: 1
-    - all:
-        help: Search for all solutions, not only minimal
-        long: all
-        short: a
-        multiple: false
-        global: false
-    - ENCODING:
+    - SAT_ENCODING:
         help: Preferred encoding
-        long: encoding
+        long: sat-encoding
         short: e
         takes_value: true
-        possible_values: [PL, FJ]
+        possible_values: [port-link, fork-join, PL, FJ]
         multiple: false
         global: false
-    - PORT_LINK:
-        help: Prefer port-link encoding
-        long: port-link
-        multiple: false
-        global: false
-    - FORK_JOIN:
-        help: Prefer fork-join encoding
-        long: fork-join
+    - SAT_SEARCH:
+        help: Search for all, or only minimal solutions
+        long: sat-search
+        short: s
+        takes_value: true
+        possible_values: [min, all]
         multiple: false
         global: false
     - log:

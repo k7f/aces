@@ -39,7 +39,7 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 /// [`Atom`]: crate::atom::Atom
 #[derive(Debug)]
 pub struct Context {
-    pub(crate) magic_id: usize,
+    pub(crate) magic_id: u64,
     pub(crate) name_id:  ID,
     pub(crate) origin:   ContentOrigin,
     pub(crate) globals:  NameSpace,
@@ -246,12 +246,12 @@ impl Context {
         self.solver_options.sat_encoding
     }
 
-    pub fn set_reduction(&mut self, all_solutions: bool) {
-        self.solver_options.all_solutions = Some(all_solutions);
+    pub fn set_search(&mut self, search: sat::Search) {
+        self.solver_options.sat_search = Some(search);
     }
 
-    pub fn get_reduction(&self) -> Option<bool> {
-        self.solver_options.all_solutions
+    pub fn get_search(&self) -> Option<sat::Search> {
+        self.solver_options.sat_search
     }
 }
 

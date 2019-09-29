@@ -2,68 +2,43 @@ use std::{str::FromStr, error::Error};
 use crate::{Context, ContentOrigin, CEStructure, sat};
 use super::{App, Command};
 
-pub struct Describe {
-    verbosity:           u64,
-    delayed_warnings:    Vec<String>, // Delayed until after logger's setup.
-    main_path:           String,
-    requested_encoding:  Option<sat::Encoding>,
-    requested_reduction: Option<bool>,
+pub struct Solve {
+    verbosity:          u64,
+    delayed_warnings:   Vec<String>, // Delayed until after logger's setup.
+    main_path:          String,
+    requested_encoding: Option<sat::Encoding>,
+    requested_search:   Option<sat::Search>,
 }
 
-impl Describe {
+impl Solve {
     pub fn new_command(app: &App) -> Box<dyn Command> {
         let verbosity = app.occurrences_of("verbose").max(app.occurrences_of("log"));
         let mut delayed_warnings = Vec::new();
         let main_path = app.value_of("MAIN_PATH").unwrap_or_else(|| unreachable!()).to_owned();
 
-        let requested_encoding = {
-            let short_encoding = app.value_of("ENCODING").map(|v| match v {
-                "PL" => sat::Encoding::PortLink,
-                "FJ" => sat::Encoding::ForkJoin,
-                _ => unreachable!(),
-            });
-            let long_encoding = if app.is_present("PORT_LINK") {
-                if app.is_present("FORK_JOIN") {
-                    delayed_warnings.push("Conflicting encoding requests, none applied".to_owned());
-                    None
-                } else {
-                    Some(sat::Encoding::PortLink)
-                }
-            } else if app.is_present("FORK_JOIN") {
-                Some(sat::Encoding::ForkJoin)
-            } else {
-                None
-            };
+        let requested_encoding = app.value_of("SAT_ENCODING").map(|v| match v {
+            "PL" | "port-link" => sat::Encoding::PortLink,
+            "FJ" | "fork-join" => sat::Encoding::ForkJoin,
+            _ => unreachable!(),
+        });
 
-            if short_encoding.is_none() {
-                long_encoding
-            } else if long_encoding.is_none() || long_encoding == short_encoding {
-                short_encoding
-            } else {
-                delayed_warnings.push("Conflicting encoding requests, none applied".to_owned());
-                None
-            }
-        };
-
-        let requested_reduction = {
-            if app.is_present("all") {
-                Some(true)
-            } else {
-                None
-            }
-        };
+        let requested_search = app.value_of("SAT_SEARCH").map(|v| match v {
+            "min" => sat::Search::MinSolutions,
+            "all" => sat::Search::AllSolutions,
+            _ => unreachable!(),
+        });
 
         Box::new(Self {
             verbosity,
             delayed_warnings,
             main_path,
             requested_encoding,
-            requested_reduction,
+            requested_search,
         })
     }
 }
 
-impl Command for Describe {
+impl Command for Solve {
     fn name_of_log_file(&self) -> String {
         if let Ok(mut path) = std::path::PathBuf::from_str(&self.main_path) {
             if path.set_extension("log") {
@@ -93,14 +68,14 @@ impl Command for Describe {
             warn!("{}", warning);
         }
 
-        let ctx = Context::new_toplevel("describe", ContentOrigin::cex_script(&self.main_path));
+        let ctx = Context::new_toplevel("aces-solve", ContentOrigin::cex_script(&self.main_path));
 
         if let Some(encoding) = self.requested_encoding {
             ctx.lock().unwrap().set_encoding(encoding);
         }
 
-        if let Some(reduction) = self.requested_reduction {
-            ctx.lock().unwrap().set_reduction(reduction);
+        if let Some(search) = self.requested_search {
+            ctx.lock().unwrap().set_search(search);
         }
 
         let mut ces = CEStructure::from_file(&ctx, &self.main_path)?;

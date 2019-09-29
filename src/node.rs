@@ -94,14 +94,14 @@ impl fmt::Display for Face {
 /// (infinite capacity).  The default value is 1.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[repr(transparent)]
-pub struct Capacity(usize);
+pub struct Capacity(u64);
 
 impl Capacity {
     pub fn new_omega() -> Self {
         Capacity(0)
     }
 
-    pub fn new_finite(value: usize) -> Option<Self> {
+    pub fn new_finite(value: u64) -> Option<Self> {
         if value > 0 {
             Some(Capacity(value))
         } else {

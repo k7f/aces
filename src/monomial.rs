@@ -16,14 +16,14 @@
 /// token in that node inhibits firing.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[repr(transparent)]
-pub struct Weight(usize);
+pub struct Weight(u64);
 
 impl Weight {
     pub fn new_omega() -> Self {
         Weight(0)
     }
 
-    pub fn new_finite(value: usize) -> Option<Self> {
+    pub fn new_finite(value: u64) -> Option<Self> {
         if value > 0 {
             Some(Weight(value))
         } else {

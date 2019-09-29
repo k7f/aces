@@ -9,14 +9,14 @@ use varisat::{Var, Lit, ExtendFormula, solver::SolverError};
 use crate::{
     Context, ContextHandle, Contextual, NodeID, AtomID, ForkID, JoinID, Split,
     atom::Atom,
-    sat::{CEVar, CELit, Encoding, Clause, Formula},
+    sat::{CEVar, CELit, Encoding, Search, Clause, Formula},
     error::AcesError,
 };
 
 #[derive(Clone, Default, Debug)]
 pub(crate) struct Options {
-    pub(crate) sat_encoding:  Option<Encoding>,
-    pub(crate) all_solutions: Option<bool>,
+    pub(crate) sat_encoding: Option<Encoding>,
+    pub(crate) sat_search:   Option<Search>,
 }
 
 enum ModelSearchResult {
@@ -475,12 +475,11 @@ impl Iterator for Solver<'_> {
     type Item = Solution;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let all_solutions = self.context.lock().unwrap().get_reduction().unwrap_or(false);
+        let search = self.context.lock().unwrap().get_search().unwrap_or(Search::MinSolutions);
 
-        if all_solutions {
-            self.next_solution()
-        } else {
-            self.next_minimal_solution()
+        match search {
+            Search::MinSolutions => self.next_minimal_solution(),
+            Search::AllSolutions => self.next_solution(),
         }
     }
 }

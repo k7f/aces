@@ -18,6 +18,12 @@ pub enum Encoding {
     ForkJoin,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Search {
+    MinSolutions,
+    AllSolutions,
+}
+
 pub(crate) trait CEVar {
     fn from_atom_id(atom_id: AtomID) -> Self;
     fn into_atom_id(self) -> AtomID;

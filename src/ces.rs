@@ -540,10 +540,16 @@ impl CEStructure {
             solver.add_formula(&formula)?;
             solver.inhibit_empty_solution()?;
 
-            let all_solutions = self.context.lock().unwrap().get_reduction().unwrap_or(false);
+            let search =
+                self.context.lock().unwrap().get_search().unwrap_or(sat::Search::MinSolutions);
 
-            info!("Start of {}-solution search", if all_solutions { "all" } else { "min" });
-            //solver.set_minimal_mode(minimal_mode);
+            info!(
+                "Start of {}-solution search",
+                match search {
+                    sat::Search::MinSolutions => "min",
+                    sat::Search::AllSolutions => "all",
+                }
+            );
 
             if let Some(first_solution) = solver.next() {
                 let mut fcs = Vec::new();

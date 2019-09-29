@@ -1,7 +1,7 @@
-mod describe;
+mod solve;
 mod validate;
 
-pub use describe::Describe;
+pub use solve::Solve;
 pub use validate::Validate;
 
 pub trait Command {

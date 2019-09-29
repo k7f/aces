@@ -5,7 +5,7 @@ extern crate log;
 
 use std::error::Error;
 use aces::Logger;
-use aces::cli::{App, Describe, Validate};
+use aces::cli::{App, Solve, Validate};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let ref cli_spec_str = include_str!("aces.cli");
@@ -14,9 +14,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cli_matches = clap::App::from_yaml(&cli_spec[0]);
     let app = App::from_clap(cli_matches);
 
-    let command = match app.subcommand_name().unwrap_or("describe") {
+    let command = match app.subcommand_name().unwrap_or("solve") {
+        "solve" => Solve::new_command(&app),
         "validate" => Validate::new_command(&app),
-        "describe" => Describe::new_command(&app),
         _ => unreachable!(),
     };
 
