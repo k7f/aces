@@ -13,12 +13,14 @@ mod atom;
 pub mod monomial;
 mod polynomial;
 mod ces;
-mod firing;
 mod context;
 mod content;
 mod yaml_script;
 pub mod sat;
 mod solver;
+mod state;
+mod firing;
+mod runner;
 mod logging;
 pub mod cli;
 
@@ -30,7 +32,9 @@ pub use atom::{Port, Link, Split, Fork, Join, AtomID, PortID, LinkID, ForkID, Jo
 pub use polynomial::{Polynomial, Monomials};
 pub use ces::CEStructure;
 pub use solver::{Solver, Solution};
-pub use firing::FiringComponent;
+pub use firing::{FiringComponent, FiringSet, FiringSequence};
+pub use state::{State, Semantics};
+pub use runner::Runner;
 pub use logging::Logger;
 
 use std::num::NonZeroUsize;

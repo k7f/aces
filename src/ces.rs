@@ -9,7 +9,7 @@ use std::{
 use log::Level::Trace;
 use crate::{
     ContextHandle, Port, Split, AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Polynomial,
-    FiringComponent, Content, content::content_from_str, node, sat, Solver, AcesError,
+    FiringSet, Content, content::content_from_str, node, sat, sat::Resolution, Solver, AcesError,
 };
 
 #[derive(PartialEq, Debug)]
@@ -18,20 +18,6 @@ enum LinkState {
     /// [`node::Face`] value is the missing face.
     Thin(node::Face),
     Fat,
-}
-
-#[derive(Debug)]
-enum Resolution {
-    Unsolved,
-    Incoherent,
-    Deadlock,
-    Solved(Vec<FiringComponent>),
-}
-
-impl Default for Resolution {
-    fn default() -> Self {
-        Resolution::Unsolved
-    }
 }
 
 /// A single c-e structure.
@@ -562,7 +548,7 @@ impl CEStructure {
                     fcs.push(solution.try_into()?);
                 }
 
-                self.resolution = Resolution::Solved(fcs);
+                self.resolution = Resolution::Solved(fcs.into());
             } else if solver.is_sat().is_some() {
                 info!("\nStructural deadlock (found no solutions).");
                 self.resolution = Resolution::Deadlock;
@@ -580,9 +566,9 @@ impl CEStructure {
         }
     }
 
-    pub fn get_firing_components(&self) -> Option<&[FiringComponent]> {
-        if let Resolution::Solved(ref fcs) = self.resolution {
-            Some(fcs.as_slice())
+    pub fn get_firing_set(&self) -> Option<&FiringSet> {
+        if let Resolution::Solved(ref fs) = self.resolution {
+            Some(fs)
         } else {
             None
         }

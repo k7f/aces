@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, convert::TryFrom, error::Error};
+use std::{slice, collections::BTreeMap, convert::TryFrom, error::Error};
 use crate::{Context, Contextual, NodeID, ForkID, JoinID, node, Solution, AcesError};
 
 #[derive(Default, Debug)]
@@ -85,5 +85,81 @@ impl Contextual for FiringComponent {
         }
 
         Ok(result)
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct FiringSet {
+    fcs: Vec<FiringComponent>,
+}
+
+impl FiringSet {
+    pub fn as_slice(&self) -> &[FiringComponent] {
+        self.fcs.as_slice()
+    }
+}
+
+impl From<Vec<FiringComponent>> for FiringSet {
+    fn from(fcs: Vec<FiringComponent>) -> Self {
+        FiringSet { fcs }
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct FiringSequence {
+    firing_set:  FiringSet,
+    computation: Vec<(usize, bool)>,
+}
+
+impl FiringSequence {
+    pub fn iter(&self) -> FiringIter {
+        FiringIter { iter: self.computation.iter(), fset: &self.firing_set }
+    }
+
+    pub fn par_iter(&self) -> FiringParIter {
+        FiringParIter { iter: self.computation.iter(), fset: &self.firing_set }
+    }
+}
+
+pub struct FiringIter<'a> {
+    iter: slice::Iter<'a, (usize, bool)>,
+    fset: &'a FiringSet,
+}
+
+impl<'a> Iterator for FiringIter<'a> {
+    type Item = &'a FiringComponent;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((pos, _)) = self.iter.next() {
+            let fc = self.fset.fcs.get(*pos).expect("Broken firing sequence.");
+            Some(fc)
+        } else {
+            None
+        }
+    }
+}
+
+pub struct FiringParIter<'a> {
+    iter: slice::Iter<'a, (usize, bool)>,
+    fset: &'a FiringSet,
+}
+
+impl<'a> Iterator for FiringParIter<'a> {
+    type Item = Vec<&'a FiringComponent>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut fcs = Vec::new();
+
+        while let Some((pos, fin)) = self.iter.next() {
+            let fc = self.fset.fcs.get(*pos).expect("Broken firing sequence.");
+
+            fcs.push(fc);
+
+            if *fin {
+                return Some(fcs)
+            }
+        }
+
+        None
     }
 }

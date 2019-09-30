@@ -9,8 +9,22 @@ use log::Level::Debug;
 use varisat::{Var, Lit, CnfFormula, ExtendFormula};
 use crate::{
     Atomic, Context, ContextHandle, Contextual, Polynomial, AtomID, PortID, LinkID, atom::Atom,
-    error::AcesError,
+    FiringSet, error::AcesError,
 };
+
+#[derive(Debug)]
+pub(crate) enum Resolution {
+    Unsolved,
+    Incoherent,
+    Deadlock,
+    Solved(FiringSet),
+}
+
+impl Default for Resolution {
+    fn default() -> Self {
+        Resolution::Unsolved
+    }
+}
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Encoding {

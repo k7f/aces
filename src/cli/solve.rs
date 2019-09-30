@@ -87,12 +87,12 @@ impl Command for Solve {
 
         ces.solve()?;
 
-        if let Some(fcs) = ces.get_firing_components() {
+        if let Some(fs) = ces.get_firing_set() {
             println!("Firing components:");
 
             let ctx = ctx.lock().unwrap();
 
-            for (i, fc) in fcs.iter().enumerate() {
+            for (i, fc) in fs.as_slice().iter().enumerate() {
                 println!("{}. {}", i + 1, ctx.with(fc));
             }
         }
