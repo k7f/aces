@@ -12,5 +12,5 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub fn run(&mut self) {}
+    pub fn go(&mut self) {}
 }

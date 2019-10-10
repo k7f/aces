@@ -4,7 +4,6 @@ use super::{App, Command};
 
 pub struct Solve {
     verbosity:          u64,
-    delayed_warnings:   Vec<String>, // Delayed until after logger's setup.
     main_path:          String,
     requested_encoding: Option<sat::Encoding>,
     requested_search:   Option<sat::Search>,
@@ -13,7 +12,6 @@ pub struct Solve {
 impl Solve {
     pub fn new_command(app: &App) -> Box<dyn Command> {
         let verbosity = app.occurrences_of("verbose").max(app.occurrences_of("log"));
-        let mut delayed_warnings = Vec::new();
         let main_path = app.value_of("MAIN_PATH").unwrap_or_else(|| unreachable!()).to_owned();
 
         let requested_encoding = app.value_of("SAT_ENCODING").map(|v| match v {
@@ -28,13 +26,7 @@ impl Solve {
             _ => unreachable!(),
         });
 
-        Box::new(Self {
-            verbosity,
-            delayed_warnings,
-            main_path,
-            requested_encoding,
-            requested_search,
-        })
+        Box::new(Self { verbosity, main_path, requested_encoding, requested_search })
     }
 }
 
@@ -64,10 +56,6 @@ impl Command for Solve {
     }
 
     fn run(&self) -> Result<(), Box<dyn Error>> {
-        for warning in self.delayed_warnings.iter() {
-            warn!("{}", warning);
-        }
-
         let ctx = Context::new_toplevel("aces-solve", ContentOrigin::cex_script(&self.main_path));
 
         if let Some(encoding) = self.requested_encoding {

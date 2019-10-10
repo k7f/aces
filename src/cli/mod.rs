@@ -1,7 +1,9 @@
 mod solve;
+mod go;
 mod validate;
 
 pub use solve::Solve;
+pub use go::Go;
 pub use validate::Validate;
 
 pub trait Command {

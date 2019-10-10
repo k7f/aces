@@ -5,19 +5,55 @@ extern crate log;
 
 use std::error::Error;
 use aces::Logger;
-use aces::cli::{App, Solve, Validate};
+use aces::cli::{App, Solve, Go, Validate};
+
+/// Used to accumulate warnings delayed until after logger's setup.
+#[derive(Default)]
+struct DelayedWarnings {
+    warnings: Vec<String>,
+}
+
+impl DelayedWarnings {
+    fn check_selectors(&mut self, app: &App, mode: &str, invalid_selectors: &[&str]) {
+        for selector in invalid_selectors {
+            if app.is_present(selector) {
+                self.warnings
+                    .push(format!("Argument \"{}\" is ignored in mode \"{}\"", selector, mode));
+            }
+        }
+    }
+
+    fn post(&self) {
+        for warning in self.warnings.iter() {
+            warn!("{}", warning);
+        }
+    }
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let mut delayed_warnings = DelayedWarnings::default();
+
     let ref cli_spec_str = include_str!("aces.cli");
 
     let cli_spec = clap::YamlLoader::load_from_str(cli_spec_str)?;
     let cli_matches = clap::App::from_yaml(&cli_spec[0]);
     let app = App::from_clap(cli_matches);
 
-    let command = match app.subcommand_name().unwrap_or("solve") {
-        "solve" => Solve::new_command(&app),
+    let command = match app.subcommand_name().unwrap_or("_") {
+        "_" => {
+            if app.is_present("TRIGGER") {
+                Go::new_command(&app)
+            } else {
+                delayed_warnings.check_selectors(&app, "Solve", &["SEMANTICS", "MAX_STEPS"]);
+
+                Solve::new_command(&app)
+            }
+        }
         "validate" => Validate::new_command(&app),
-        _ => unreachable!(),
+        x => {
+            println!("{}", x);
+            panic!()
+        }
     };
 
     let console_level = command.console_level().unwrap_or(match app.occurrences_of("verbose") {
@@ -47,6 +83,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     logger.apply();
+
+    delayed_warnings.post();
 
     if let Err(err) = command.run() {
         error!("{}", err);
