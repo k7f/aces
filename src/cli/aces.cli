@@ -4,6 +4,7 @@ args:
         help: Path to a .cex file
         required: false
         default_value: data/arrow.cex
+        multiple: true
         index: 1
     - SAT_ENCODING:
         help: Preferred encoding

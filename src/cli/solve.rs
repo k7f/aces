@@ -1,18 +1,24 @@
 use std::{str::FromStr, error::Error};
-use crate::{Context, ContentOrigin, CEStructure, sat};
+use crate::{Context, ContextHandle, ContentOrigin, CEStructure, sat};
 use super::{App, Command};
 
 pub struct Solve {
     verbosity:          u64,
     main_path:          String,
+    more_paths:         Vec<String>,
     requested_encoding: Option<sat::Encoding>,
     requested_search:   Option<sat::Search>,
+    context:            ContextHandle,
 }
 
 impl Solve {
-    pub fn new_command(app: &App) -> Box<dyn Command> {
+    pub(crate) fn new(app: &mut App) -> Self {
         let verbosity = app.occurrences_of("verbose").max(app.occurrences_of("log"));
-        let main_path = app.value_of("MAIN_PATH").unwrap_or_else(|| unreachable!()).to_owned();
+
+        let mut path_values = app.values_of("MAIN_PATH").unwrap_or_else(|| unreachable!());
+        let main_path = path_values.next().unwrap_or_else(|| unreachable!()).to_owned();
+        let more_paths: Vec<_> = path_values.map(|p| p.to_owned()).collect();
+        println!("more paths: {:?}", more_paths);
 
         let requested_encoding = app.value_of("SAT_ENCODING").map(|v| match v {
             "PL" | "port-link" => sat::Encoding::PortLink,
@@ -26,7 +32,25 @@ impl Solve {
             _ => unreachable!(),
         });
 
-        Box::new(Self { verbosity, main_path, requested_encoding, requested_search })
+        let context_name =
+            format!("aces-{}", app.get_mode().expect("unexpected anonymous mode").to_lowercase());
+        let context = Context::new_toplevel(context_name, ContentOrigin::cex_script(&main_path));
+
+        app.accept_selectors(&["SAT_ENCODING", "SAT_SEARCH"]);
+
+        Self { verbosity, main_path, more_paths, requested_encoding, requested_search, context }
+    }
+
+    /// Creates a [`Solve`] instance and returns it as a [`Command`]
+    /// trait object.
+    ///
+    /// The [`App`] argument is modified, because [`Solve`] is a
+    /// top-level [`Command`] which accepts a set of CLI selectors
+    /// (see [`App::accept_selectors()`]) and specifies an application
+    /// mode.
+    pub fn new_command(app: &mut App) -> Box<dyn Command> {
+        app.set_mode("Solve");
+        Box::new(Self::new(app))
     }
 }
 
@@ -56,19 +80,17 @@ impl Command for Solve {
     }
 
     fn run(&self) -> Result<(), Box<dyn Error>> {
-        let ctx = Context::new_toplevel("aces-solve", ContentOrigin::cex_script(&self.main_path));
-
         if let Some(encoding) = self.requested_encoding {
-            ctx.lock().unwrap().set_encoding(encoding);
+            self.context.lock().unwrap().set_encoding(encoding);
         }
 
         if let Some(search) = self.requested_search {
-            ctx.lock().unwrap().set_search(search);
+            self.context.lock().unwrap().set_search(search);
         }
 
-        let mut ces = CEStructure::from_file(&ctx, &self.main_path)?;
+        let mut ces = CEStructure::from_file(&self.context, &self.main_path)?;
 
-        trace!("{:?}", ctx.lock().unwrap());
+        trace!("{:?}", self.context.lock().unwrap());
         trace!("{:?}", ces);
         // FIXME impl Display
         // info!("{}", ces);
@@ -78,7 +100,7 @@ impl Command for Solve {
         if let Some(fs) = ces.get_firing_set() {
             println!("Firing components:");
 
-            let ctx = ctx.lock().unwrap();
+            let ctx = self.context.lock().unwrap();
 
             for (i, fc) in fs.as_slice().iter().enumerate() {
                 println!("{}. {}", i + 1, ctx.with(fc));

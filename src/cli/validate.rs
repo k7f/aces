@@ -11,14 +11,18 @@ pub struct Validate {
 }
 
 impl Validate {
-    pub fn new_command(app: &App) -> Box<dyn Command> {
+    pub(crate) fn new(app: &App) -> Self {
         let glob_path = app.value_of("GLOB_PATH").unwrap_or_else(|| unreachable!()).to_owned();
         let do_abort = app.is_present("abort");
         let syntax_only = app.is_present("syntax");
         let is_recursive = app.is_present("recursive");
         let verbosity = app.occurrences_of("verbose").max(app.occurrences_of("log"));
 
-        Box::new(Self { glob_path, do_abort, syntax_only, is_recursive, verbosity })
+        Self { glob_path, do_abort, syntax_only, is_recursive, verbosity }
+    }
+
+    pub fn new_command(app: &App) -> Box<dyn Command> {
+        Box::new(Self::new(app))
     }
 }
 

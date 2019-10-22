@@ -301,7 +301,7 @@ impl Formula {
     /// Only for internal use.
     fn add_clause(&mut self, clause: Clause) -> Result<(), AcesError> {
         if clause.is_empty() {
-            Err(AcesError::EmptyClauseRejectedByFormula(clause.info.clone()))
+            Err(AcesError::EmptyClauseRejectedByFormula(clause.info))
         } else {
             if log_enabled!(Debug) {
                 let ctx = self.context.lock().unwrap();

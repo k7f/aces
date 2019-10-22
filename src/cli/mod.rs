@@ -17,9 +17,12 @@ pub trait Command {
 }
 
 pub struct App<'a> {
-    app_name: String,
-    bin_name: Option<String>,
-    cli_args: clap::ArgMatches<'a>,
+    app_name:           String,
+    bin_name:           Option<String>,
+    cli_args:           clap::ArgMatches<'a>,
+    mode:               Option<String>,
+    accepted_selectors: Vec<String>,
+    delayed_warnings:   Vec<String>, // Accumulates warnings delayed until after logger's setup.
 }
 
 impl<'a> App<'a> {
@@ -33,8 +36,11 @@ impl<'a> App<'a> {
         let app_name = cli_app.get_name().to_owned();
         let bin_name = cli_app.get_bin_name().map(|s| s.to_owned());
         let cli_args = cli_app.get_matches();
+        let mode = None;
+        let accepted_selectors = Vec::new();
+        let delayed_warnings = Vec::new();
 
-        Self { app_name, bin_name, cli_args }
+        Self { app_name, bin_name, cli_args, mode, accepted_selectors, delayed_warnings }
     }
 
     pub fn get_name(&self) -> &str {
@@ -53,11 +59,62 @@ impl<'a> App<'a> {
         self.cli_args.subcommand().1.unwrap_or(&self.cli_args).value_of(key)
     }
 
+    pub fn values_of<S: AsRef<str>>(&self, key: S) -> Option<clap::Values> {
+        self.cli_args.subcommand().1.unwrap_or(&self.cli_args).values_of(key)
+    }
+
     pub fn occurrences_of<S: AsRef<str>>(&self, key: S) -> u64 {
         self.cli_args.subcommand().1.unwrap_or(&self.cli_args).occurrences_of(key)
     }
 
     pub fn is_present<S: AsRef<str>>(&self, key: S) -> bool {
         self.cli_args.subcommand().1.unwrap_or(&self.cli_args).is_present(key)
+    }
+
+    pub fn set_mode<S: AsRef<str>>(&mut self, mode: S) {
+        self.mode = Some(mode.as_ref().to_owned());
+    }
+
+    pub fn get_mode(&self) -> Option<&str> {
+        self.mode.as_ref().map(|mode| mode.as_str())
+    }
+
+    /// Accepts a given set of selectors, incrementally.
+    ///
+    /// A selector is a top-level CLI argument which is declared in a
+    /// `.cli` file.  All selectors are opt-in: if an unaccepted
+    /// selector occurs in a command line, it will be ignored, with a
+    /// warning.
+    pub fn accept_selectors(&mut self, selectors: &[&str]) {
+        for selector in selectors {
+            let selector = selector.to_string();
+
+            if let Err(pos) = self.accepted_selectors.binary_search(&selector) {
+                self.accepted_selectors.insert(pos, selector);
+            }
+        }
+    }
+
+    pub fn check_selectors(&mut self, all_selectors: &[&str]) {
+        if let Some(ref mode) = self.mode {
+            for selector in all_selectors {
+                let selector = selector.to_string();
+
+                if self.accepted_selectors.binary_search(&selector).is_err()
+                    && self.is_present(&selector)
+                {
+                    warn!(
+                        "Argument \"{}\" has no meaning in mode \"{}\" and is ignored",
+                        selector, mode
+                    );
+                }
+            }
+        }
+    }
+
+    pub fn post_warnings(&self) {
+        for warning in self.delayed_warnings.iter() {
+            warn!("{}", warning);
+        }
     }
 }
