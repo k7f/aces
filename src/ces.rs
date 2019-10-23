@@ -242,6 +242,69 @@ impl CEStructure {
     }
 
     /// Constructs new [`Polynomial`] from a sequence of sequences of
+    /// [`NodeID`]s and adds it to causes or effects of a node of this
+    /// `CEStructure`.
+    ///
+    /// The only direct callers of this are methods [`add_causes()`]
+    /// and [`add_effects()`].
+    ///
+    /// [`add_causes()`]: CEStructure::add_causes()
+    /// [`add_effects()`]: CEStructure::add_effects()
+    fn add_causes_or_effects<'a, I>(
+        &mut self,
+        face: node::Face,
+        node_id: NodeID,
+        poly_ids: I,
+    ) -> Result<(), AcesError>
+    where
+        I: IntoIterator + 'a,
+        I::Item: IntoIterator<Item = &'a NodeID>,
+    {
+        let poly = Polynomial::from_nodes_in_context(&self.context, face, node_id, poly_ids);
+
+        let mut port = Port::new(face, node_id);
+        let port_id = self.context.lock().unwrap().share_port(&mut port);
+
+        for &lid in poly.get_atomics() {
+            if let Some(what_missing) = self.links.get_mut(&lid) {
+                if *what_missing == LinkState::Thin(face) {
+                    // Fat link: occurs in causes and effects.
+                    *what_missing = LinkState::Fat;
+                    self.num_thin_links -= 1;
+                } else {
+                    // Rx: Link reoccurrence in causes.
+                    // Tx: Link reoccurrence in effects.
+                }
+            } else {
+                // Rx: Thin, cause-only link: occurs in causes, but not in effects.
+                // Tx: Thin, effect-only link: occurs in effects, but not in causes.
+                self.links.insert(lid, LinkState::Thin(!face));
+                self.num_thin_links += 1;
+            }
+        }
+
+        self.create_splits(face, node_id, &poly)?;
+
+        let poly_entry = match face {
+            node::Face::Rx => self.causes.entry(port_id),
+            node::Face::Tx => self.effects.entry(port_id),
+        };
+
+        match poly_entry {
+            btree_map::Entry::Vacant(entry) => {
+                entry.insert(poly);
+            }
+            btree_map::Entry::Occupied(mut entry) => {
+                entry.get_mut().add_polynomial(&poly)?;
+            }
+        }
+
+        self.carrier.entry(node_id).or_insert_with(Default::default);
+
+        Ok(())
+    }
+
+    /// Constructs new [`Polynomial`] from a sequence of sequences of
     /// [`NodeID`]s and adds it to causes of a node of this
     /// `CEStructure`.
     ///
@@ -254,36 +317,7 @@ impl CEStructure {
         I: IntoIterator + 'a,
         I::Item: IntoIterator<Item = &'a NodeID>,
     {
-        let poly =
-            Polynomial::from_nodes_in_context(&self.context, node::Face::Rx, node_id, poly_ids);
-
-        let mut port = Port::new(node::Face::Rx, node_id);
-        let port_id = self.context.lock().unwrap().share_port(&mut port);
-
-        for &lid in poly.get_atomics() {
-            if let Some(what_missing) = self.links.get_mut(&lid) {
-                if *what_missing == LinkState::Thin(node::Face::Rx) {
-                    // Fat link: occurs in causes and effects.
-                    *what_missing = LinkState::Fat;
-                    self.num_thin_links -= 1;
-                } else {
-                    // Link reoccurrence in causes.
-                }
-            } else {
-                // Thin, cause-only link: occurs in causes, but not in effects.
-                self.links.insert(lid, LinkState::Thin(node::Face::Tx));
-                self.num_thin_links += 1;
-            }
-        }
-
-        self.create_splits(node::Face::Rx, node_id, &poly)?;
-
-        // FIXME add to old if any
-        self.causes.insert(port_id, poly);
-
-        self.carrier.entry(node_id).or_insert_with(Default::default);
-
-        Ok(())
+        self.add_causes_or_effects(node::Face::Rx, node_id, poly_ids)
     }
 
     /// Constructs new [`Polynomial`] from a sequence of sequences of
@@ -299,36 +333,7 @@ impl CEStructure {
         I: IntoIterator + 'a,
         I::Item: IntoIterator<Item = &'a NodeID>,
     {
-        let poly =
-            Polynomial::from_nodes_in_context(&self.context, node::Face::Tx, node_id, poly_ids);
-
-        let mut port = Port::new(node::Face::Tx, node_id);
-        let port_id = self.context.lock().unwrap().share_port(&mut port);
-
-        for &lid in poly.get_atomics() {
-            if let Some(what_missing) = self.links.get_mut(&lid) {
-                if *what_missing == LinkState::Thin(node::Face::Tx) {
-                    // Fat link: occurs in causes and effects.
-                    *what_missing = LinkState::Fat;
-                    self.num_thin_links -= 1;
-                } else {
-                    // Link reoccurrence in effects.
-                }
-            } else {
-                // Thin, effect-only link: occurs in effects, but not in causes.
-                self.links.insert(lid, LinkState::Thin(node::Face::Rx));
-                self.num_thin_links += 1;
-            }
-        }
-
-        self.create_splits(node::Face::Tx, node_id, &poly)?;
-
-        // FIXME add to old if any
-        self.effects.insert(port_id, poly);
-
-        self.carrier.entry(node_id).or_insert_with(Default::default);
-
-        Ok(())
+        self.add_causes_or_effects(node::Face::Tx, node_id, poly_ids)
     }
 
     pub fn from_content(

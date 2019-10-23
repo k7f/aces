@@ -167,7 +167,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
     /// Returns error if `atomics` aren't given in strictly increasing
     /// order, or in case of port mismatch, or if context mismatch was
     /// detected.
-    pub fn add_atomics_sorted<I>(&mut self, atomics: I) -> Result<bool, Box<dyn Error>>
+    pub fn add_atomics_sorted<I>(&mut self, atomics: I) -> Result<bool, AcesError>
     where
         I: IntoIterator<Item = T>,
     {
@@ -179,7 +179,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
                     if thing <= prev {
                         self.atomics.clear();
 
-                        return Err(Box::new(AcesError::AtomicsNotOrdered))
+                        return Err(AcesError::AtomicsNotOrdered)
                     }
                 }
                 prev_thing = Some(thing);
@@ -225,7 +225,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
                         self.terms = old_terms;
                     }
 
-                    return Err(Box::new(AcesError::AtomicsNotOrdered))
+                    return Err(AcesError::AtomicsNotOrdered)
                 }
             }
             prev_thing = Some(thing);
@@ -291,7 +291,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
     ///
     /// Returns error in case of port mismatch, or if context mismatch
     /// was detected.
-    pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, Box<dyn Error>> {
+    pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, AcesError> {
         if self.dock == other.dock {
             // FIXME optimize.  There are two special cases: when `self`
             // is a superpolynomial, and when it is a subpolynomial of
@@ -308,7 +308,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
 
             Ok(changed)
         } else {
-            Err(Box::new(AcesError::PortMismatch))
+            Err(AcesError::PortMismatch)
         }
     }
 
@@ -512,11 +512,11 @@ impl Contextual for Polynomial<LinkID> {
 }
 
 impl<'a> InContextMut<'a, Polynomial<LinkID>> {
-    pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, Box<dyn Error>> {
+    pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, AcesError> {
         if self.get_context() == other.get_context() {
             self.get_thing_mut().add_polynomial(other.get_thing())
         } else {
-            Err(Box::new(AcesError::ContextMismatch))
+            Err(AcesError::ContextMismatch)
         }
     }
 }

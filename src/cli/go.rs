@@ -1,5 +1,5 @@
 use std::error::Error;
-use crate::{State, Semantics};
+use crate::Semantics;
 use super::{App, Command, Solve};
 
 pub struct Go {
