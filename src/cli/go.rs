@@ -23,7 +23,7 @@ impl Go {
 
         let requested_max_steps = app.value_of("MAX_STEPS").map(|v| match v.parse::<u64>() {
             Ok(val) => val,
-            Err(_) => panic!("The argument '{}' isn't a valid value of MAX_STEPS", v),
+            Err(err) => panic!("The argument '{}' isn't a valid value of MAX_STEPS ({})", v, err),
         });
 
         app.accept_selectors(&["SEMANTICS", "MAX_STEPS"]);

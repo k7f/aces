@@ -18,7 +18,6 @@ impl Solve {
         let mut path_values = app.values_of("MAIN_PATH").unwrap_or_else(|| unreachable!());
         let main_path = path_values.next().unwrap_or_else(|| unreachable!()).to_owned();
         let more_paths: Vec<_> = path_values.map(|p| p.to_owned()).collect();
-        println!("more paths: {:?}", more_paths);
 
         let requested_encoding = app.value_of("SAT_ENCODING").map(|v| match v {
             "PL" | "port-link" => sat::Encoding::PortLink,
@@ -89,6 +88,10 @@ impl Command for Solve {
         }
 
         let mut ces = CEStructure::from_file(&self.context, &self.main_path)?;
+
+        for path in self.more_paths.iter() {
+            ces = ces.with_file(path)?;
+        }
 
         trace!("{:?}", self.context.lock().unwrap());
         trace!("{:?}", ces);

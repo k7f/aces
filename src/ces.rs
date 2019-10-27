@@ -34,7 +34,7 @@ enum LinkState {
 #[derive(Debug)]
 pub struct CEStructure {
     context:        ContextHandle,
-    content:        Option<Box<dyn Content>>,
+    content:        Vec<Box<dyn Content>>,
     resolution:     Resolution,
     causes:         BTreeMap<PortID, Polynomial<LinkID>>,
     effects:        BTreeMap<PortID, Polynomial<LinkID>>,
@@ -56,7 +56,7 @@ impl CEStructure {
     pub fn new(ctx: &ContextHandle) -> Self {
         Self {
             context:        ctx.clone(),
-            content:        None,
+            content:        Default::default(),
             resolution:     Default::default(),
             causes:         Default::default(),
             effects:        Default::default(),
@@ -336,59 +336,80 @@ impl CEStructure {
         self.add_causes_or_effects(node::Face::Tx, node_id, poly_ids)
     }
 
-    pub fn from_content(
-        ctx: &ContextHandle,
-        mut content: Box<dyn Content>,
-    ) -> Result<Self, Box<dyn Error>> {
-        let mut ces = CEStructure::new(ctx);
-
+    /// Extends this c-e structure with another one, which is created
+    /// in the [`Context`] of the old c-e structure from a given
+    /// [`Content`] trait object.
+    ///
+    /// [`Context`]: crate::Context
+    pub fn with_content(mut self, mut content: Box<dyn Content>) -> Result<Self, Box<dyn Error>> {
         for node_id in content.get_carrier_ids() {
             if let Some(poly_ids) = content.get_causes_by_id(node_id) {
                 if poly_ids.is_empty() {
-                    let node_name = ctx.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
+                    let node_name =
+                        self.context.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
 
                     return Err(Box::new(AcesError::EmptyCausesOfInternalNode(node_name)))
                 }
 
-                ces.add_causes(node_id, poly_ids)?;
+                self.add_causes(node_id, poly_ids)?;
             }
 
             if let Some(poly_ids) = content.get_effects_by_id(node_id) {
                 if poly_ids.is_empty() {
-                    let node_name = ctx.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
+                    let node_name =
+                        self.context.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
 
                     return Err(Box::new(AcesError::EmptyEffectsOfInternalNode(node_name)))
                 }
 
-                ces.add_effects(node_id, poly_ids)?;
+                self.add_effects(node_id, poly_ids)?;
             }
         }
 
-        ces.content = Some(content);
-        Ok(ces)
+        self.content.push(content);
+
+        Ok(self)
     }
 
-    /// Creates a new c-e structure from a textual description and in
-    /// a [`Context`] given by a [`ContextHandle`].
+    /// Extends this c-e structure with another one, which is created
+    /// in the [`Context`] of the old c-e structure from a given
+    /// textual description.
+    ///
+    /// [`Context`]: crate::Context
+    pub fn with_str<S: AsRef<str>>(self, script: S) -> Result<Self, Box<dyn Error>> {
+        let content = content_from_str(&self.context, script)?;
+
+        self.with_content(content)
+    }
+
+    /// Creates a new c-e structure from a textual description, in a
+    /// [`Context`] given by a [`ContextHandle`].
     ///
     /// [`Context`]: crate::Context
     pub fn from_str<S: AsRef<str>>(ctx: &ContextHandle, script: S) -> Result<Self, Box<dyn Error>> {
-        let content = content_from_str(ctx, script)?;
-
-        Self::from_content(ctx, content)
+        Self::new(ctx).with_str(script)
     }
 
-    /// Creates a new c-e structure from a script file to be found
-    /// along the `path` and in a [`Context`] given by a
-    /// [`ContextHandle`].
+    /// Extends this c-e structure with another one, which is created
+    /// in the [`Context`] of the old c-e structure from a script file
+    /// to be found along the `path`.
     ///
     /// [`Context`]: crate::Context
-    pub fn from_file<P: AsRef<Path>>(ctx: &ContextHandle, path: P) -> Result<Self, Box<dyn Error>> {
+    pub fn with_file<P: AsRef<Path>>(self, path: P) -> Result<Self, Box<dyn Error>> {
         let mut fp = File::open(path)?;
         let mut script = String::new();
         fp.read_to_string(&mut script)?;
 
-        Self::from_str(ctx, &script)
+        self.with_str(&script)
+    }
+
+    /// Creates a new c-e structure from a script file to be found
+    /// along the `path`, in a [`Context`] given by a
+    /// [`ContextHandle`].
+    ///
+    /// [`Context`]: crate::Context
+    pub fn from_file<P: AsRef<Path>>(ctx: &ContextHandle, path: P) -> Result<Self, Box<dyn Error>> {
+        Self::new(ctx).with_file(path)
     }
 
     pub fn get_context(&self) -> &ContextHandle {
@@ -396,7 +417,7 @@ impl CEStructure {
     }
 
     pub fn get_name(&self) -> Option<&str> {
-        if let Some(ref content) = self.content {
+        if let Some(content) = self.content.first() {
             content.get_name()
         } else {
             None
@@ -506,7 +527,7 @@ impl CEStructure {
     pub fn get_formula(&self) -> Result<sat::Formula, Box<dyn Error>> {
         // FIXME if not set, choose one or the other, heuristically
         let encoding =
-            self.context.lock().unwrap().get_encoding().unwrap_or(sat::Encoding::PortLink);
+            self.context.lock().unwrap().get_encoding().unwrap_or(sat::Encoding::ForkJoin);
 
         match encoding {
             sat::Encoding::PortLink => self.get_port_link_formula(),

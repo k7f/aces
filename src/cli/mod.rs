@@ -86,7 +86,7 @@ impl<'a> App<'a> {
     /// selector occurs in a command line, it will be ignored, with a
     /// warning.
     pub fn accept_selectors(&mut self, selectors: &[&str]) {
-        for selector in selectors {
+        for &selector in selectors {
             let selector = selector.to_string();
 
             if let Err(pos) = self.accepted_selectors.binary_search(&selector) {
@@ -97,7 +97,7 @@ impl<'a> App<'a> {
 
     pub fn check_selectors(&mut self, all_selectors: &[&str]) {
         if let Some(ref mode) = self.mode {
-            for selector in all_selectors {
+            for &selector in all_selectors {
                 let selector = selector.to_string();
 
                 if self.accepted_selectors.binary_search(&selector).is_err()
