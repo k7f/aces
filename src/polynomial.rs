@@ -40,7 +40,7 @@ pub struct Polynomial<T: Atomic + fmt::Debug> {
 }
 
 impl Polynomial<LinkID> {
-    /// Creates a polynomial from a sequence of vectors of
+    /// Creates a polynomial from a sequence of sequences of
     /// [`NodeID`]s and in a [`Context`] given by a [`ContextHandle`].
     pub fn from_nodes_in_context<'a, I>(
         ctx: &ContextHandle,

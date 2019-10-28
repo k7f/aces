@@ -145,25 +145,32 @@ impl CEStructure {
             let mut co_node_ids = Vec::new();
             let mut fat_co_node_ids = Vec::new();
 
-            // Link sequence, ordered by conode ID.
+            // Link sequence `mono` is ordered by link ID, reorder
+            // first by conode ID.
+            let mut co_node_map = BTreeMap::new();
+
             for lid in mono {
                 if let Some(link_state) = self.links.get(&lid) {
                     let ctx = self.context.lock().unwrap();
 
                     if let Some(link) = ctx.get_link(lid) {
-                        co_node_ids.push(link.get_node_id(!face));
-
-                        match link_state {
-                            LinkState::Fat => {
-                                fat_co_node_ids.push(link.get_node_id(!face));
-                            }
-                            LinkState::Thin(_) => {} // Don't push a thin link.
-                        }
+                        co_node_map.insert(link.get_node_id(!face), link_state);
                     } else {
                         return Err(AcesError::LinkMissingForID(lid))
                     }
                 } else {
                     return Err(AcesError::UnlistedAtomicInMonomial)
+                }
+            }
+
+            for (co_node_id, link_state) in co_node_map {
+                co_node_ids.push(co_node_id);
+
+                match link_state {
+                    LinkState::Fat => {
+                        fat_co_node_ids.push(co_node_id);
+                    }
+                    LinkState::Thin(_) => {} // Don't push a thin link.
                 }
             }
 

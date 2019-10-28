@@ -634,10 +634,12 @@ impl Split {
     }
 
     pub fn new_fork(host_id: NodeID, suit_ids: Vec<NodeID>, weight: monomial::Weight) -> Self {
+        trace!("New fork: {:?} -> {:?}", host_id, suit_ids);
         Split::new(node::Face::Tx, host_id, suit_ids, weight)
     }
 
     pub fn new_join(host_id: NodeID, suit_ids: Vec<NodeID>, weight: monomial::Weight) -> Self {
+        trace!("New join: {:?} <- {:?}", host_id, suit_ids);
         Split::new(node::Face::Rx, host_id, suit_ids, weight)
     }
 
