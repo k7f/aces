@@ -31,7 +31,7 @@ impl Command for Validate {
         "aces-validation.log".to_owned()
     }
 
-    fn run(&self) -> Result<(), Box<dyn Error>> {
+    fn run(&mut self) -> Result<(), Box<dyn Error>> {
         // FIXME
         let ref glob_path = format!("{}/*.cex", self.glob_path);
 

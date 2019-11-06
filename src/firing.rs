@@ -1,10 +1,28 @@
 use std::{slice, collections::BTreeMap, convert::TryFrom, error::Error};
-use crate::{Context, Contextual, NodeID, ForkID, JoinID, node, Solution, AcesError};
+use crate::{Context, Contextual, NodeID, ForkID, JoinID, node, Solution, State, AcesError};
 
 #[derive(Default, Debug)]
 pub struct FiringComponent {
     pre_set:  BTreeMap<NodeID, ForkID>,
     post_set: BTreeMap<NodeID, JoinID>,
+}
+
+impl FiringComponent {
+    pub fn is_enabled(&self, state: &State) -> bool {
+        for &node_id in self.pre_set.keys() {
+            if state.num_tokens(node_id) == 0 {
+                return false
+            }
+        }
+
+        for &node_id in self.post_set.keys() {
+            if state.num_tokens(node_id) > 0 {
+                return false
+            }
+        }
+
+        true
+    }
 }
 
 impl TryFrom<Solution> for FiringComponent {
@@ -97,6 +115,18 @@ impl FiringSet {
     pub fn as_slice(&self) -> &[FiringComponent] {
         self.fcs.as_slice()
     }
+
+    pub fn get_enabled(&self, state: &State) -> FiringSequence {
+        let mut enabled_fcs = FiringSequence::new();
+
+        for (pos, fc) in self.fcs.as_slice().iter().enumerate() {
+            if fc.is_enabled(state) {
+                enabled_fcs.push(pos)
+            }
+        }
+
+        enabled_fcs
+    }
 }
 
 impl From<Vec<FiringComponent>> for FiringSet {
@@ -107,17 +137,24 @@ impl From<Vec<FiringComponent>> for FiringSet {
 
 #[derive(Default, Debug)]
 pub struct FiringSequence {
-    firing_set:  FiringSet,
     computation: Vec<(usize, bool)>,
 }
 
 impl FiringSequence {
-    pub fn iter(&self) -> FiringIter {
-        FiringIter { iter: self.computation.iter(), fset: &self.firing_set }
+    pub fn new() -> Self {
+        Default::default()
     }
 
-    pub fn par_iter(&self) -> FiringParIter {
-        FiringParIter { iter: self.computation.iter(), fset: &self.firing_set }
+    pub fn push(&mut self, fc_id: usize) {
+        self.computation.push((fc_id, true))
+    }
+
+    pub fn iter<'b, 'a: 'b>(&'a self, firing_set: &'b FiringSet) -> FiringIter<'b> {
+        FiringIter { iter: self.computation.iter(), fset: firing_set }
+    }
+
+    pub fn par_iter<'b, 'a: 'b>(&'a self, firing_set: &'b FiringSet) -> FiringParIter<'b> {
+        FiringParIter { iter: self.computation.iter(), fset: firing_set }
     }
 }
 

@@ -1,12 +1,10 @@
 use std::error::Error;
-use crate::Semantics;
+use crate::{Semantics, Runner};
 use super::{App, Command, Solve};
 
 pub struct Go {
-    solve:               Solve,
-    trigger_name:        Option<String>,
-    requested_semantics: Option<Semantics>,
-    requested_max_steps: Option<u64>,
+    solve:        Solve,
+    trigger_name: Option<String>,
 }
 
 impl Go {
@@ -15,20 +13,31 @@ impl Go {
 
         let trigger_name = app.value_of("TRIGGER").map(String::from);
 
-        let requested_semantics = app.value_of("SEMANTICS").map(|v| match v {
-            "seq" => Semantics::Sequential,
-            "par" => Semantics::Parallel,
-            _ => unreachable!(),
-        });
+        if let Ok(mut ctx) = solve.get_context().lock() {
+            if let Some(v) = app.value_of("SEMANTICS") {
+                match v {
+                    "seq" => ctx.set_semantics(Semantics::Sequential),
+                    "par" => ctx.set_semantics(Semantics::Parallel),
+                    _ => unreachable!(),
+                }
+            }
 
-        let requested_max_steps = app.value_of("MAX_STEPS").map(|v| match v.parse::<u64>() {
-            Ok(val) => val,
-            Err(err) => panic!("The argument '{}' isn't a valid value of MAX_STEPS ({})", v, err),
-        });
+            if let Some(v) = app.value_of("MAX_STEPS") {
+                match v.parse::<u64>() {
+                    Ok(val) => ctx.set_max_steps(val),
+                    Err(err) => {
+                        panic!("The argument '{}' isn't a valid value of MAX_STEPS ({})", v, err)
+                    }
+                }
+            }
+        } else {
+            // FIXME
+            panic!()
+        }
 
         app.accept_selectors(&["SEMANTICS", "MAX_STEPS"]);
 
-        Self { solve, trigger_name, requested_semantics, requested_max_steps }
+        Self { solve, trigger_name }
     }
 
     /// Creates a [`Go`] instance and returns it as a [`Command`]
@@ -40,6 +49,7 @@ impl Go {
     /// mode.
     pub fn new_command(app: &mut App) -> Box<dyn Command> {
         app.set_mode("Go");
+
         Box::new(Self::new(app))
     }
 }
@@ -53,8 +63,16 @@ impl Command for Go {
         self.solve.console_level()
     }
 
-    fn run(&self) -> Result<(), Box<dyn Error>> {
+    fn run(&mut self) -> Result<(), Box<dyn Error>> {
         self.solve.run()?;
+
+        let ces = self.solve.get_ces();
+        let mut runner = Runner::new(
+            ces.get_context(),
+            self.trigger_name.as_ref().map(|s| s.as_str()).unwrap_or("Start"),
+        );
+
+        runner.go(ces);
 
         Ok(())
     }

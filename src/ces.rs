@@ -348,7 +348,10 @@ impl CEStructure {
     /// [`Content`] trait object.
     ///
     /// [`Context`]: crate::Context
-    pub fn with_content(mut self, mut content: Box<dyn Content>) -> Result<Self, Box<dyn Error>> {
+    pub fn add_from_content(
+        &mut self,
+        mut content: Box<dyn Content>,
+    ) -> Result<(), Box<dyn Error>> {
         for node_id in content.get_carrier_ids() {
             if let Some(poly_ids) = content.get_causes_by_id(node_id) {
                 if poly_ids.is_empty() {
@@ -375,6 +378,17 @@ impl CEStructure {
 
         self.content.push(content);
 
+        Ok(())
+    }
+
+    /// Extends this c-e structure with another one, which is created
+    /// in the [`Context`] of the old c-e structure from a given
+    /// [`Content`] trait object.
+    ///
+    /// [`Context`]: crate::Context
+    pub fn with_content(mut self, content: Box<dyn Content>) -> Result<Self, Box<dyn Error>> {
+        self.add_from_content(content)?;
+
         Ok(self)
     }
 
@@ -383,10 +397,10 @@ impl CEStructure {
     /// textual description.
     ///
     /// [`Context`]: crate::Context
-    pub fn with_str<S: AsRef<str>>(self, script: S) -> Result<Self, Box<dyn Error>> {
+    pub fn add_from_str<S: AsRef<str>>(&mut self, script: S) -> Result<(), Box<dyn Error>> {
         let content = content_from_str(&self.context, script)?;
 
-        self.with_content(content)
+        self.add_from_content(content)
     }
 
     /// Creates a new c-e structure from a textual description, in a
@@ -394,7 +408,11 @@ impl CEStructure {
     ///
     /// [`Context`]: crate::Context
     pub fn from_str<S: AsRef<str>>(ctx: &ContextHandle, script: S) -> Result<Self, Box<dyn Error>> {
-        Self::new(ctx).with_str(script)
+        let mut ces = Self::new(ctx);
+
+        ces.add_from_str(script)?;
+
+        Ok(ces)
     }
 
     /// Extends this c-e structure with another one, which is created
@@ -402,12 +420,12 @@ impl CEStructure {
     /// to be found along the `path`.
     ///
     /// [`Context`]: crate::Context
-    pub fn with_file<P: AsRef<Path>>(self, path: P) -> Result<Self, Box<dyn Error>> {
+    pub fn add_from_file<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Box<dyn Error>> {
         let mut fp = File::open(path)?;
         let mut script = String::new();
         fp.read_to_string(&mut script)?;
 
-        self.with_str(&script)
+        self.add_from_str(&script)
     }
 
     /// Creates a new c-e structure from a script file to be found
@@ -416,7 +434,11 @@ impl CEStructure {
     ///
     /// [`Context`]: crate::Context
     pub fn from_file<P: AsRef<Path>>(ctx: &ContextHandle, path: P) -> Result<Self, Box<dyn Error>> {
-        Self::new(ctx).with_file(path)
+        let mut ces = Self::new(ctx);
+
+        ces.add_from_file(path)?;
+
+        Ok(ces)
     }
 
     pub fn get_context(&self) -> &ContextHandle {

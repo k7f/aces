@@ -13,7 +13,7 @@ pub trait Command {
         None
     }
 
-    fn run(&self) -> Result<(), Box<dyn std::error::Error>>;
+    fn run(&mut self) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 pub struct App<'a> {

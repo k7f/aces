@@ -5,10 +5,10 @@ use std::{
 };
 use crate::{
     ContentOrigin, Port, Link, Split, Fork, Join, ID, NodeID, AtomID, PortID, LinkID, ForkID,
-    JoinID,
+    JoinID, Semantics,
     name::NameSpace,
     atom::{AtomSpace, Atom},
-    sat, solver,
+    sat, solver, runner,
 };
 
 /// A handle to a [`Context`] instance.
@@ -46,6 +46,7 @@ pub struct Context {
     pub(crate) nodes:    NameSpace,
     pub(crate) atoms:    AtomSpace,
     solver_options:      solver::Options,
+    runner_options:      runner::Options,
 }
 
 impl Context {
@@ -70,6 +71,7 @@ impl Context {
             nodes: Default::default(),
             atoms: Default::default(),
             solver_options: Default::default(),
+            runner_options: Default::default(),
         };
 
         Arc::new(Mutex::new(ctx))
@@ -112,8 +114,18 @@ impl Context {
             let nodes = parent.nodes.clone();
             let atoms = parent.atoms.clone();
             let solver_options = parent.solver_options.clone();
+            let runner_options = parent.runner_options.clone();
 
-            Self { magic_id, name_id, origin, globals, nodes, atoms, solver_options }
+            Self {
+                magic_id,
+                name_id,
+                origin,
+                globals,
+                nodes,
+                atoms,
+                solver_options,
+                runner_options,
+            }
         };
 
         Arc::new(Mutex::new(ctx))
@@ -253,6 +265,16 @@ impl Context {
     pub fn get_search(&self) -> Option<sat::Search> {
         self.solver_options.sat_search
     }
+
+    // Runner options
+
+    pub fn set_semantics(&mut self, semantics: Semantics) {
+        self.runner_options.semantics = Some(semantics);
+    }
+
+    pub fn set_max_steps(&mut self, max_steps: u64) {
+        self.runner_options.max_steps = Some(max_steps);
+    }
 }
 
 impl PartialEq for Context {
@@ -330,6 +352,8 @@ impl<T: Contextual> Contextual for Vec<T> {
         }
     }
 }
+
+// FIXME replace Context with ContextHandle...
 
 /// A short-term binding of [`Context`] and any immutable object of a
 /// type that implements the [`Contextual`] trait.

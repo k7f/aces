@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cli_matches = clap::App::from_yaml(&cli_spec[0]);
     let mut app = App::from_clap(cli_matches);
 
-    let command = match app.subcommand_name().unwrap_or("_") {
+    let mut command = match app.subcommand_name().unwrap_or("_") {
         "_" => {
             if app.is_present("TRIGGER") {
                 Go::new_command(&mut app)

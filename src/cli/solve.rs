@@ -8,7 +8,7 @@ pub struct Solve {
     more_paths:         Vec<String>,
     requested_encoding: Option<sat::Encoding>,
     requested_search:   Option<sat::Search>,
-    context:            ContextHandle,
+    ces:                CEStructure,
 }
 
 impl Solve {
@@ -34,10 +34,11 @@ impl Solve {
         let context_name =
             format!("aces-{}", app.get_mode().expect("unexpected anonymous mode").to_lowercase());
         let context = Context::new_toplevel(context_name, ContentOrigin::cex_script(&main_path));
+        let ces = CEStructure::new(&context);
 
         app.accept_selectors(&["SAT_ENCODING", "SAT_SEARCH"]);
 
-        Self { verbosity, main_path, more_paths, requested_encoding, requested_search, context }
+        Self { verbosity, main_path, more_paths, requested_encoding, requested_search, ces }
     }
 
     /// Creates a [`Solve`] instance and returns it as a [`Command`]
@@ -49,7 +50,16 @@ impl Solve {
     /// mode.
     pub fn new_command(app: &mut App) -> Box<dyn Command> {
         app.set_mode("Solve");
+
         Box::new(Self::new(app))
+    }
+
+    pub fn get_context(&self) -> &ContextHandle {
+        self.ces.get_context()
+    }
+
+    pub fn get_ces(&self) -> &CEStructure {
+        &self.ces
     }
 }
 
@@ -78,32 +88,31 @@ impl Command for Solve {
         })
     }
 
-    fn run(&self) -> Result<(), Box<dyn Error>> {
+    fn run(&mut self) -> Result<(), Box<dyn Error>> {
         if let Some(encoding) = self.requested_encoding {
-            self.context.lock().unwrap().set_encoding(encoding);
+            self.ces.get_context().lock().unwrap().set_encoding(encoding);
         }
 
         if let Some(search) = self.requested_search {
-            self.context.lock().unwrap().set_search(search);
+            self.ces.get_context().lock().unwrap().set_search(search);
         }
 
-        let mut ces = CEStructure::from_file(&self.context, &self.main_path)?;
+        self.ces.add_from_file(&self.main_path)?;
 
         for path in self.more_paths.iter() {
-            ces = ces.with_file(path)?;
+            self.ces.add_from_file(path)?;
         }
 
-        trace!("{:?}", self.context.lock().unwrap());
-        trace!("{:?}", ces);
+        trace!("{:?}", self.ces);
         // FIXME impl Display
-        // info!("{}", ces);
+        // info!("{}", self.ces);
 
-        ces.solve()?;
+        self.ces.solve()?;
 
-        if let Some(fs) = ces.get_firing_set() {
+        if let Some(fs) = self.ces.get_firing_set() {
             println!("Firing components:");
 
-            let ctx = self.context.lock().unwrap();
+            let ctx = self.ces.get_context().lock().unwrap();
 
             for (i, fc) in fs.as_slice().iter().enumerate() {
                 println!("{}. {}", i + 1, ctx.with(fc));
