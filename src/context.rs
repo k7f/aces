@@ -16,15 +16,15 @@ use crate::{
 /// All [`Context`] handles used in _aces_ have type
 /// `Arc<Mutex<Context>>`.  They are stored permanently in the
 /// following structs: [`CEStructure`], [`sat::Formula`],
-/// [`sat::Solver`], and [`sat::Solution`].
+/// [`solver::Solver`], and [`solver::Solution`].
 ///
 /// For another way of binding [`Context`] to data see [`Contextual`]
 /// trait and [`InContext`] struct.
 ///
 /// [`CEStructure`]: crate::CEStructure
 /// [`sat::Formula`]: crate::sat::Formula
-/// [`sat::Solver`]: crate::sat::Solver
-/// [`sat::Solution`]: crate::sat::Solution
+/// [`solver::Solver`]: crate::solver::Solver
+/// [`solver::Solution`]: crate::solver::Solution
 pub type ContextHandle = Arc<Mutex<Context>>;
 
 /// A representation of shared state.
@@ -272,8 +272,16 @@ impl Context {
         self.runner_options.semantics = Some(semantics);
     }
 
-    pub fn set_max_steps(&mut self, max_steps: u64) {
+    pub fn get_semantics(&self) -> Option<Semantics> {
+        self.runner_options.semantics
+    }
+
+    pub fn set_max_steps(&mut self, max_steps: usize) {
         self.runner_options.max_steps = Some(max_steps);
+    }
+
+    pub fn get_max_steps(&self) -> Option<usize> {
+        self.runner_options.max_steps
     }
 }
 

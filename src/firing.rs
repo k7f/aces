@@ -1,4 +1,5 @@
 use std::{slice, collections::BTreeMap, convert::TryFrom, error::Error};
+use rand::{RngCore, Rng};
 use crate::{Context, Contextual, NodeID, ForkID, JoinID, node, Solution, State, AcesError};
 
 #[derive(Default, Debug)]
@@ -8,20 +9,39 @@ pub struct FiringComponent {
 }
 
 impl FiringComponent {
+    // FIXME weight
     pub fn is_enabled(&self, state: &State) -> bool {
-        for &node_id in self.pre_set.keys() {
-            if state.num_tokens(node_id) == 0 {
+        for (&node_id, _fork_id) in self.pre_set.iter() {
+            if state.get(node_id) == 0 {
                 return false
             }
         }
 
-        for &node_id in self.post_set.keys() {
-            if state.num_tokens(node_id) > 0 {
+        for (&node_id, _join_id) in self.post_set.iter() {
+            if state.get(node_id) > 0 {
                 return false
             }
         }
 
         true
+    }
+
+    // FIXME weight
+    /// Note: the firing component is assumed to be enabled in the
+    /// given state.  Since this routine doesn't check for enablement,
+    /// [`is_enabled()`] should be called (directly or e.g. via
+    /// [`FiringSet::get_enabled()`]) prior to a call to [`fire()`].
+    ///
+    /// [`is_enabled()`]: FiringComponent::is_enabled()
+    /// [`fire()`]: FiringComponent::fire()
+    pub fn fire(&self, state: &mut State) {
+        for (&node_id, _fork_id) in self.pre_set.iter() {
+            state.set(node_id, 0);
+        }
+
+        for (&node_id, _join_id) in self.post_set.iter() {
+            state.set(node_id, 1);
+        }
     }
 }
 
@@ -112,6 +132,7 @@ pub struct FiringSet {
 }
 
 impl FiringSet {
+    #[inline]
     pub fn as_slice(&self) -> &[FiringComponent] {
         self.fcs.as_slice()
     }
@@ -135,9 +156,10 @@ impl From<Vec<FiringComponent>> for FiringSet {
     }
 }
 
+// FIXME grouping
 #[derive(Default, Debug)]
 pub struct FiringSequence {
-    computation: Vec<(usize, bool)>,
+    fcs: Vec<(usize, bool)>,
 }
 
 impl FiringSequence {
@@ -145,16 +167,45 @@ impl FiringSequence {
         Default::default()
     }
 
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.fcs.is_empty()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.fcs.len()
+    }
+
+    #[inline]
     pub fn push(&mut self, fc_id: usize) {
-        self.computation.push((fc_id, true))
+        self.fcs.push((fc_id, true))
+    }
+
+    #[inline]
+    pub fn first(&self) -> Option<usize> {
+        self.fcs.first().map(|r| r.0)
+    }
+
+    #[inline]
+    pub fn get(&self, pos: usize) -> Option<usize> {
+        self.fcs.get(pos).map(|r| r.0)
+    }
+
+    pub fn get_random<R: RngCore>(&self, rng: &mut R) -> Option<usize> {
+        match self.fcs.len() {
+            0 => None,
+            1 => Some(self.fcs[0].0),
+            n => Some(self.fcs[rng.gen_range(0, n)].0),
+        }
     }
 
     pub fn iter<'b, 'a: 'b>(&'a self, firing_set: &'b FiringSet) -> FiringIter<'b> {
-        FiringIter { iter: self.computation.iter(), fset: firing_set }
+        FiringIter { iter: self.fcs.iter(), fset: firing_set }
     }
 
     pub fn par_iter<'b, 'a: 'b>(&'a self, firing_set: &'b FiringSet) -> FiringParIter<'b> {
-        FiringParIter { iter: self.computation.iter(), fset: firing_set }
+        FiringParIter { iter: self.fcs.iter(), fset: firing_set }
     }
 }
 

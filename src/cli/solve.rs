@@ -109,12 +109,12 @@ impl Command for Solve {
 
         self.ces.solve()?;
 
-        if let Some(fs) = self.ces.get_firing_set() {
+        if let Some(fset) = self.ces.get_firing_set() {
             println!("Firing components:");
 
             let ctx = self.ces.get_context().lock().unwrap();
 
-            for (i, fc) in fs.as_slice().iter().enumerate() {
+            for (i, fc) in fset.as_slice().iter().enumerate() {
                 println!("{}. {}", i + 1, ctx.with(fc));
             }
         }
