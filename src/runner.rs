@@ -12,25 +12,47 @@ pub struct Runner {
     context:         ContextHandle,
     initial_state:   State,
     current_state:   State,
+    semantics:       Semantics,
     max_steps:       usize,
     firing_sequence: FiringSequence,
 }
 
 impl Runner {
+    fn update_options(&mut self) {
+        let ctx = self.context.lock().unwrap();
+
+        if let Some(v) = ctx.get_semantics() {
+            self.semantics = v;
+        }
+
+        if let Some(v) = ctx.get_max_steps() {
+            self.max_steps = v;
+        }
+    }
+
     pub fn new<S: AsRef<str>>(ctx: &ContextHandle, trigger_name: S) -> Self {
         let context = ctx.clone();
         let initial_state = State::from_trigger(&context, trigger_name);
         let current_state = initial_state.clone();
-        let max_steps = context.lock().unwrap().get_max_steps().unwrap_or(1);
+        let semantics = Semantics::default();
+        let max_steps = 1;
         let firing_sequence = FiringSequence::new();
 
-        Runner { context, initial_state, current_state, max_steps, firing_sequence }
+        let mut runner = Runner { context, initial_state, current_state, semantics, max_steps, firing_sequence };
+        runner.update_options();
+
+        runner
     }
 
     pub fn go(&mut self, fset: &FiringSet) {
         let mut rng = rand::thread_rng();
 
-        self.max_steps = self.context.lock().unwrap().get_max_steps().unwrap_or(1);
+        self.update_options();
+
+        if self.semantics == Semantics::Parallel {
+            println!("Firing under parallel semantics isn't implemented yet.");
+            return
+        }
 
         for num_steps in 0..self.max_steps {
             let fc_id = if log_enabled!(Debug) {
