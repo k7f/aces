@@ -73,7 +73,6 @@ impl ContentOrigin {
 /// [`CEStructure`] structs, along with [`ContextHandle`]s themselves.
 ///
 /// [`CEStructure`]: crate::CEStructure
-/// [`ContextHandle`]: crate::ContextHandle
 /// [`YamlContent`]: crate::yaml_script::YamlContent
 pub trait Content: Debug {
     /// `Script` is a content description in text, for example,
@@ -119,7 +118,9 @@ pub(crate) fn content_from_str<S: AsRef<str>>(
 ) -> Result<Box<dyn Content>, Box<dyn Error>> {
     {
         // FIXME find a better way of releasing the lock, than wrapping in a block...
-        let ref origin = ctx.lock().unwrap().origin;
+        let ctx = ctx.lock().unwrap();
+        let origin = ctx.get_origin();
+
         match origin {
             ContentOrigin::CexScript(_) => {}
             _ => return Err(Box::new(ContentError::OriginMismatch(origin.clone()))),
@@ -364,5 +365,41 @@ impl Content for PartialContent {
 }
 
 pub trait CompilableAsContent {
-    fn compile_as_content(&self, ctx: &ContextHandle) -> Result<PartialContent, Box<dyn Error>>;
+    /// Get a compiled [`PartialContent`] of `self`.
+    ///
+    /// Expected to return a content previously stored in the given
+    /// [`Context`], if possible, or to compile `self` and return the
+    /// result.  Expected to return error if not all dependencies of
+    /// `self` are retrievable from the given [`Context`] as a
+    /// [`PartialContent`].
+    ///
+    /// Note: unlike [`compile_as_dependency()`], this function isn't
+    /// expected to store compilation result in the [`Context`].
+    ///
+    /// [`Context`]: crate::Context
+    /// [`compile_as_dependency()`]: CompilableAsDependency::compile_as_dependency()
+    fn get_compiled_content(&self, ctx: &ContextHandle) -> Result<PartialContent, Box<dyn Error>>;
+
+    /// Check whether all dependencies of `self` are retrievable from
+    /// the given [`Context`].
+    ///
+    /// Expected to return `None` if none of dependencies is missing
+    /// from [`Context`], or a name of a missing dependency, chosen
+    /// arbitrarily.
+    ///
+    /// [`Context`]: crate::Context
+    fn check_dependencies(&self, _ctx: &ContextHandle) -> Option<String> {
+        None
+    }
+}
+
+pub trait CompilableAsDependency: CompilableAsContent {
+    /// Compile `self` and store the result in the given [`Context`].
+    ///
+    /// Expected to return `None` if none of dependencies is missing
+    /// from [`Context`], or a name of a missing dependency, chosen
+    /// arbitrarily.
+    ///
+    /// [`Context`]: crate::Context
+    fn compile_as_dependency(&self, ctx: &ContextHandle) -> Result<Option<String>, Box<dyn Error>>;
 }

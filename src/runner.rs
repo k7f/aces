@@ -2,7 +2,7 @@ use log::Level::Debug;
 use crate::{ContextHandle, State, Semantics, FiringSet, FiringSequence};
 
 #[derive(Clone, Default, Debug)]
-pub(crate) struct Options {
+pub(crate) struct Props {
     pub(crate) semantics: Option<Semantics>,
     pub(crate) max_steps: Option<usize>,
 }
@@ -18,7 +18,7 @@ pub struct Runner {
 }
 
 impl Runner {
-    fn update_options(&mut self) {
+    fn update_props(&mut self) {
         let ctx = self.context.lock().unwrap();
 
         if let Some(v) = ctx.get_semantics() {
@@ -38,8 +38,9 @@ impl Runner {
         let max_steps = 1;
         let firing_sequence = FiringSequence::new();
 
-        let mut runner = Runner { context, initial_state, current_state, semantics, max_steps, firing_sequence };
-        runner.update_options();
+        let mut runner =
+            Runner { context, initial_state, current_state, semantics, max_steps, firing_sequence };
+        runner.update_props();
 
         runner
     }
@@ -47,7 +48,7 @@ impl Runner {
     pub fn go(&mut self, fset: &FiringSet) {
         let mut rng = rand::thread_rng();
 
-        self.update_options();
+        self.update_props();
 
         if self.semantics == Semantics::Parallel {
             println!("Firing under parallel semantics isn't implemented yet.");

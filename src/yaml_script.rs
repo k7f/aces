@@ -2,9 +2,7 @@ use std::{collections::BTreeMap, fmt, error::Error};
 use regex::Regex;
 use yaml_rust::{Yaml, YamlLoader};
 use crate::{
-    ContextHandle, NodeID, node,
-    name::NameSpace,
-    Content, PartialContent,
+    ContextHandle, NodeID, node, Content, PartialContent,
     content::{PolyForContent, MonoForContent},
 };
 
@@ -56,19 +54,19 @@ impl Error for YamlScriptError {
 }
 
 fn do_share_name<S: AsRef<str>>(
-    nodes: &mut NameSpace,
+    ctx: &ContextHandle,
     name: S,
     single_word_only: bool,
 ) -> Result<NodeID, Box<dyn Error>> {
     if single_word_only && name.as_ref().contains(char::is_whitespace) {
         Err(Box::new(YamlScriptError::ShortPolyWithWords))
     } else {
-        Ok(NodeID(nodes.share_name(name)))
+        Ok(ctx.lock().unwrap().share_node_name(name))
     }
 }
 
 fn post_process_port_description<S: AsRef<str>>(
-    nodes: &mut NameSpace,
+    ctx: &ContextHandle,
     description: S,
     single_word_only: bool,
 ) -> Result<Vec<NodeID>, Box<dyn Error>> {
@@ -76,13 +74,13 @@ fn post_process_port_description<S: AsRef<str>>(
         let result: Result<Vec<NodeID>, Box<dyn Error>> = description
             .as_ref()
             .split(',')
-            .map(|s| do_share_name(nodes, s.trim(), single_word_only))
+            .map(|s| do_share_name(ctx, s.trim(), single_word_only))
             .collect();
         let ids = result?;
 
         Ok(ids)
     } else {
-        let id = do_share_name(nodes, description.as_ref().trim(), single_word_only)?;
+        let id = do_share_name(ctx, description.as_ref().trim(), single_word_only)?;
 
         Ok(vec![id])
     }
@@ -91,7 +89,7 @@ fn post_process_port_description<S: AsRef<str>>(
 type PortParsed = (Vec<NodeID>, node::Face);
 
 fn do_parse_port_description<S: AsRef<str>>(
-    nodes: &mut NameSpace,
+    ctx: &ContextHandle,
     description: S,
     single_word_only: bool,
 ) -> Result<Option<PortParsed>, Box<dyn Error>> {
@@ -103,11 +101,11 @@ fn do_parse_port_description<S: AsRef<str>>(
         static ref RX_RE: Regex = Regex::new(r"^(.*[^><])(<+|\s+causes)$").unwrap();
     }
     if let Some(cap) = TX_RE.captures(description.as_ref()) {
-        let ids = post_process_port_description(nodes, &cap[1], single_word_only)?;
+        let ids = post_process_port_description(ctx, &cap[1], single_word_only)?;
 
         Ok(Some((ids, node::Face::Tx)))
     } else if let Some(cap) = RX_RE.captures(description.as_ref()) {
-        let ids = post_process_port_description(nodes, &cap[1], single_word_only)?;
+        let ids = post_process_port_description(ctx, &cap[1], single_word_only)?;
 
         Ok(Some((ids, node::Face::Rx)))
     } else {
@@ -119,9 +117,7 @@ fn parse_port_description<S: AsRef<str>>(
     ctx: &ContextHandle,
     description: S,
 ) -> Option<PortParsed> {
-    let ref mut nodes = ctx.lock().unwrap().nodes;
-
-    do_parse_port_description(nodes, description, false).unwrap_or_else(|_| unreachable!())
+    do_parse_port_description(ctx, description, false).unwrap_or_else(|_| unreachable!())
 }
 
 fn parse_link_description<S: AsRef<str> + Copy>(
@@ -130,9 +126,7 @@ fn parse_link_description<S: AsRef<str> + Copy>(
     valid_face: node::Face,
     single_word_only: bool,
 ) -> Result<(NodeID, bool), Box<dyn Error>> {
-    let ref mut nodes = ctx.lock().unwrap().nodes;
-
-    let link_with_colink = do_parse_port_description(nodes, description, single_word_only)?;
+    let link_with_colink = do_parse_port_description(ctx, description, single_word_only)?;
 
     if let Some((ids, face)) = link_with_colink {
         if face == valid_face {
@@ -145,7 +139,7 @@ fn parse_link_description<S: AsRef<str> + Copy>(
             Err(Box::new(YamlScriptError::LinkReversed))
         }
     } else {
-        let id = do_share_name(nodes, description, single_word_only)?;
+        let id = do_share_name(ctx, description, single_word_only)?;
 
         Ok((id, false))
     }

@@ -1,11 +1,12 @@
 use std::{
     cmp, fmt,
+    collections::BTreeMap,
     sync::{Arc, Mutex},
     error::Error,
 };
 use crate::{
-    ContentOrigin, Port, Link, Split, Fork, Join, ID, NodeID, AtomID, PortID, LinkID, ForkID,
-    JoinID, Semantics,
+    ContentOrigin, PartialContent, Port, Link, Split, Fork, Join, ID, NodeID, AtomID, PortID,
+    LinkID, ForkID, JoinID, Semantics,
     name::NameSpace,
     atom::{AtomSpace, Atom},
     sat, solver, runner,
@@ -39,14 +40,15 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 /// [`Atom`]: crate::atom::Atom
 #[derive(Debug)]
 pub struct Context {
-    pub(crate) magic_id: u64,
-    pub(crate) name_id:  ID,
-    pub(crate) origin:   ContentOrigin,
-    pub(crate) globals:  NameSpace,
-    pub(crate) nodes:    NameSpace,
-    pub(crate) atoms:    AtomSpace,
-    solver_options:      solver::Options,
-    runner_options:      runner::Options,
+    magic_id:     u64,
+    name_id:      ID,
+    origin:       ContentOrigin,
+    globals:      NameSpace,
+    nodes:        NameSpace,
+    atoms:        AtomSpace,
+    content:      BTreeMap<ID, PartialContent>,
+    solver_props: solver::Props,
+    runner_props: runner::Props,
 }
 
 impl Context {
@@ -70,8 +72,9 @@ impl Context {
             globals,
             nodes: Default::default(),
             atoms: Default::default(),
-            solver_options: Default::default(),
-            runner_options: Default::default(),
+            content: Default::default(),
+            solver_props: Default::default(),
+            runner_props: Default::default(),
         };
 
         Arc::new(Mutex::new(ctx))
@@ -113,8 +116,9 @@ impl Context {
             let globals = parent.globals.clone();
             let nodes = parent.nodes.clone();
             let atoms = parent.atoms.clone();
-            let solver_options = parent.solver_options.clone();
-            let runner_options = parent.runner_options.clone();
+            let content = parent.content.clone();
+            let solver_props = parent.solver_props.clone();
+            let runner_props = parent.runner_props.clone();
 
             Self {
                 magic_id,
@@ -123,8 +127,9 @@ impl Context {
                 globals,
                 nodes,
                 atoms,
-                solver_options,
-                runner_options,
+                content,
+                solver_props,
+                runner_props,
             }
         };
 
@@ -143,7 +148,16 @@ impl Context {
         self.globals.get_name(self.name_id).expect("Invalid context.")
     }
 
+    pub fn get_origin(&self) -> &ContentOrigin {
+        &self.origin
+    }
+
     // Nodes
+
+    #[inline]
+    pub(crate) fn get_nodes(&self) -> &NameSpace {
+        &self.nodes
+    }
 
     #[inline]
     pub fn share_node_name<S: AsRef<str>>(&mut self, node_name: S) -> NodeID {
@@ -248,40 +262,60 @@ impl Context {
         self.atoms.get_antiport_id(port_id)
     }
 
-    // Solver options
+    // Content
+
+    pub fn add_content<S: AsRef<str>>(
+        &mut self,
+        name: S,
+        content: PartialContent,
+    ) -> Option<PartialContent> {
+        let name_id = self.globals.share_name(name);
+
+        self.content.insert(name_id, content)
+    }
+
+    pub fn get_content<S: AsRef<str>>(&self, name: S) -> Option<&PartialContent> {
+        self.globals.get_id(name).and_then(|id| self.content.get(&id))
+    }
+
+    pub fn has_content<S: AsRef<str>>(&self, name: S) -> bool {
+        self.globals.get_id(name).map_or(false, |id| self.content.contains_key(&id))
+    }
+
+    // Solver props
 
     pub fn set_encoding(&mut self, encoding: sat::Encoding) {
-        self.solver_options.sat_encoding = Some(encoding);
+        self.solver_props.sat_encoding = Some(encoding);
     }
 
     pub fn get_encoding(&self) -> Option<sat::Encoding> {
-        self.solver_options.sat_encoding
+        self.solver_props.sat_encoding
     }
 
     pub fn set_search(&mut self, search: sat::Search) {
-        self.solver_options.sat_search = Some(search);
+        self.solver_props.sat_search = Some(search);
     }
 
     pub fn get_search(&self) -> Option<sat::Search> {
-        self.solver_options.sat_search
+        self.solver_props.sat_search
     }
 
-    // Runner options
+    // Runner props
 
     pub fn set_semantics(&mut self, semantics: Semantics) {
-        self.runner_options.semantics = Some(semantics);
+        self.runner_props.semantics = Some(semantics);
     }
 
     pub fn get_semantics(&self) -> Option<Semantics> {
-        self.runner_options.semantics
+        self.runner_props.semantics
     }
 
     pub fn set_max_steps(&mut self, max_steps: usize) {
-        self.runner_options.max_steps = Some(max_steps);
+        self.runner_props.max_steps = Some(max_steps);
     }
 
     pub fn get_max_steps(&self) -> Option<usize> {
-        self.runner_options.max_steps
+        self.runner_props.max_steps
     }
 }
 

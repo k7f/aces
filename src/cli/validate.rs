@@ -114,7 +114,7 @@ impl Command for Validate {
                     if self.verbosity >= 4 {
                         trace!("{:?}", ctx.lock().unwrap());
                     } else {
-                        trace!("{:?}", ctx.lock().unwrap().nodes);
+                        trace!("{:?}", ctx.lock().unwrap().get_nodes());
                     }
                 }
 

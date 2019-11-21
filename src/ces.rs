@@ -558,6 +558,8 @@ impl CEStructure {
         let encoding =
             self.context.lock().unwrap().get_encoding().unwrap_or(sat::Encoding::ForkJoin);
 
+        debug!("Using encoding {:?}", encoding);
+
         match encoding {
             sat::Encoding::PortLink => self.get_port_link_formula(),
             sat::Encoding::ForkJoin => self.get_fork_join_formula(),

@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[derive(Clone, Default, Debug)]
-pub(crate) struct Options {
+pub(crate) struct Props {
     pub(crate) sat_encoding: Option<Encoding>,
     pub(crate) sat_search:   Option<Search>,
 }
