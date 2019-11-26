@@ -8,8 +8,9 @@ use std::{
 };
 use log::Level::Trace;
 use crate::{
-    ContextHandle, Port, Split, AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Polynomial,
-    FiringSet, Content, content::content_from_str, node, sat, sat::Resolution, Solver, AcesError,
+    ContextHandle, Contextual, ExclusivelyContextual, Port, Split, AtomID, NodeID, PortID, LinkID,
+    ForkID, JoinID, Polynomial, FiringSet, Content, content::content_from_str, node, sat,
+    sat::Resolution, Solver, AcesError,
 };
 
 #[derive(PartialEq, Debug)]
@@ -98,21 +99,19 @@ impl CEStructure {
             };
 
             if log_enabled!(Trace) {
-                let ctx = self.context.lock().unwrap();
-
                 match face {
                     node::Face::Tx => {
                         trace!(
                             "Old join's co_forks[{}] -> {}",
-                            ctx.with(&JoinID(co_split_id)),
-                            ctx.with(&ForkID(split_id))
+                            JoinID(co_split_id).with(&self.context),
+                            ForkID(split_id).with(&self.context),
                         );
                     }
                     node::Face::Rx => {
                         trace!(
                             "Old fork's co_joins[{}] -> {}",
-                            ctx.with(&ForkID(co_split_id)),
-                            ctx.with(&JoinID(split_id))
+                            ForkID(co_split_id).with(&self.context),
+                            JoinID(split_id).with(&self.context)
                         );
                     }
                 }
@@ -218,20 +217,18 @@ impl CEStructure {
                 self.add_split_to_suit(split_id, face, co_splits.as_slice());
 
                 if log_enabled!(Trace) {
-                    let ctx = self.context.lock().unwrap();
-
                     match face {
                         Tx => {
                             trace!(
                                 "New fork's co_joins[{}] -> {:?}",
-                                ctx.with(&ForkID(split_id)),
+                                ForkID(split_id).with(&self.context),
                                 co_splits
                             );
                         }
                         Rx => {
                             trace!(
                                 "New join's co_forks[{}] -> {:?}",
-                                ctx.with(&JoinID(split_id)),
+                                JoinID(split_id).with(&self.context),
                                 co_splits
                             );
                         }
@@ -498,10 +495,10 @@ impl CEStructure {
                 Ok(vec![cosplit_ids.to_vec()])
             }
         } else {
-            let ctx = self.context.lock().unwrap();
             let mut cohost_map: BTreeMap<NodeID, Vec<AtomID>> = BTreeMap::new();
 
             for &cosplit_id in cosplit_ids.iter() {
+                let ctx = self.context.lock().unwrap();
                 let cosplit = ctx.get_split(cosplit_id).ok_or(AcesError::SplitMissingForID)?;
                 let cohost_id = cosplit.get_host_id();
 
@@ -515,7 +512,10 @@ impl CEStructure {
                         if let Err(pos) = sids.binary_search(&cosplit_id) {
                             sids.insert(pos, cosplit_id);
                         } else {
-                            warn!("Multiple occurrences of {} in cosplit array", ctx.with(cosplit));
+                            warn!(
+                                "Multiple occurrences of {} in cosplit array",
+                                cosplit.format_locked(&ctx).unwrap()
+                            );
                         }
                     }
                 }

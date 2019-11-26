@@ -4,7 +4,7 @@ use std::{
     error::Error,
 };
 use log::Level::{Debug, Trace};
-use crate::{Context, ContextHandle, Contextual, NodeID, FiringSet};
+use crate::{ContextHandle, Contextual, NodeID, FiringSet};
 
 #[derive(Clone, Default, Debug)]
 pub struct State {
@@ -52,14 +52,12 @@ impl State {
         rng: &mut R,
     ) -> Option<usize> {
         if log_enabled!(Debug) {
-            let ctx = ctx.lock().unwrap();
-
             if num_steps == 0 {
-                debug!("Go from {}", ctx.with(self));
+                debug!("Go from {}", self.with(ctx));
             } else if num_steps < 10 {
-                debug!("Step {}  {}", num_steps, ctx.with(self));
+                debug!("Step {}  {}", num_steps, self.with(ctx));
             } else {
-                debug!("Step {} {}", num_steps, ctx.with(self));
+                debug!("Step {} {}", num_steps, self.with(ctx));
             }
         }
 
@@ -67,15 +65,14 @@ impl State {
 
         if let Some(fc_id) = enabled_fcs.get_random(rng) {
             if log_enabled!(Trace) {
-                let ctx = ctx.lock().unwrap();
                 let mut at_start = true;
 
                 for fc in enabled_fcs.iter(fset) {
                     if at_start {
-                        trace!("Enabled {}", ctx.with(fc));
+                        trace!("Enabled {}", fc.with(ctx));
                         at_start = false;
                     } else {
-                        trace!("        {}", ctx.with(fc));
+                        trace!("        {}", fc.with(ctx));
                     }
                 }
             }
@@ -104,7 +101,7 @@ impl State {
 }
 
 impl Contextual for State {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
         let mut result = String::new();
         let mut at_start = true;
 

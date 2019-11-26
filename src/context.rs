@@ -40,8 +40,8 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 /// [`Atom`]: crate::atom::Atom
 #[derive(Debug)]
 pub struct Context {
-    magic_id:     u64,
-    name_id:      ID,
+    magic_id:     u64, // group ID
+    name_id:      ID,  // given name
     origin:       ContentOrigin,
     globals:      NameSpace,
     nodes:        NameSpace,
@@ -92,9 +92,18 @@ impl Context {
         Context::new_toplevel(name, ContentOrigin::Interactive)
     }
 
+    /// Clears content map and runtime attributes, but doesn't destroy
+    /// shared resources.
+    ///
+    /// This method preserves the collection of [`Atom`]s, the two
+    /// symbol tables, and the `Context`'s own given name and group
+    /// ID.
     pub fn reset(&mut self, new_origin: ContentOrigin) {
+        // Fields unchanged: magic_id, name_id, globals, nodes, atoms.
         self.origin = new_origin;
-        // FIXME clear
+        self.content.clear();
+        self.solver_props.clear();
+        self.runner_props.clear();
     }
 
     /// Creates a new derived `Context` instance and returns a
@@ -373,19 +382,43 @@ impl PartialOrd for Context {
 /// the objects.
 ///
 /// See [`InContext`] for more details.
-pub trait Contextual {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>>;
+pub trait Contextual: Sized {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>>;
+
+    #[inline]
+    fn with(&self, ctx: &ContextHandle) -> InContext<Self> {
+        InContext { context: ctx.clone(), thing: self }
+    }
+
+    #[inline]
+    fn with_mut(&mut self, ctx: &ContextHandle) -> InContextMut<Self> {
+        InContextMut { context: ctx.clone(), thing: self }
+    }
 }
 
-impl<T: Contextual> Contextual for Vec<T> {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+/// A version of the [`Contextual`] trait to be used for fine-grained
+/// access to [`Context`].
+pub trait ExclusivelyContextual: Sized {
+    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>>;
+}
+
+impl<T: ExclusivelyContextual> Contextual for T {
+    #[inline]
+    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
+        self.format_locked(&ctx.lock().unwrap())
+    }
+}
+
+impl<T: ExclusivelyContextual> Contextual for Vec<T> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
         let mut elts = self.iter();
 
         if let Some(elt) = elts.next() {
-            let mut elts_repr = elt.format(ctx)?;
+            let ctx = ctx.lock().unwrap();
+            let mut elts_repr = elt.format_locked(&ctx)?;
 
             for elt in elts {
-                elts_repr.push_str(&format!(", {}", ctx.with(elt)));
+                elts_repr.push_str(&format!(", {}", elt.format_locked(&ctx)?));
             }
 
             Ok(format!("{{{}}}", elts_repr))
@@ -395,23 +428,31 @@ impl<T: Contextual> Contextual for Vec<T> {
     }
 }
 
-// FIXME replace Context with ContextHandle...
-
 /// A short-term binding of [`Context`] and any immutable object of a
 /// type that implements the [`Contextual`] trait.
 ///
-/// [`Context`] can't be modified through `InContext`.  The purpose
-/// of this type is to allow a transparent read access to shared data,
-/// like names etc.
+/// The purpose of this type is to allow a transparent read access to
+/// shared data, like names etc.  To prevent coarse-grained locking,
+/// [`Context`] is internally represented by a [`ContextHandle`];
+/// however, [`Context`] can't be modified through `InContext`.
 pub struct InContext<'a, D: Contextual> {
-    context: &'a Context,
+    context: ContextHandle,
     thing:   &'a D,
 }
 
 impl<D: Contextual> InContext<'_, D> {
+    pub fn with_context<T, F>(&self, f: F) -> T
+    where
+        F: FnOnce(&D, &Context) -> T,
+    {
+        let ctx = self.context.lock().unwrap();
+
+        f(self.thing, &ctx)
+    }
+
     #[inline]
-    pub fn get_context(&self) -> &Context {
-        self.context
+    pub fn same_context(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.context, &other.context)
     }
 
     #[inline]
@@ -422,25 +463,35 @@ impl<D: Contextual> InContext<'_, D> {
 
 impl<'a, D: Contextual> fmt::Display for InContext<'a, D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.thing.format(self.context).expect("Can't display"))
+        write!(f, "{}", self.thing.format(&self.context).expect("Can't display"))
     }
 }
 
 /// A short-term binding of [`Context`] and any mutable object of a
 /// type that implements the [`Contextual`] trait.
 ///
-/// [`Context`] can't be modified through `InContextMut`.  The purpose
-/// of this type is to allow a transparent read access to shared data,
-/// like names etc.
+/// The purpose of this type is to allow a transparent read access to
+/// shared data, like names etc.  To prevent coarse-grained locking,
+/// [`Context`] is internally represented by a [`ContextHandle`];
+/// however, [`Context`] can't be modified through `InContextMut`.
 pub struct InContextMut<'a, D: Contextual> {
-    context: &'a Context,
+    context: ContextHandle,
     thing:   &'a mut D,
 }
 
 impl<D: Contextual> InContextMut<'_, D> {
+    pub fn with_context<T, F>(&mut self, f: F) -> T
+    where
+        F: FnOnce(&mut D, &Context) -> T,
+    {
+        let ctx = self.context.lock().unwrap();
+
+        f(self.thing, &ctx)
+    }
+
     #[inline]
-    pub fn get_context(&self) -> &Context {
-        self.context
+    pub fn same_context(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.context, &other.context)
     }
 
     #[inline]
@@ -456,19 +507,7 @@ impl<D: Contextual> InContextMut<'_, D> {
 
 impl<'a, D: Contextual> fmt::Display for InContextMut<'a, D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.thing.format(self.context).expect("Can't display"))
-    }
-}
-
-impl Context {
-    #[inline]
-    pub fn with<'a, T: Contextual>(&'a self, thing: &'a T) -> InContext<'a, T> {
-        InContext { context: self, thing }
-    }
-
-    #[inline]
-    pub fn with_mut<'a, T: Contextual>(&'a self, thing: &'a mut T) -> InContextMut<'a, T> {
-        InContextMut { context: self, thing }
+        write!(f, "{}", self.thing.format(&self.context).expect("Can't display"))
     }
 }
 

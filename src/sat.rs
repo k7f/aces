@@ -5,11 +5,10 @@ use std::{
     sync::Arc,
     error::Error,
 };
-use log::Level::Debug;
 use varisat::{Var, Lit, CnfFormula, ExtendFormula};
 use crate::{
-    Atomic, Context, ContextHandle, Contextual, Polynomial, AtomID, PortID, LinkID, atom::Atom,
-    FiringSet, error::AcesError,
+    Atomic, Context, ContextHandle, Contextual, ExclusivelyContextual, Polynomial, AtomID, PortID,
+    LinkID, atom::Atom, FiringSet, error::AcesError,
 };
 
 #[derive(Debug)]
@@ -54,16 +53,18 @@ impl CEVar for Var {
     }
 }
 
-impl Contextual for Var {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+impl ExclusivelyContextual for Var {
+    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let atom_id = self.into_atom_id();
 
         if let Some(atom) = ctx.get_atom(atom_id) {
             match atom {
-                Atom::Tx(port) | Atom::Rx(port) => Ok(format!("{}:{}", atom_id, ctx.with(port))),
-                Atom::Link(link) => Ok(format!("{}:{}", atom_id, ctx.with(link))),
-                Atom::Fork(fork) => Ok(format!("{}:{}", atom_id, ctx.with(fork))),
-                Atom::Join(join) => Ok(format!("{}:{}", atom_id, ctx.with(join))),
+                Atom::Tx(port) | Atom::Rx(port) => {
+                    Ok(format!("{}:{}", atom_id, port.format_locked(ctx)?))
+                }
+                Atom::Link(link) => Ok(format!("{}:{}", atom_id, link.format_locked(ctx)?)),
+                Atom::Fork(fork) => Ok(format!("{}:{}", atom_id, fork.format_locked(ctx)?)),
+                Atom::Join(join) => Ok(format!("{}:{}", atom_id, join.format_locked(ctx)?)),
                 Atom::Bottom => Err(Box::new(AcesError::BottomAtomAccess)),
             }
         } else {
@@ -77,7 +78,7 @@ impl Contextual for Var {
 pub struct Variable(pub(crate) Var);
 
 impl Contextual for Variable {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
         self.0.format(ctx)
     }
 }
@@ -98,12 +99,12 @@ impl CELit for Lit {
     }
 }
 
-impl Contextual for Lit {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+impl ExclusivelyContextual for Lit {
+    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         if self.is_negative() {
-            Ok(format!("~{}", self.var().format(ctx)?))
+            Ok(format!("~{}", self.var().format_locked(ctx)?))
         } else {
-            self.var().format(ctx)
+            self.var().format_locked(ctx)
         }
     }
 }
@@ -166,7 +167,7 @@ impl ops::BitXor<bool> for Literal {
 }
 
 impl Contextual for Literal {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
         self.0.format(ctx)
     }
 }
@@ -278,7 +279,7 @@ impl Clause {
 }
 
 impl Contextual for Clause {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
         self.lits.format(ctx)
     }
 }
@@ -303,10 +304,7 @@ impl Formula {
         if clause.is_empty() {
             Err(AcesError::EmptyClauseRejectedByFormula(clause.info))
         } else {
-            if log_enabled!(Debug) {
-                let ctx = self.context.lock().unwrap();
-                debug!("Add (to formula) {} clause: {}", clause.info, ctx.with(&clause))
-            }
+            debug!("Add (to formula) {} clause: {}", clause.info, clause.with(&self.context));
 
             self.cnf.add_clause(clause.get_literals());
             self.variables.extend(clause.get_literals().iter().map(|lit| lit.var()));
@@ -506,7 +504,6 @@ impl fmt::Display for Formula {
                 write!(f, " /^\\ ")?;
             }
 
-            let ctx = self.context.lock().unwrap();
             let mut first_lit = true;
 
             for lit in clause {
@@ -518,7 +515,7 @@ impl fmt::Display for Formula {
                     write!(f, " | ")?;
                 }
 
-                write!(f, "{}", ctx.with(&lit))?;
+                write!(f, "{}", lit.with(&self.context))?;
             }
         }
 
@@ -528,6 +525,7 @@ impl fmt::Display for Formula {
 
 #[cfg(test)]
 mod tests {
+    use crate::{Context, Split, ForkID, JoinID};
     use super::*;
 
     fn new_fork_id(ctx: &ContextHandle, host_name: &str, suit_names: &[&str]) -> ForkID {

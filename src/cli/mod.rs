@@ -2,6 +2,8 @@ mod solve;
 mod go;
 mod validate;
 
+use crate::{ContextHandle, Semantics};
+
 pub use solve::Solve;
 pub use go::Go;
 pub use validate::Validate;
@@ -107,6 +109,27 @@ impl<'a> App<'a> {
                         "Argument \"{}\" has no meaning in mode \"{}\" and is ignored",
                         selector, mode
                     );
+                }
+            }
+        }
+    }
+
+    pub fn apply_props(&self, ctx: &ContextHandle) {
+        let mut ctx = ctx.lock().expect("Can't acquire Context when applying Props.");
+
+        if let Some(v) = self.value_of("SEMANTICS") {
+            match v {
+                "seq" => ctx.set_semantics(Semantics::Sequential),
+                "par" => ctx.set_semantics(Semantics::Parallel),
+                _ => unreachable!(),
+            }
+        }
+
+        if let Some(v) = self.value_of("MAX_STEPS") {
+            match v.parse::<usize>() {
+                Ok(val) => ctx.set_max_steps(val),
+                Err(err) => {
+                    panic!("The argument '{}' isn't a valid value of MAX_STEPS ({})", v, err)
                 }
             }
         }

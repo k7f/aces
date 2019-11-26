@@ -1,5 +1,5 @@
 use std::{str::FromStr, error::Error};
-use crate::{Context, ContextHandle, ContentOrigin, CEStructure, sat};
+use crate::{Context, ContextHandle, Contextual, ContentOrigin, CEStructure, sat};
 use super::{App, Command};
 
 pub struct Solve {
@@ -112,10 +112,10 @@ impl Command for Solve {
         if let Some(fset) = self.ces.get_firing_set() {
             println!("Firing components:");
 
-            let ctx = self.ces.get_context().lock().unwrap();
+            let ctx = self.ces.get_context();
 
             for (i, fc) in fset.as_slice().iter().enumerate() {
-                println!("{}. {}", i + 1, ctx.with(fc));
+                println!("{}. {}", i + 1, fc.with(ctx));
             }
         }
 

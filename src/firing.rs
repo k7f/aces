@@ -1,6 +1,6 @@
 use std::{slice, collections::BTreeMap, convert::TryFrom, error::Error};
 use rand::{RngCore, Rng};
-use crate::{Context, Contextual, NodeID, ForkID, JoinID, node, Solution, State, AcesError};
+use crate::{ContextHandle, Contextual, NodeID, ForkID, JoinID, node, Solution, State, AcesError};
 
 #[derive(Default, Debug)]
 pub struct FiringComponent {
@@ -95,7 +95,7 @@ impl TryFrom<Solution> for FiringComponent {
 }
 
 impl Contextual for FiringComponent {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
         let mut result = String::new();
 
         if self.pre_set.is_empty() {

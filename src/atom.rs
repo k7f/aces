@@ -3,7 +3,10 @@ use std::{
     collections::{BTreeMap, HashMap},
     error::Error,
 };
-use crate::{ID, NodeID, Context, Contextual, InContext, node, monomial, sat, error::AcesError};
+use crate::{
+    ID, NodeID, Context, Contextual, ExclusivelyContextual, InContext, node, monomial, sat,
+    error::AcesError,
+};
 
 /// An abstract structural identifier serving as the common base of
 /// [`PortID`], [`LinkID`], [`ForkID`] and [`JoinID`].
@@ -43,10 +46,10 @@ impl From<PortID> for AtomID {
     }
 }
 
-impl Contextual for PortID {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+impl ExclusivelyContextual for PortID {
+    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let port = ctx.get_port(*self).ok_or(AcesError::PortMissingForID)?;
-        port.format(ctx)
+        port.format_locked(ctx)
     }
 }
 
@@ -78,10 +81,10 @@ impl From<LinkID> for AtomID {
     }
 }
 
-impl Contextual for LinkID {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+impl ExclusivelyContextual for LinkID {
+    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let link = ctx.get_link(*self).ok_or(AcesError::LinkMissingForID(*self))?;
-        link.format(ctx)
+        link.format_locked(ctx)
     }
 }
 
@@ -113,10 +116,10 @@ impl From<ForkID> for AtomID {
     }
 }
 
-impl Contextual for ForkID {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+impl ExclusivelyContextual for ForkID {
+    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let fork = ctx.get_fork(*self).ok_or(AcesError::ForkMissingForID)?;
-        fork.format(ctx)
+        fork.format_locked(ctx)
     }
 }
 
@@ -148,10 +151,10 @@ impl From<JoinID> for AtomID {
     }
 }
 
-impl Contextual for JoinID {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+impl ExclusivelyContextual for JoinID {
+    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let join = ctx.get_join(*self).ok_or(AcesError::JoinMissingForID)?;
-        join.format(ctx)
+        join.format_locked(ctx)
     }
 }
 
@@ -502,8 +505,8 @@ impl hash::Hash for Port {
     }
 }
 
-impl Contextual for Port {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+impl ExclusivelyContextual for Port {
+    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let node_name = ctx
             .get_node_name(self.get_node_id())
             .ok_or_else(|| AcesError::NodeMissingForPort(self.get_face()))?;
@@ -587,8 +590,8 @@ impl hash::Hash for Link {
     }
 }
 
-impl Contextual for Link {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+impl ExclusivelyContextual for Link {
+    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let tx_node_name = ctx
             .get_node_name(self.get_tx_node_id())
             .ok_or(AcesError::NodeMissingForLink(node::Face::Tx))?;
@@ -721,8 +724,8 @@ impl hash::Hash for Split {
     }
 }
 
-impl Contextual for Split {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+impl ExclusivelyContextual for Split {
+    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let host_name = ctx.get_node_name(self.get_host_id()).ok_or(match self.face {
             node::Face::Tx => AcesError::NodeMissingForFork(node::Face::Tx),
             node::Face::Rx => AcesError::NodeMissingForJoin(node::Face::Rx),
@@ -765,10 +768,7 @@ pub trait Atomic:
 
 impl Atomic for PortID {
     fn into_node_id(this: InContext<Self>) -> Option<NodeID> {
-        let ctx = this.get_context();
-        let pid = this.get_thing();
-
-        ctx.get_port(*pid).map(|port| port.get_node_id())
+        this.with_context(|pid, ctx| ctx.get_port(*pid).map(|port| port.get_node_id()))
     }
 
     fn into_sat_literal(self, negated: bool) -> sat::Literal {
@@ -782,10 +782,7 @@ impl Atomic for LinkID {
     }
 
     fn into_node_id_docked(this: InContext<Self>, dock: node::Face) -> Option<NodeID> {
-        let ctx = this.get_context();
-        let lid = this.get_thing();
-
-        ctx.get_link(*lid).map(|link| link.get_node_id(dock))
+        this.with_context(|lid, ctx| ctx.get_link(*lid).map(|link| link.get_node_id(dock)))
     }
 
     fn into_sat_literal(self, negated: bool) -> sat::Literal {
@@ -795,10 +792,7 @@ impl Atomic for LinkID {
 
 impl Atomic for ForkID {
     fn into_node_id(this: InContext<Self>) -> Option<NodeID> {
-        let ctx = this.get_context();
-        let fid = this.get_thing();
-
-        ctx.get_fork(*fid).map(|fork| fork.get_host_id())
+        this.with_context(|fid, ctx| ctx.get_fork(*fid).map(|fork| fork.get_host_id()))
     }
 
     fn into_sat_literal(self, negated: bool) -> sat::Literal {
@@ -808,10 +802,7 @@ impl Atomic for ForkID {
 
 impl Atomic for JoinID {
     fn into_node_id(this: InContext<Self>) -> Option<NodeID> {
-        let ctx = this.get_context();
-        let jid = this.get_thing();
-
-        ctx.get_join(*jid).map(|join| join.get_host_id())
+        this.with_context(|jid, ctx| ctx.get_join(*jid).map(|join| join.get_host_id()))
     }
 
     fn into_sat_literal(self, negated: bool) -> sat::Literal {

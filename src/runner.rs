@@ -1,10 +1,16 @@
 use log::Level::Debug;
-use crate::{ContextHandle, State, Semantics, FiringSet, FiringSequence};
+use crate::{ContextHandle, Contextual, State, Semantics, FiringSet, FiringSequence};
 
 #[derive(Clone, Default, Debug)]
 pub(crate) struct Props {
     pub(crate) semantics: Option<Semantics>,
     pub(crate) max_steps: Option<usize>,
+}
+
+impl Props {
+    pub(crate) fn clear(&mut self) {
+        *self = Default::default();
+    }
 }
 
 #[derive(Debug)]
@@ -72,7 +78,7 @@ impl Runner {
         }
 
         if log_enabled!(Debug) {
-            debug!("Stop at {}", self.context.lock().unwrap().with(&self.current_state));
+            debug!("Stop at {}", self.current_state.with(&self.context));
             debug!("Done after {} steps", self.max_steps);
         }
     }

@@ -1,8 +1,8 @@
 use std::{slice, iter, cmp, ops, fmt, collections::BTreeSet, error::Error};
 use bit_vec::BitVec;
 use crate::{
-    NodeID, Port, Link, LinkID, Context, ContextHandle, Contextual, InContextMut, Atomic, node,
-    monomial, sat, error::AcesError,
+    NodeID, Port, Link, LinkID, ContextHandle, Contextual, ExclusivelyContextual, InContextMut,
+    Atomic, node, monomial, sat, error::AcesError,
 };
 
 // FIXME sort rows as a way to fix Eq and, perhaps, to open some
@@ -30,6 +30,8 @@ use crate::{
 /// the responsibility of the caller of an operation.  Implementation
 /// detects some, but not all, cases of mismatch and panics if it does
 /// so.
+///
+/// [`Context`]: crate::Context
 #[derive(Clone, Debug)]
 pub struct Polynomial<T: Atomic + fmt::Debug> {
     atomics: Vec<T>,
@@ -42,6 +44,8 @@ pub struct Polynomial<T: Atomic + fmt::Debug> {
 impl Polynomial<LinkID> {
     /// Creates a polynomial from a sequence of sequences of
     /// [`NodeID`]s and in a [`Context`] given by a [`ContextHandle`].
+    ///
+    /// [`Context`]: crate::Context
     pub fn from_nodes_in_context<'a, I>(
         ctx: &ContextHandle,
         face: node::Face,
@@ -471,7 +475,7 @@ impl<T: Atomic + fmt::Debug> PartialOrd for Polynomial<T> {
 }
 
 impl Contextual for Polynomial<LinkID> {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
         let mut result = String::new();
 
         let mut first_mono = true;
@@ -492,12 +496,13 @@ impl Contextual for Polynomial<LinkID> {
                     result.push('·');
                 }
 
-                let link = ctx.get_link(id).ok_or(AcesError::LinkMissingForID(id))?;
-
                 let s = if let Some(face) = self.dock {
+                    let ctx = ctx.lock().unwrap();
+                    let link = ctx.get_link(id).ok_or(AcesError::LinkMissingForID(id))?;
+
                     match face {
-                        node::Face::Tx => link.get_rx_node_id().format(ctx),
-                        node::Face::Rx => link.get_tx_node_id().format(ctx),
+                        node::Face::Tx => link.get_rx_node_id().format_locked(&ctx),
+                        node::Face::Rx => link.get_tx_node_id().format_locked(&ctx),
                     }
                 } else {
                     id.format(ctx)
@@ -513,7 +518,7 @@ impl Contextual for Polynomial<LinkID> {
 
 impl<'a> InContextMut<'a, Polynomial<LinkID>> {
     pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, AcesError> {
-        if self.get_context() == other.get_context() {
+        if self.same_context(other) {
             self.get_thing_mut().add_polynomial(other.get_thing())
         } else {
             Err(AcesError::ContextMismatch)

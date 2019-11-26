@@ -1,5 +1,5 @@
 use std::error::Error;
-use crate::{Semantics, Runner};
+use crate::{Contextual, Runner};
 use super::{App, Command, Solve};
 
 pub struct Go {
@@ -10,31 +10,9 @@ pub struct Go {
 impl Go {
     pub(crate) fn new(app: &mut App) -> Self {
         let solve = Solve::new(app);
-
         let trigger_name = app.value_of("TRIGGER").map(String::from);
 
-        if let Ok(mut ctx) = solve.get_context().lock() {
-            if let Some(v) = app.value_of("SEMANTICS") {
-                match v {
-                    "seq" => ctx.set_semantics(Semantics::Sequential),
-                    "par" => ctx.set_semantics(Semantics::Parallel),
-                    _ => unreachable!(),
-                }
-            }
-
-            if let Some(v) = app.value_of("MAX_STEPS") {
-                match v.parse::<usize>() {
-                    Ok(val) => ctx.set_max_steps(val),
-                    Err(err) => {
-                        panic!("The argument '{}' isn't a valid value of MAX_STEPS ({})", v, err)
-                    }
-                }
-            }
-        } else {
-            // FIXME
-            panic!()
-        }
-
+        app.apply_props(solve.get_context());
         app.accept_selectors(&["SEMANTICS", "MAX_STEPS"]);
 
         Self { solve, trigger_name }
@@ -79,25 +57,25 @@ impl Command for Go {
             let fcs = runner.get_firing_sequence();
             let num_steps = fcs.len();
             let mut state = runner.get_initial_state().clone();
-            let ctx = ces.get_context().lock().unwrap();
+            let ctx = ces.get_context();
 
             for (i, fc) in fcs.iter(fset).enumerate() {
                 if i == 0 {
-                    println!("Go from {}", ctx.with(&state));
+                    println!("Go from {}", state.with(&ctx));
                 } else {
-                    println!("     => {}", ctx.with(&state));
+                    println!("     => {}", state.with(&ctx));
                 }
 
-                println!("{}. {}", i + 1, ctx.with(fc));
+                println!("{}. {}", i + 1, fc.with(ctx));
 
                 fc.fire(&mut state);
             }
 
             if num_steps < runner.get_max_steps() {
-                println!("     => {}", ctx.with(&state));
+                println!("     => {}", state.with(&ctx));
                 println!("Deadlock after {} steps.", num_steps);
             } else {
-                println!("Stop at {}", ctx.with(&state));
+                println!("Stop at {}", state.with(&ctx));
                 println!("Done after {} steps.", num_steps);
             }
         } else {

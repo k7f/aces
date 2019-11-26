@@ -4,10 +4,9 @@ use std::{
     mem, fmt,
     error::Error,
 };
-use log::Level::Debug;
 use varisat::{Var, Lit, ExtendFormula, solver::SolverError};
 use crate::{
-    Context, ContextHandle, Contextual, NodeID, AtomID, ForkID, JoinID, Split,
+    ContextHandle, Contextual, NodeID, AtomID, ForkID, JoinID, Split,
     atom::Atom,
     sat::{CEVar, CELit, Encoding, Search, Clause, Formula},
     error::AcesError,
@@ -17,6 +16,12 @@ use crate::{
 pub(crate) struct Props {
     pub(crate) sat_encoding: Option<Encoding>,
     pub(crate) sat_search:   Option<Search>,
+}
+
+impl Props {
+    pub(crate) fn clear(&mut self) {
+        *self = Default::default();
+    }
 }
 
 enum ModelSearchResult {
@@ -134,7 +139,7 @@ impl Assumptions {
 }
 
 impl Contextual for Assumptions {
-    fn format(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
         self.literals.format(ctx)
     }
 }
@@ -191,10 +196,7 @@ impl<'a> Solver<'a> {
         if clause.is_empty() {
             Err(AcesError::EmptyClauseRejectedBySolver(clause.get_info().to_owned()))
         } else {
-            if log_enabled!(Debug) {
-                let ctx = self.context.lock().unwrap();
-                debug!("Add (to solver) {} clause: {}", clause.get_info(), ctx.with(&clause));
-            }
+            debug!("Add (to solver) {} clause: {}", clause.get_info(), clause.with(&self.context));
 
             self.engine.add_clause(clause.get_literals());
 
@@ -314,9 +316,8 @@ impl<'a> Solver<'a> {
     }
 
     fn solve(&mut self) -> Option<bool> {
-        if log_enabled!(Debug) && !self.assumptions.is_empty() {
-            let ctx = self.context.lock().unwrap();
-            debug!("Solving under assumptions: {}", ctx.with(&self.assumptions));
+        if !self.assumptions.is_empty() {
+            debug!("Solving under assumptions: {}", self.assumptions.with(&self.context));
         }
 
         self.engine.assume(self.assumptions.get_literals());
@@ -617,15 +618,14 @@ impl Solution {
 
 impl fmt::Debug for Solution {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let ctx = self.context.lock().unwrap();
         write!(
             f,
             "Solution {{ model: {:?}, pre_set: {}, post_set: {}, fork_set: {}, join_set: {} }}",
             self.model,
-            ctx.with(&self.pre_set),
-            ctx.with(&self.post_set),
-            ctx.with(&self.fork_set),
-            ctx.with(&self.join_set),
+            self.pre_set.with(&self.context),
+            self.post_set.with(&self.context),
+            self.fork_set.with(&self.context),
+            self.join_set.with(&self.context),
         )
     }
 }
@@ -637,10 +637,8 @@ impl fmt::Display for Solution {
         } else {
             write!(f, "{{")?;
 
-            let ctx = self.context.lock().unwrap();
-
             for node_id in self.pre_set.iter() {
-                write!(f, " {}", ctx.with(node_id))?;
+                write!(f, " {}", node_id.with(&self.context))?;
             }
 
             write!(f, " }} => {{")?;
@@ -649,10 +647,8 @@ impl fmt::Display for Solution {
         if self.post_set.is_empty() {
             write!(f, "}}")?;
         } else {
-            let ctx = self.context.lock().unwrap();
-
             for node_id in self.post_set.iter() {
-                write!(f, " {}", ctx.with(node_id))?;
+                write!(f, " {}", node_id.with(&self.context))?;
             }
 
             write!(f, " }}")?;
