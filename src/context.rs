@@ -31,8 +31,9 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 /// A representation of shared state.
 ///
 /// This is an umbrella type which, currently, includes a collection
-/// of [`Atom`]s and two symbol tables, one for structure names, and
-/// another for node names.
+/// of [`Atom`]s, two symbol tables (one for structure names, and
+/// another for node names), node capacities, monomial weights, and
+/// [`PartialContent`] of any c-e structure created in this `Context`.
 ///
 /// For usage, see [`ContextHandle`] type, [`Contextual`] trait and
 /// [`InContext`] struct.
