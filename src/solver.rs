@@ -573,13 +573,13 @@ impl Solution {
 
         fork_set.extend(fork_map.into_iter().map(|(host, suit)| {
             let suit = Vec::from_iter(suit.into_iter());
-            let mut fork = Split::new_fork(host, suit, Default::default());
+            let mut fork = Split::new_fork(host, suit);
             solution.context.lock().unwrap().share_fork(&mut fork)
         }));
 
         join_set.extend(join_map.into_iter().map(|(host, suit)| {
             let suit = Vec::from_iter(suit.into_iter());
-            let mut join = Split::new_join(host, suit, Default::default());
+            let mut join = Split::new_join(host, suit);
             solution.context.lock().unwrap().share_join(&mut join)
         }));
 

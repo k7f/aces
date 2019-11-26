@@ -1,5 +1,5 @@
 use std::{
-    collections::{btree_map, BTreeMap},
+    collections::{btree_map, BTreeMap, BTreeSet},
     convert::TryInto,
     io::Read,
     fs::File,
@@ -24,8 +24,7 @@ enum LinkState {
 /// A single c-e structure.
 ///
 /// Internally, instances of this type own structural information (the
-/// cause and effect polynomials), semantic properties (node
-/// capacities for the carrier), the intermediate content
+/// cause and effect polynomials), the intermediate content
 /// representation from which a c-e structure originated (optionally),
 /// and some auxiliary recomputable data.  Other properties are
 /// available indirectly: `CEStructure` instance owns a
@@ -39,7 +38,7 @@ pub struct CEStructure {
     resolution:     Resolution,
     causes:         BTreeMap<PortID, Polynomial<LinkID>>,
     effects:        BTreeMap<PortID, Polynomial<LinkID>>,
-    carrier:        BTreeMap<NodeID, node::Capacity>,
+    carrier:        BTreeSet<NodeID>,
     links:          BTreeMap<LinkID, LinkState>,
     num_thin_links: u32,
     forks:          BTreeMap<NodeID, Vec<AtomID>>,
@@ -202,11 +201,11 @@ impl CEStructure {
 
             let split_id: AtomID = match face {
                 Tx => {
-                    let mut fork = Split::new_fork(node_id, co_node_ids, Default::default());
+                    let mut fork = Split::new_fork(node_id, co_node_ids);
                     self.context.lock().unwrap().share_fork(&mut fork).into()
                 }
                 Rx => {
-                    let mut join = Split::new_join(node_id, co_node_ids, Default::default());
+                    let mut join = Split::new_join(node_id, co_node_ids);
                     self.context.lock().unwrap().share_join(&mut join).into()
                 }
             };
@@ -303,7 +302,7 @@ impl CEStructure {
             }
         }
 
-        self.carrier.entry(node_id).or_insert_with(Default::default);
+        self.carrier.insert(node_id);
 
         Ok(())
     }

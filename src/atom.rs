@@ -4,8 +4,7 @@ use std::{
     error::Error,
 };
 use crate::{
-    ID, NodeID, Context, Contextual, ExclusivelyContextual, InContext, node, monomial, sat,
-    error::AcesError,
+    ID, NodeID, Context, Contextual, ExclusivelyContextual, InContext, node, sat, error::AcesError,
 };
 
 /// An abstract structural identifier serving as the common base of
@@ -609,16 +608,10 @@ pub struct Split {
     face:     node::Face,
     host_id:  NodeID,
     suit_ids: Vec<NodeID>,
-    weight:   monomial::Weight,
 }
 
 impl Split {
-    fn new(
-        face: node::Face,
-        host_id: NodeID,
-        suit_ids: Vec<NodeID>,
-        weight: monomial::Weight,
-    ) -> Self {
+    fn new(face: node::Face, host_id: NodeID, suit_ids: Vec<NodeID>) -> Self {
         if cfg!(debug_assertions) {
             let mut sit = suit_ids.iter();
 
@@ -633,17 +626,17 @@ impl Split {
                 panic!("Empty suit")
             }
         }
-        Split { atom_id: None, face, host_id, suit_ids, weight }
+        Split { atom_id: None, face, host_id, suit_ids }
     }
 
-    pub fn new_fork(host_id: NodeID, suit_ids: Vec<NodeID>, weight: monomial::Weight) -> Self {
+    pub fn new_fork(host_id: NodeID, suit_ids: Vec<NodeID>) -> Self {
         trace!("New fork: {:?} -> {:?}", host_id, suit_ids);
-        Split::new(node::Face::Tx, host_id, suit_ids, weight)
+        Split::new(node::Face::Tx, host_id, suit_ids)
     }
 
-    pub fn new_join(host_id: NodeID, suit_ids: Vec<NodeID>, weight: monomial::Weight) -> Self {
+    pub fn new_join(host_id: NodeID, suit_ids: Vec<NodeID>) -> Self {
         trace!("New join: {:?} <- {:?}", host_id, suit_ids);
-        Split::new(node::Face::Rx, host_id, suit_ids, weight)
+        Split::new(node::Face::Rx, host_id, suit_ids)
     }
 
     pub fn get_atom_id(&self) -> AtomID {
@@ -674,10 +667,6 @@ impl Split {
     pub fn get_suit_ids(&self) -> &[NodeID] {
         self.suit_ids.as_slice()
     }
-
-    pub fn get_weight(&self) -> monomial::Weight {
-        self.weight
-    }
 }
 
 impl fmt::Debug for Split {
@@ -695,24 +684,14 @@ impl fmt::Debug for Split {
         self.host_id.fmt(f)?;
         write!(f, ", suit_ids: ")?;
         self.suit_ids.fmt(f)?;
-        write!(f, ", weight: ")?;
-        self.weight.fmt(f)?;
         write!(f, " }}")
     }
 }
 
 impl PartialEq for Split {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
-        let result = self.face == other.face
-            && self.host_id == other.host_id
-            && self.suit_ids == other.suit_ids;
-
-        // FIXME
-        if result && self.weight != other.weight {
-            panic!("Split weight mismatch")
-        }
-
-        result
+        self.face == other.face && self.host_id == other.host_id && self.suit_ids == other.suit_ids
     }
 }
 

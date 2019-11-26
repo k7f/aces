@@ -2,7 +2,7 @@ use std::{slice, iter, cmp, ops, fmt, collections::BTreeSet, error::Error};
 use bit_vec::BitVec;
 use crate::{
     NodeID, Port, Link, LinkID, ContextHandle, Contextual, ExclusivelyContextual, InContextMut,
-    Atomic, node, monomial, sat, error::AcesError,
+    Atomic, node, sat, error::AcesError,
 };
 
 // FIXME sort rows as a way to fix Eq and, perhaps, to open some
@@ -10,17 +10,15 @@ use crate::{
 /// A formal polynomial.
 ///
 /// Internally a `Polynomial` is represented as a vector of _N_
-/// [`Atomic`] identifiers, a vector of _M_ [`monomial::Weight`]s, and
-/// a boolean matrix with _N_ columns and _M_ rows.  Vector of
-/// [`Atomic`] identifiers is sorted in strictly increasing order.  It
-/// represents the set of nodes occuring in the polynomial and _N_ is
-/// the number of such nodes.
+/// [`Atomic`] identifiers and a boolean matrix with _N_ columns and
+/// _M_ rows.  Vector of [`Atomic`] identifiers is sorted in strictly
+/// increasing order.  It represents the set of nodes occuring in the
+/// polynomial and _N_ is the number of such nodes.
 ///
 /// _M_ is the number of monomials in the canonical representation of
 /// the polynomial.  The order in which monomials are listed is
-/// arbitrary, but same for rows of the boolean matrix and elements of
-/// the weight vector.  An element in row _i_ and column _j_ of the
-/// matrix determines if a node in _j_-th position in the vector of
+/// arbitrary.  An element in row _i_ and column _j_ of the matrix
+/// determines if a node in _j_-th position in the vector of
 /// identifiers occurs in _i_-th monomial.
 ///
 /// `Polynomial`s may be compared and added using traits from
@@ -35,7 +33,6 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Polynomial<T: Atomic + fmt::Debug> {
     atomics: Vec<T>,
-    weights: Vec<monomial::Weight>,
     // FIXME choose a better representation of a boolean matrix.
     terms: Vec<BitVec>,
     dock:  Option<node::Face>,
@@ -90,30 +87,19 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
     /// Creates an empty polynomial, _&theta;_.
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self {
-            atomics: Default::default(),
-            weights: Default::default(),
-            terms:   Default::default(),
-            dock:    None,
-        }
+        Self { atomics: Default::default(), terms: Default::default(), dock: None }
     }
 
     /// Creates an empty polynomial, _&theta;_, docked at a given
     /// [`node::Face`].
     #[allow(clippy::new_without_default)]
     pub fn new_docked(dock: node::Face) -> Self {
-        Self {
-            atomics: Default::default(),
-            weights: Default::default(),
-            terms:   Default::default(),
-            dock:    Some(dock),
-        }
+        Self { atomics: Default::default(), terms: Default::default(), dock: Some(dock) }
     }
 
     /// Resets this polynomial into _&theta;_.
     pub fn clear(&mut self) {
         self.atomics.clear();
-        self.weights.clear();
         self.terms.clear();
     }
 
@@ -122,7 +108,6 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
     pub fn atomic_multiply(&mut self, atomic: T) {
         if self.is_empty() {
             self.atomics.push(atomic);
-            self.weights.push(Default::default());
 
             let mut row = BitVec::new();
             row.push(true);
@@ -194,8 +179,6 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             if self.atomics.is_empty() {
                 return Ok(false)
             } else {
-                self.weights.push(Default::default());
-
                 let row = BitVec::from_elem(self.atomics.len(), true);
                 self.terms.push(row);
 
@@ -282,7 +265,6 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             }
         }
 
-        self.weights.push(Default::default());
         self.terms.push(new_row);
 
         Ok(true)

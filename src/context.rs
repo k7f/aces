@@ -9,7 +9,7 @@ use crate::{
     LinkID, ForkID, JoinID, Semantics,
     name::NameSpace,
     atom::{AtomSpace, Atom},
-    sat, solver, runner,
+    node, monomial, sat, solver, runner,
 };
 
 /// A handle to a [`Context`] instance.
@@ -47,6 +47,8 @@ pub struct Context {
     nodes:        NameSpace,
     atoms:        AtomSpace,
     content:      BTreeMap<ID, PartialContent>,
+    capacities:   BTreeMap<NodeID, node::Capacity>,
+    multipliers:  BTreeMap<AtomID, monomial::Weight>,
     solver_props: solver::Props,
     runner_props: runner::Props,
 }
@@ -73,6 +75,8 @@ impl Context {
             nodes: Default::default(),
             atoms: Default::default(),
             content: Default::default(),
+            capacities: Default::default(),
+            multipliers: Default::default(),
             solver_props: Default::default(),
             runner_props: Default::default(),
         };
@@ -92,8 +96,8 @@ impl Context {
         Context::new_toplevel(name, ContentOrigin::Interactive)
     }
 
-    /// Clears content map and runtime attributes, but doesn't destroy
-    /// shared resources.
+    /// Clears content map, capacities, multipliers and runtime
+    /// attributes, but doesn't destroy shared resources.
     ///
     /// This method preserves the collection of [`Atom`]s, the two
     /// symbol tables, and the `Context`'s own given name and group
@@ -102,6 +106,8 @@ impl Context {
         // Fields unchanged: magic_id, name_id, globals, nodes, atoms.
         self.origin = new_origin;
         self.content.clear();
+        self.capacities.clear();
+        self.multipliers.clear();
         self.solver_props.clear();
         self.runner_props.clear();
     }
@@ -126,6 +132,8 @@ impl Context {
             let nodes = parent.nodes.clone();
             let atoms = parent.atoms.clone();
             let content = parent.content.clone();
+            let capacities = parent.capacities.clone();
+            let multipliers = parent.multipliers.clone();
             let solver_props = parent.solver_props.clone();
             let runner_props = parent.runner_props.clone();
 
@@ -137,6 +145,8 @@ impl Context {
                 nodes,
                 atoms,
                 content,
+                capacities,
+                multipliers,
                 solver_props,
                 runner_props,
             }
