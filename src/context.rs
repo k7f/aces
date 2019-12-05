@@ -49,7 +49,7 @@ pub struct Context {
     atoms:        AtomSpace,
     content:      BTreeMap<ID, PartialContent>,
     capacities:   BTreeMap<NodeID, node::Capacity>,
-    multipliers:  BTreeMap<AtomID, monomial::Weight>,
+    weights:      BTreeMap<AtomID, monomial::Weight>,
     solver_props: solver::Props,
     runner_props: runner::Props,
 }
@@ -77,7 +77,7 @@ impl Context {
             atoms: Default::default(),
             content: Default::default(),
             capacities: Default::default(),
-            multipliers: Default::default(),
+            weights: Default::default(),
             solver_props: Default::default(),
             runner_props: Default::default(),
         };
@@ -97,7 +97,7 @@ impl Context {
         Context::new_toplevel(name, ContentOrigin::Interactive)
     }
 
-    /// Clears content map, capacities, multipliers and runtime
+    /// Clears content map, capacities, weights and runtime
     /// attributes, but doesn't destroy shared resources.
     ///
     /// This method preserves the collection of [`Atom`]s, the two
@@ -108,7 +108,7 @@ impl Context {
         self.origin = new_origin;
         self.content.clear();
         self.capacities.clear();
-        self.multipliers.clear();
+        self.weights.clear();
         self.solver_props.clear();
         self.runner_props.clear();
     }
@@ -134,7 +134,7 @@ impl Context {
             let atoms = parent.atoms.clone();
             let content = parent.content.clone();
             let capacities = parent.capacities.clone();
-            let multipliers = parent.multipliers.clone();
+            let weights = parent.weights.clone();
             let solver_props = parent.solver_props.clone();
             let runner_props = parent.runner_props.clone();
 
@@ -147,7 +147,7 @@ impl Context {
                 atoms,
                 content,
                 capacities,
-                multipliers,
+                weights,
                 solver_props,
                 runner_props,
             }
@@ -300,6 +300,67 @@ impl Context {
 
     pub fn has_content<S: AsRef<str>>(&self, name: S) -> bool {
         self.globals.get_id(name).map_or(false, |id| self.content.contains_key(&id))
+    }
+
+    // Capacities
+
+    pub fn set_capacity<S: AsRef<str>>(
+        &mut self,
+        node_name: S,
+        cap: node::Capacity,
+    ) -> Option<node::Capacity> {
+        let node_id = self.share_node_name(node_name.as_ref());
+
+        self.capacities.insert(node_id, cap)
+    }
+
+    // Multiplicities
+
+    pub fn set_weight<S, I>(
+        &mut self,
+        face: node::Face,
+        host_name: S,
+        suit_names: I,
+        weight: monomial::Weight,
+    ) -> Option<monomial::Weight>
+    where
+        S: AsRef<str>,
+        I: IntoIterator,
+        I::Item: AsRef<str>,
+    {
+        let host_id = self.share_node_name(host_name.as_ref());
+        let suit_ids = suit_names.into_iter().map(|n| self.share_node_name(n.as_ref())).collect();
+
+        let atom_id = match face {
+            node::Face::Tx => {
+                let mut fork = Split::new_fork(host_id, suit_ids);
+                let fork_id = self.share_fork(&mut fork);
+
+                fork_id.get()
+            }
+            node::Face::Rx => {
+                let mut join = Split::new_join(host_id, suit_ids);
+                let join_id = self.share_join(&mut join);
+
+                join_id.get()
+            }
+        };
+
+        self.weights.insert(atom_id, weight)
+    }
+
+    pub fn set_inhibitor<S, I>(
+        &mut self,
+        face: node::Face,
+        host_name: S,
+        suit_names: I,
+    ) -> Option<monomial::Weight>
+    where
+        S: AsRef<str>,
+        I: IntoIterator,
+        I::Item: AsRef<str>,
+    {
+        self.set_weight(face, host_name, suit_names, monomial::Weight::new_omega())
     }
 
     // Solver props
