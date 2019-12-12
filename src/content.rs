@@ -364,6 +364,14 @@ impl Content for PartialContent {
     }
 }
 
+pub trait CompilableMut {
+    fn compile_mut(&mut self, ctx: &ContextHandle) -> Result<bool, Box<dyn Error>>;
+}
+
+pub trait Compilable {
+    fn compile(&self, ctx: &ContextHandle) -> Result<bool, Box<dyn Error>>;
+}
+
 pub trait CompilableAsContent {
     /// Get a compiled [`PartialContent`] of `self`.
     ///

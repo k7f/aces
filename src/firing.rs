@@ -1,6 +1,9 @@
 use std::{slice, collections::BTreeMap, convert::TryFrom, error::Error};
 use rand::{RngCore, Rng};
-use crate::{ContextHandle, Contextual, NodeID, ForkID, JoinID, node, Solution, State, AcesError};
+use crate::{
+    Multiplicity, ContextHandle, Contextual, NodeID, ForkID, JoinID, node, Solution, State,
+    AcesError,
+};
 
 #[derive(Default, Debug)]
 pub struct FiringComponent {
@@ -12,13 +15,13 @@ impl FiringComponent {
     // FIXME weight
     pub fn is_enabled(&self, state: &State) -> bool {
         for (&node_id, _fork_id) in self.pre_set.iter() {
-            if state.get(node_id) == 0 {
+            if state.get(node_id).is_zero() {
                 return false
             }
         }
 
         for (&node_id, _join_id) in self.post_set.iter() {
-            if state.get(node_id) > 0 {
+            if state.get(node_id).is_positive() {
                 return false
             }
         }
@@ -36,11 +39,11 @@ impl FiringComponent {
     /// [`fire()`]: FiringComponent::fire()
     pub fn fire(&self, state: &mut State) {
         for (&node_id, _fork_id) in self.pre_set.iter() {
-            state.set(node_id, 0);
+            state.set(node_id, Multiplicity::zero());
         }
 
         for (&node_id, _join_id) in self.post_set.iter() {
-            state.set(node_id, 1);
+            state.set(node_id, Multiplicity::one());
         }
     }
 }

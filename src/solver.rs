@@ -228,17 +228,23 @@ impl<'a> Solver<'a> {
             let mut all_lits: Vec<_> = self
                 .all_vars
                 .iter()
-                .filter_map(|&var| ctx.is_port(var.into_atom_id()).then(Lit::from_var(var, true)))
+                .filter_map(|&var| {
+                    ctx.is_port(var.into_atom_id()).then(|| Lit::from_var(var, true))
+                })
                 .collect();
             let mut fork_lits: Vec<_> = self
                 .all_vars
                 .iter()
-                .filter_map(|&var| ctx.is_fork(var.into_atom_id()).then(Lit::from_var(var, true)))
+                .filter_map(|&var| {
+                    ctx.is_fork(var.into_atom_id()).then(|| Lit::from_var(var, true))
+                })
                 .collect();
             let mut join_lits: Vec<_> = self
                 .all_vars
                 .iter()
-                .filter_map(|&var| ctx.is_join(var.into_atom_id()).then(Lit::from_var(var, true)))
+                .filter_map(|&var| {
+                    ctx.is_join(var.into_atom_id()).then(|| Lit::from_var(var, true))
+                })
                 .collect();
 
             // Include all fork variables or all join variables,
@@ -273,7 +279,7 @@ impl<'a> Solver<'a> {
     /// [`add_formula()`]: Solver::add_formula()
     pub fn inhibit_model(&mut self, model: &[Lit]) -> Result<(), AcesError> {
         let anti_lits =
-            model.iter().filter_map(|&lit| self.all_vars.contains(&lit.var()).then(!lit));
+            model.iter().filter_map(|&lit| self.all_vars.contains(&lit.var()).then(|| !lit));
         let clause = Clause::from_literals(anti_lits, "model inhibition");
 
         self.add_clause(clause)
@@ -282,7 +288,7 @@ impl<'a> Solver<'a> {
     fn inhibit_last_model(&mut self) -> Result<(), AcesError> {
         if let ModelSearchResult::Found(ref model) = self.last_model {
             let anti_lits =
-                model.iter().filter_map(|&lit| self.all_vars.contains(&lit.var()).then(!lit));
+                model.iter().filter_map(|&lit| self.all_vars.contains(&lit.var()).then(|| !lit));
             let clause = Clause::from_literals(anti_lits, "model inhibition");
 
             self.add_clause(clause)

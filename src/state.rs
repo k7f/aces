@@ -4,17 +4,17 @@ use std::{
     error::Error,
 };
 use log::Level::{Debug, Trace};
-use crate::{ContextHandle, Contextual, NodeID, FiringSet};
+use crate::{Multiplicity, ContextHandle, Contextual, NodeID, FiringSet};
 
 #[derive(Clone, Default, Debug)]
 pub struct State {
-    tokens: BTreeMap<NodeID, u64>,
+    tokens: BTreeMap<NodeID, Multiplicity>,
 }
 
 impl State {
     pub fn from_trigger<S: AsRef<str>>(ctx: &ContextHandle, trigger_name: S) -> Self {
         let trigger_id = ctx.lock().unwrap().share_node_name(trigger_name);
-        let tokens = BTreeMap::from_iter(Some((trigger_id, 1)));
+        let tokens = BTreeMap::from_iter(Some((trigger_id, Multiplicity::one())));
 
         State { tokens }
     }
@@ -23,19 +23,19 @@ impl State {
         self.tokens.clear()
     }
 
-    pub fn get(&self, node_id: NodeID) -> u64 {
-        self.tokens.get(&node_id).copied().unwrap_or(0)
+    pub fn get(&self, node_id: NodeID) -> Multiplicity {
+        self.tokens.get(&node_id).copied().unwrap_or_else(Multiplicity::zero)
     }
 
-    pub fn set(&mut self, node_id: NodeID, num_tokens: u64) {
+    pub fn set(&mut self, node_id: NodeID, num_tokens: Multiplicity) {
         match self.tokens.entry(node_id) {
             btree_map::Entry::Vacant(entry) => {
-                if num_tokens > 0 {
+                if num_tokens.is_positive() {
                     entry.insert(num_tokens);
                 }
             }
             btree_map::Entry::Occupied(mut entry) => {
-                if num_tokens > 0 {
+                if num_tokens.is_positive() {
                     *entry.get_mut() = num_tokens;
                 } else {
                     entry.remove();
@@ -108,7 +108,7 @@ impl Contextual for State {
         result.push('{');
 
         for (node_id, &num_tokens) in self.tokens.iter() {
-            if num_tokens > 0 {
+            if num_tokens.is_positive() {
                 if at_start {
                     at_start = false;
                 } else {

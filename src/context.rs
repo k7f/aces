@@ -314,7 +314,7 @@ impl Context {
         self.capacities.insert(node_id, cap)
     }
 
-    // Multiplicities
+    // Weights
 
     pub fn set_weight<S, I>(
         &mut self,
@@ -360,7 +360,7 @@ impl Context {
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        self.set_weight(face, host_name, suit_names, monomial::Weight::new_omega())
+        self.set_weight(face, host_name, suit_names, monomial::Weight::omega())
     }
 
     // Solver props

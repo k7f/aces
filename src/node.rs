@@ -1,5 +1,7 @@
 use std::{fmt, error::Error};
-use crate::{ID, Context, ExclusivelyContextual, InContext, Atomic, sat, error::AcesError};
+use crate::{
+    ID, Multiplicity, Context, ExclusivelyContextual, InContext, Atomic, sat, error::AcesError,
+};
 
 /// An identifier of a single node used in c-e structures.
 ///
@@ -90,36 +92,5 @@ impl fmt::Display for Face {
 ///
 /// This is the type of values of the function _cap<sub>U</sub>_,
 /// which maps nodes in the carrier of a c-e structure _U_ to their
-/// capacities.  Valid capacities are positive integers or _&omega;_
-/// (infinite capacity).  The default value is 1.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-#[repr(transparent)]
-pub struct Capacity(u64);
-
-impl Capacity {
-    pub fn new_omega() -> Self {
-        Capacity(0)
-    }
-
-    pub fn new_finite(value: u64) -> Option<Self> {
-        if value > 0 {
-            Some(Capacity(value))
-        } else {
-            None
-        }
-    }
-
-    pub fn is_omega(self) -> bool {
-        self.0 == 0
-    }
-
-    pub fn is_finite(self) -> bool {
-        self.0 > 0
-    }
-}
-
-impl Default for Capacity {
-    fn default() -> Self {
-        Capacity(1)
-    }
-}
+/// capacities.
+pub type Capacity = Multiplicity;
