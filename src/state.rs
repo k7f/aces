@@ -4,7 +4,7 @@ use std::{
     error::Error,
 };
 use log::Level::{Debug, Trace};
-use crate::{Multiplicity, ContextHandle, Contextual, NodeID, FiringSet};
+use crate::{Multiplicity, ContextHandle, Contextual, NodeID, FiringSet, AcesError};
 
 #[derive(Clone, Default, Debug)]
 pub struct State {
@@ -44,13 +44,70 @@ impl State {
         }
     }
 
+    pub fn decrease(&mut self, node_id: NodeID, num_tokens: Multiplicity) -> Result<(), AcesError> {
+        if num_tokens.is_positive() {
+            if let btree_map::Entry::Occupied(mut entry) = self.tokens.entry(node_id) {
+                let tokens_before = *entry.get_mut();
+
+                if tokens_before.is_positive() {
+                    if num_tokens.is_finite() {
+                        if let Some(tokens_after) = tokens_before.checked_sub(num_tokens) {
+                            *entry.get_mut() = tokens_after;
+                        } else {
+                            return Err(AcesError::StateUnderflow)
+                        }
+                    } else {
+                        return Err(AcesError::LeakedInhibitor)
+                    }
+                } else if num_tokens.is_finite() {
+                    return Err(AcesError::StateUnderflow)
+                }
+            } else {
+                return Err(AcesError::StateUnderflow)
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn increase(&mut self, node_id: NodeID, num_tokens: Multiplicity) -> Result<(), AcesError> {
+        if num_tokens.is_positive() {
+            match self.tokens.entry(node_id) {
+                btree_map::Entry::Vacant(entry) => {
+                    entry.insert(num_tokens);
+                }
+                btree_map::Entry::Occupied(mut entry) => {
+                    let tokens_before = *entry.get_mut();
+
+                    if tokens_before.is_zero() {
+                        *entry.get_mut() = num_tokens;
+                    } else if tokens_before.is_finite() {
+                        if num_tokens.is_omega() {
+                            *entry.get_mut() = num_tokens;
+                        } else if let Some(tokens_after) = tokens_before.checked_add(num_tokens) {
+                            if tokens_after.is_finite() {
+                                *entry.get_mut() = tokens_after;
+                            } else {
+                                return Err(AcesError::StateOverflow)
+                            }
+                        } else {
+                            return Err(AcesError::StateOverflow)
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn transition_debug<R: rand::RngCore>(
         &mut self,
         ctx: &ContextHandle,
         num_steps: usize,
         fset: &FiringSet,
         rng: &mut R,
-    ) -> Option<usize> {
+    ) -> Result<Option<usize>, AcesError> {
         if log_enabled!(Debug) {
             if num_steps == 0 {
                 debug!("Go from {}", self.with(ctx));
@@ -61,7 +118,7 @@ impl State {
             }
         }
 
-        let enabled_fcs = fset.get_enabled(self);
+        let enabled_fcs = fset.get_enabled(ctx, self);
 
         if let Some(fc_id) = enabled_fcs.get_random(rng) {
             if log_enabled!(Trace) {
@@ -77,25 +134,30 @@ impl State {
                 }
             }
 
-            fset.as_slice()[fc_id].fire(self);
+            fset.as_slice()[fc_id].fire(ctx, self)?;
 
-            Some(fc_id)
+            Ok(Some(fc_id))
         } else {
-            None
+            Ok(None)
         }
     }
 
     /// Returns ID of the activated firing component taken from the
     /// given [`FiringSet`].
-    pub fn transition<R: rand::RngCore>(&mut self, fset: &FiringSet, rng: &mut R) -> Option<usize> {
-        let enabled_fcs = fset.get_enabled(self);
+    pub fn transition<R: rand::RngCore>(
+        &mut self,
+        ctx: &ContextHandle,
+        fset: &FiringSet,
+        rng: &mut R,
+    ) -> Result<Option<usize>, AcesError> {
+        let enabled_fcs = fset.get_enabled(ctx, self);
 
         if let Some(fc_id) = enabled_fcs.get_random(rng) {
-            fset.as_slice()[fc_id].fire(self);
+            fset.as_slice()[fc_id].fire(ctx, self)?;
 
-            Some(fc_id)
+            Ok(Some(fc_id))
         } else {
-            None
+            Ok(None)
         }
     }
 }

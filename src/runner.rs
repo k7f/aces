@@ -1,5 +1,5 @@
 use log::Level::Debug;
-use crate::{ContextHandle, Contextual, State, Semantics, FiringSet, FiringSequence};
+use crate::{ContextHandle, Contextual, State, Semantics, FiringSet, FiringSequence, AcesError};
 
 #[derive(Clone, Default, Debug)]
 pub(crate) struct Props {
@@ -51,21 +51,21 @@ impl Runner {
         runner
     }
 
-    pub fn go(&mut self, fset: &FiringSet) {
+    pub fn go(&mut self, fset: &FiringSet) -> Result<(), AcesError> {
         let mut rng = rand::thread_rng();
 
         self.update_props();
 
         if self.semantics == Semantics::Parallel {
             println!("Firing under parallel semantics isn't implemented yet.");
-            return
+            return Ok(())
         }
 
         for num_steps in 0..self.max_steps {
             let fc_id = if log_enabled!(Debug) {
-                self.current_state.transition_debug(&self.context, num_steps, fset, &mut rng)
+                self.current_state.transition_debug(&self.context, num_steps, fset, &mut rng)?
             } else {
-                self.current_state.transition(fset, &mut rng)
+                self.current_state.transition(&self.context, fset, &mut rng)?
             };
 
             if let Some(fc_id) = fc_id {
@@ -73,7 +73,7 @@ impl Runner {
             } else {
                 debug!("Deadlock after {} steps", num_steps);
 
-                return
+                return Ok(())
             }
         }
 
@@ -81,6 +81,8 @@ impl Runner {
             debug!("Stop at {}", self.current_state.with(&self.context));
             debug!("Done after {} steps", self.max_steps);
         }
+
+        Ok(())
     }
 
     #[inline]

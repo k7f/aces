@@ -52,7 +52,7 @@ impl Command for Go {
                 self.trigger_name.as_ref().map(|s| s.as_str()).unwrap_or("Start"),
             );
 
-            runner.go(fset);
+            runner.go(fset)?;
 
             let fcs = runner.get_firing_sequence();
             let num_steps = fcs.len();
@@ -68,7 +68,7 @@ impl Command for Go {
 
                 println!("{}. {}", i + 1, fc.with(ctx));
 
-                fc.fire(&mut state);
+                fc.fire(ctx, &mut state)?;
             }
 
             if num_steps < runner.get_max_steps() {

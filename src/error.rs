@@ -24,6 +24,10 @@ pub enum AcesError {
     FiringNodeDuplicated(node::Face),
     IncoherentStructure(String),
 
+    LeakedInhibitor,
+    StateUnderflow,
+    StateOverflow,
+
     EmptyClauseRejectedByFormula(String),
     EmptyClauseRejectedBySolver(String),
     EmptyCausesOfInternalNode(String),
@@ -113,6 +117,10 @@ impl Error for AcesError {
             FiringNodeMissing(_) => "Missing node in firing component",
             FiringNodeDuplicated(_) => "Duplicated node in firing component",
             IncoherentStructure(_) => "Incoherent c-e structure",
+
+            LeakedInhibitor => "Leaked inhibitor",
+            StateUnderflow => "State underflow",
+            StateOverflow => "State overflow",
 
             EmptyClauseRejectedByFormula(_) => "Empty clause rejected by formula",
             EmptyClauseRejectedBySolver(_) => "Empty clause rejected by solver",

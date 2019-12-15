@@ -6,10 +6,10 @@ use std::{
 };
 use crate::{
     ContentOrigin, PartialContent, Port, Link, Split, Fork, Join, ID, NodeID, AtomID, PortID,
-    LinkID, ForkID, JoinID, Semantics,
+    LinkID, ForkID, JoinID, Semantics, Capacity, Weight,
     name::NameSpace,
     atom::{AtomSpace, Atom},
-    node, monomial, sat, solver, runner,
+    node, sat, solver, runner,
 };
 
 /// A handle to a [`Context`] instance.
@@ -32,7 +32,7 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 ///
 /// This is an umbrella type which, currently, includes a collection
 /// of [`Atom`]s, two symbol tables (one for structure names, and
-/// another for node names), node capacities, monomial weights, and
+/// another for node names), node capacities, split weights, and
 /// [`PartialContent`] of any c-e structure created in this `Context`.
 ///
 /// For usage, see [`ContextHandle`] type, [`Contextual`] trait and
@@ -48,8 +48,8 @@ pub struct Context {
     nodes:        NameSpace,
     atoms:        AtomSpace,
     content:      BTreeMap<ID, PartialContent>,
-    capacities:   BTreeMap<NodeID, node::Capacity>,
-    weights:      BTreeMap<AtomID, monomial::Weight>,
+    capacities:   BTreeMap<NodeID, Capacity>,
+    weights:      BTreeMap<AtomID, Weight>,
     solver_props: solver::Props,
     runner_props: runner::Props,
 }
@@ -304,25 +304,29 @@ impl Context {
 
     // Capacities
 
-    pub fn set_capacity<S: AsRef<str>>(
+    pub fn set_capacity_by_name<S: AsRef<str>>(
         &mut self,
         node_name: S,
-        cap: node::Capacity,
-    ) -> Option<node::Capacity> {
+        cap: Capacity,
+    ) -> Option<Capacity> {
         let node_id = self.share_node_name(node_name.as_ref());
 
         self.capacities.insert(node_id, cap)
     }
 
+    pub fn get_capacity(&self, node_id: NodeID) -> Capacity {
+        self.capacities.get(&node_id).copied().unwrap_or_else(Capacity::one)
+    }
+
     // Weights
 
-    pub fn set_weight<S, I>(
+    pub fn set_weight_by_name<S, I>(
         &mut self,
         face: node::Face,
         host_name: S,
         suit_names: I,
-        weight: monomial::Weight,
-    ) -> Option<monomial::Weight>
+        weight: Weight,
+    ) -> Option<Weight>
     where
         S: AsRef<str>,
         I: IntoIterator,
@@ -349,18 +353,22 @@ impl Context {
         self.weights.insert(atom_id, weight)
     }
 
-    pub fn set_inhibitor<S, I>(
+    pub fn set_inhibitor_by_name<S, I>(
         &mut self,
         face: node::Face,
         host_name: S,
         suit_names: I,
-    ) -> Option<monomial::Weight>
+    ) -> Option<Weight>
     where
         S: AsRef<str>,
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        self.set_weight(face, host_name, suit_names, monomial::Weight::omega())
+        self.set_weight_by_name(face, host_name, suit_names, Weight::omega())
+    }
+
+    pub fn get_weight(&self, atom_id: AtomID) -> Weight {
+        self.weights.get(&atom_id).copied().unwrap_or_else(Weight::one)
     }
 
     // Solver props

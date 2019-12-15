@@ -1,9 +1,6 @@
 use std::{slice, collections::BTreeMap, convert::TryFrom, error::Error};
 use rand::{RngCore, Rng};
-use crate::{
-    Multiplicity, ContextHandle, Contextual, NodeID, ForkID, JoinID, node, Solution, State,
-    AcesError,
-};
+use crate::{ContextHandle, Contextual, NodeID, ForkID, JoinID, node, Solution, State, AcesError};
 
 #[derive(Default, Debug)]
 pub struct FiringComponent {
@@ -12,39 +9,66 @@ pub struct FiringComponent {
 }
 
 impl FiringComponent {
-    // FIXME weight
-    pub fn is_enabled(&self, state: &State) -> bool {
-        for (&node_id, _fork_id) in self.pre_set.iter() {
-            if state.get(node_id).is_zero() {
+    pub fn is_enabled(&self, ctx: &ContextHandle, state: &State) -> bool {
+        let ctx = ctx.lock().unwrap();
+
+        for (&node_id, fork_id) in self.pre_set.iter() {
+            let weight = ctx.get_weight(fork_id.get());
+            let tokens = state.get(node_id);
+
+            if weight.is_omega() {
+                if tokens.is_positive() {
+                    return false
+                }
+            } else if tokens < weight {
                 return false
             }
         }
 
-        for (&node_id, _join_id) in self.post_set.iter() {
-            if state.get(node_id).is_positive() {
-                return false
+        for (&node_id, join_id) in self.post_set.iter() {
+            let capacity = ctx.get_capacity(node_id);
+            let weight = ctx.get_weight(join_id.get());
+
+            if let Some(tokens_after) = state.get(node_id).checked_add(weight) {
+                if tokens_after > capacity {
+                    return false
+                }
+            } else {
+                warn!("Overflow of state when checking enablement");
+
+                if capacity.is_finite() {
+                    return false
+                }
             }
         }
 
         true
     }
 
-    // FIXME weight
-    /// Note: the firing component is assumed to be enabled in the
-    /// given state.  Since this routine doesn't check for enablement,
-    /// [`is_enabled()`] should be called (directly or e.g. via
-    /// [`FiringSet::get_enabled()`]) prior to a call to [`fire()`].
+    /// Note: this routine doesn't check for enablement.  Instead, it
+    /// assumes that the firing component is enabled in the given
+    /// state.  Therefore, prior to a call to [`fire()`],
+    /// [`is_enabled()`] should return `true` (it may be called
+    /// directly, or e.g. via [`FiringSet::get_enabled()`]).
     ///
     /// [`is_enabled()`]: FiringComponent::is_enabled()
     /// [`fire()`]: FiringComponent::fire()
-    pub fn fire(&self, state: &mut State) {
-        for (&node_id, _fork_id) in self.pre_set.iter() {
-            state.set(node_id, Multiplicity::zero());
+    pub fn fire(&self, ctx: &ContextHandle, state: &mut State) -> Result<(), AcesError> {
+        let ctx = ctx.lock().unwrap();
+
+        for (&node_id, fork_id) in self.pre_set.iter() {
+            let weight = ctx.get_weight(fork_id.get());
+
+            state.decrease(node_id, weight)?;
         }
 
-        for (&node_id, _join_id) in self.post_set.iter() {
-            state.set(node_id, Multiplicity::one());
+        for (&node_id, join_id) in self.post_set.iter() {
+            let weight = ctx.get_weight(join_id.get());
+
+            state.increase(node_id, weight)?;
         }
+
+        Ok(())
     }
 }
 
@@ -140,11 +164,11 @@ impl FiringSet {
         self.fcs.as_slice()
     }
 
-    pub fn get_enabled(&self, state: &State) -> FiringSequence {
+    pub fn get_enabled(&self, ctx: &ContextHandle, state: &State) -> FiringSequence {
         let mut enabled_fcs = FiringSequence::new();
 
         for (pos, fc) in self.fcs.as_slice().iter().enumerate() {
-            if fc.is_enabled(state) {
+            if fc.is_enabled(ctx, state) {
                 enabled_fcs.push(pos)
             }
         }

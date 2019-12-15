@@ -34,8 +34,8 @@ use crate::{
 pub struct Polynomial<T: Atomic + fmt::Debug> {
     atomics: Vec<T>,
     // FIXME choose a better representation of a boolean matrix.
-    terms: Vec<BitVec>,
-    dock:  Option<node::Face>,
+    terms:   Vec<BitVec>,
+    dock:    Option<node::Face>,
 }
 
 impl Polynomial<LinkID> {

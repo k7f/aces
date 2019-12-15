@@ -1,7 +1,5 @@
 use std::{fmt, error::Error};
-use crate::{
-    ID, Multiplicity, Context, ExclusivelyContextual, InContext, Atomic, sat, error::AcesError,
-};
+use crate::{ID, Context, ExclusivelyContextual, InContext, Atomic, sat, error::AcesError};
 
 /// An identifier of a single node used in c-e structures.
 ///
@@ -87,10 +85,3 @@ impl fmt::Display for Face {
         }
     }
 }
-
-/// A maximum number of tokens a node may hold.
-///
-/// This is the type of values of the function _cap<sub>U</sub>_,
-/// which maps nodes in the carrier of a c-e structure _U_ to their
-/// capacities.
-pub type Capacity = Multiplicity;
