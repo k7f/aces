@@ -8,7 +8,7 @@ use std::{
 };
 use log::Level::Trace;
 use crate::{
-    ContextHandle, Contextual, ExclusivelyContextual, Port, Split, AtomID, NodeID, PortID, LinkID,
+    ContextHandle, Contextual, ExclusivelyContextual, Port, Harc, AtomID, NodeID, PortID, LinkID,
     ForkID, JoinID, Polynomial, FiringSet, Content, content::content_from_str, node, sat,
     sat::Resolution, Solver, AcesError,
 };
@@ -43,7 +43,7 @@ pub struct CEStructure {
     num_thin_links: u32,
     forks:          BTreeMap<NodeID, Vec<AtomID>>,
     joins:          BTreeMap<NodeID, Vec<AtomID>>,
-    // FIXME define `struct Cosplits`, grouped on demand (cf. `group_cosplits`)
+    // FIXME define `struct Coharcs`, grouped on demand (cf. `group_coharcs`)
     co_forks:       BTreeMap<AtomID, Vec<AtomID>>, // Joins -> 2^Forks
     co_joins:       BTreeMap<AtomID, Vec<AtomID>>, // Forks -> 2^Joins
 }
@@ -70,31 +70,31 @@ impl CEStructure {
         }
     }
 
-    fn add_split_to_host(&mut self, split_id: AtomID, face: node::Face, node_id: NodeID) {
-        let split_entry = match face {
+    fn add_harc_to_host(&mut self, harc_id: AtomID, face: node::Face, node_id: NodeID) {
+        let harc_entry = match face {
             node::Face::Tx => self.forks.entry(node_id),
             node::Face::Rx => self.joins.entry(node_id),
         };
 
-        match split_entry {
+        match harc_entry {
             btree_map::Entry::Vacant(entry) => {
-                entry.insert(vec![split_id]);
+                entry.insert(vec![harc_id]);
             }
             btree_map::Entry::Occupied(mut entry) => {
                 let sids = entry.get_mut();
 
-                if let Err(pos) = sids.binary_search(&split_id) {
-                    sids.insert(pos, split_id);
+                if let Err(pos) = sids.binary_search(&harc_id) {
+                    sids.insert(pos, harc_id);
                 } // else idempotency of addition.
             }
         }
     }
 
-    fn add_split_to_suit(&mut self, split_id: AtomID, face: node::Face, co_split_ids: &[AtomID]) {
-        for &co_split_id in co_split_ids.iter() {
-            let split_entry = match face {
-                node::Face::Tx => self.co_forks.entry(co_split_id),
-                node::Face::Rx => self.co_joins.entry(co_split_id),
+    fn add_harc_to_suit(&mut self, harc_id: AtomID, face: node::Face, co_harc_ids: &[AtomID]) {
+        for &co_harc_id in co_harc_ids.iter() {
+            let harc_entry = match face {
+                node::Face::Tx => self.co_forks.entry(co_harc_id),
+                node::Face::Rx => self.co_joins.entry(co_harc_id),
             };
 
             if log_enabled!(Trace) {
@@ -102,36 +102,36 @@ impl CEStructure {
                     node::Face::Tx => {
                         trace!(
                             "Old join's co_forks[{}] -> {}",
-                            JoinID(co_split_id).with(&self.context),
-                            ForkID(split_id).with(&self.context),
+                            JoinID(co_harc_id).with(&self.context),
+                            ForkID(harc_id).with(&self.context),
                         );
                     }
                     node::Face::Rx => {
                         trace!(
                             "Old fork's co_joins[{}] -> {}",
-                            ForkID(co_split_id).with(&self.context),
-                            JoinID(split_id).with(&self.context)
+                            ForkID(co_harc_id).with(&self.context),
+                            JoinID(harc_id).with(&self.context)
                         );
                     }
                 }
             }
 
-            match split_entry {
+            match harc_entry {
                 btree_map::Entry::Vacant(entry) => {
-                    entry.insert(vec![split_id]);
+                    entry.insert(vec![harc_id]);
                 }
                 btree_map::Entry::Occupied(mut entry) => {
                     let sids = entry.get_mut();
 
-                    if let Err(pos) = sids.binary_search(&split_id) {
-                        sids.insert(pos, split_id);
+                    if let Err(pos) = sids.binary_search(&harc_id) {
+                        sids.insert(pos, harc_id);
                     } // else idempotency of addition.
                 }
             }
         }
     }
 
-    fn create_splits(
+    fn create_harcs(
         &mut self,
         face: node::Face,
         node_id: NodeID,
@@ -172,71 +172,71 @@ impl CEStructure {
                 }
             }
 
-            let mut co_splits = Vec::new();
+            let mut co_harcs = Vec::new();
 
             for nid in fat_co_node_ids.iter() {
-                if let Some(split_ids) = match face {
+                if let Some(harc_ids) = match face {
                     Tx => self.joins.get(nid),
                     Rx => self.forks.get(nid),
                 } {
                     let ctx = self.context.lock().unwrap();
 
-                    for &sid in split_ids {
-                        if let Some(split) = match face {
+                    for &sid in harc_ids {
+                        if let Some(harc) = match face {
                             Tx => ctx.get_join(sid.into()),
                             Rx => ctx.get_fork(sid.into()),
                         } {
-                            if split.get_suit_ids().binary_search(&node_id).is_ok() {
-                                co_splits.push(sid);
+                            if harc.get_suit_ids().binary_search(&node_id).is_ok() {
+                                co_harcs.push(sid);
                             }
                         }
                     }
                 } else {
-                    // This co_node has no co_splits yet, a condition
+                    // This co_node has no co_harcs yet, a condition
                     // which should have been detected above as a thin
                     // link.
                     return Err(AcesError::IncoherencyLeak)
                 }
             }
 
-            let split_id: AtomID = match face {
+            let harc_id: AtomID = match face {
                 Tx => {
-                    let mut fork = Split::new_fork(node_id, co_node_ids);
+                    let mut fork = Harc::new_fork(node_id, co_node_ids);
                     self.context.lock().unwrap().share_fork(&mut fork).into()
                 }
                 Rx => {
-                    let mut join = Split::new_join(node_id, co_node_ids);
+                    let mut join = Harc::new_join(node_id, co_node_ids);
                     self.context.lock().unwrap().share_join(&mut join).into()
                 }
             };
 
-            self.add_split_to_host(split_id, face, node_id);
+            self.add_harc_to_host(harc_id, face, node_id);
 
-            if !co_splits.is_empty() {
-                self.add_split_to_suit(split_id, face, co_splits.as_slice());
+            if !co_harcs.is_empty() {
+                self.add_harc_to_suit(harc_id, face, co_harcs.as_slice());
 
                 if log_enabled!(Trace) {
                     match face {
                         Tx => {
                             trace!(
                                 "New fork's co_joins[{}] -> {:?}",
-                                ForkID(split_id).with(&self.context),
-                                co_splits
+                                ForkID(harc_id).with(&self.context),
+                                co_harcs
                             );
                         }
                         Rx => {
                             trace!(
                                 "New join's co_forks[{}] -> {:?}",
-                                JoinID(split_id).with(&self.context),
-                                co_splits
+                                JoinID(harc_id).with(&self.context),
+                                co_harcs
                             );
                         }
                     }
                 }
 
                 match face {
-                    Tx => self.co_joins.insert(split_id, co_splits),
-                    Rx => self.co_forks.insert(split_id, co_splits),
+                    Tx => self.co_joins.insert(harc_id, co_harcs),
+                    Rx => self.co_forks.insert(harc_id, co_harcs),
                 };
             }
         }
@@ -286,7 +286,7 @@ impl CEStructure {
             }
         }
 
-        self.create_splits(face, node_id, &poly)?;
+        self.create_harcs(face, node_id, &poly)?;
 
         let poly_entry = match face {
             node::Face::Rx => self.causes.entry(port_id),
@@ -480,40 +480,40 @@ impl CEStructure {
         Ok(formula)
     }
 
-    /// Given a flat list of co-splits, groups them by their host
-    /// nodes (i.e. by suit members of the considered split), and
+    /// Given a flat list of co-harcs, groups them by their host
+    /// nodes (i.e. by suit members of the considered harc), and
     /// returns a vector of vectors of [`AtomID`]s.
     ///
     /// The result, if interpreted in terms of SAT encoding, is a
-    /// conjunction of exclusive choices of co-splits.
-    fn group_cosplits(&self, cosplit_ids: &[AtomID]) -> Result<Vec<Vec<AtomID>>, AcesError> {
-        if cosplit_ids.len() < 2 {
-            if cosplit_ids.is_empty() {
+    /// conjunction of exclusive choices of co-harcs.
+    fn group_coharcs(&self, coharc_ids: &[AtomID]) -> Result<Vec<Vec<AtomID>>, AcesError> {
+        if coharc_ids.len() < 2 {
+            if coharc_ids.is_empty() {
                 Err(AcesError::IncoherencyLeak)
             } else {
-                Ok(vec![cosplit_ids.to_vec()])
+                Ok(vec![coharc_ids.to_vec()])
             }
         } else {
             let mut cohost_map: BTreeMap<NodeID, Vec<AtomID>> = BTreeMap::new();
 
-            for &cosplit_id in cosplit_ids.iter() {
+            for &coharc_id in coharc_ids.iter() {
                 let ctx = self.context.lock().unwrap();
-                let cosplit = ctx.get_split(cosplit_id).ok_or(AcesError::SplitMissingForID)?;
-                let cohost_id = cosplit.get_host_id();
+                let coharc = ctx.get_harc(coharc_id).ok_or(AcesError::HarcMissingForID)?;
+                let cohost_id = coharc.get_host_id();
 
                 match cohost_map.entry(cohost_id) {
                     btree_map::Entry::Vacant(entry) => {
-                        entry.insert(vec![cosplit_id]);
+                        entry.insert(vec![coharc_id]);
                     }
                     btree_map::Entry::Occupied(mut entry) => {
                         let sids = entry.get_mut();
 
-                        if let Err(pos) = sids.binary_search(&cosplit_id) {
-                            sids.insert(pos, cosplit_id);
+                        if let Err(pos) = sids.binary_search(&coharc_id) {
+                            sids.insert(pos, coharc_id);
                         } else {
                             warn!(
-                                "Multiple occurrences of {} in cosplit array",
-                                cosplit.format_locked(&ctx).unwrap()
+                                "Multiple occurrences of {} in coharc array",
+                                coharc.format_locked(&ctx).unwrap()
                             );
                         }
                     }
@@ -529,24 +529,24 @@ impl CEStructure {
 
         for (node_id, fork_atom_ids) in self.forks.iter() {
             if let Some(join_atom_ids) = self.joins.get(node_id) {
-                formula.add_antisplits(fork_atom_ids.as_slice(), join_atom_ids.as_slice())?;
+                formula.add_antiharcs(fork_atom_ids.as_slice(), join_atom_ids.as_slice())?;
             }
 
-            formula.add_sidesplits(fork_atom_ids.as_slice())?;
+            formula.add_sideharcs(fork_atom_ids.as_slice())?;
         }
 
         for (_, join_atom_ids) in self.joins.iter() {
-            formula.add_sidesplits(join_atom_ids.as_slice())?;
+            formula.add_sideharcs(join_atom_ids.as_slice())?;
         }
 
         for (&join_id, cofork_ids) in self.co_forks.iter() {
-            let cosplits = self.group_cosplits(cofork_ids.as_slice())?;
-            formula.add_cosplits(join_id, cosplits)?;
+            let coharcs = self.group_coharcs(cofork_ids.as_slice())?;
+            formula.add_coharcs(join_id, coharcs)?;
         }
 
         for (&fork_id, cojoin_ids) in self.co_joins.iter() {
-            let cosplits = self.group_cosplits(cojoin_ids.as_slice())?;
-            formula.add_cosplits(fork_id, cosplits)?;
+            let coharcs = self.group_coharcs(cojoin_ids.as_slice())?;
+            formula.add_coharcs(fork_id, coharcs)?;
         }
 
         Ok(formula)

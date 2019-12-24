@@ -31,7 +31,7 @@ pub use content::{
     CompilableAsDependency,
 };
 pub use node::NodeID;
-pub use atom::{Port, Link, Split, Fork, Join, AtomID, PortID, LinkID, ForkID, JoinID, Atomic};
+pub use atom::{Port, Link, Harc, Fork, Join, AtomID, PortID, LinkID, ForkID, JoinID, Atomic};
 pub use polynomial::{Polynomial, Monomials};
 pub use multiset::{Multiplicity, Capacity, Weight};
 pub use ces::CEStructure;

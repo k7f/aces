@@ -6,7 +6,7 @@ use std::{
 };
 use varisat::{Var, Lit, ExtendFormula, solver::SolverError};
 use crate::{
-    ContextHandle, Contextual, NodeID, AtomID, ForkID, JoinID, Split,
+    ContextHandle, Contextual, NodeID, AtomID, ForkID, JoinID, Harc,
     atom::Atom,
     sat::{CEVar, CELit, Encoding, Search, Clause, Formula},
     error::AcesError,
@@ -558,7 +558,7 @@ impl Solution {
                                 pre_set.insert(fork.get_host_id());
                                 fork_set.insert(fork_id);
                             } else {
-                                return Err(AcesError::SplitMismatch)
+                                return Err(AcesError::HarcMismatch)
                             }
                         }
                         Atom::Join(join) => {
@@ -566,7 +566,7 @@ impl Solution {
                                 post_set.insert(join.get_host_id());
                                 join_set.insert(join_id);
                             } else {
-                                return Err(AcesError::SplitMismatch)
+                                return Err(AcesError::HarcMismatch)
                             }
                         }
                         Atom::Bottom => return Err(AcesError::BottomAtomAccess),
@@ -579,13 +579,13 @@ impl Solution {
 
         fork_set.extend(fork_map.into_iter().map(|(host, suit)| {
             let suit = Vec::from_iter(suit.into_iter());
-            let mut fork = Split::new_fork(host, suit);
+            let mut fork = Harc::new_fork(host, suit);
             solution.context.lock().unwrap().share_fork(&mut fork)
         }));
 
         join_set.extend(join_map.into_iter().map(|(host, suit)| {
             let suit = Vec::from_iter(suit.into_iter());
-            let mut join = Split::new_join(host, suit);
+            let mut join = Harc::new_join(host, suit);
             solution.context.lock().unwrap().share_join(&mut join)
         }));
 

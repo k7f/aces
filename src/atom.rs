@@ -318,7 +318,7 @@ impl AtomSpace {
     }
 
     #[inline]
-    pub(crate) fn is_split(&self, atom_id: AtomID) -> bool {
+    pub(crate) fn is_harc(&self, atom_id: AtomID) -> bool {
         match self.get_atom(atom_id) {
             Some(Atom::Fork(_)) | Some(Atom::Join(_)) => true,
             _ => false,
@@ -326,7 +326,7 @@ impl AtomSpace {
     }
 
     #[inline]
-    pub(crate) fn get_split(&self, aid: AtomID) -> Option<&Split> {
+    pub(crate) fn get_harc(&self, aid: AtomID) -> Option<&Harc> {
         match self.get_atom(aid) {
             Some(Atom::Fork(a)) => Some(a),
             Some(Atom::Join(a)) => Some(a),
@@ -602,15 +602,22 @@ impl ExclusivelyContextual for Link {
     }
 }
 
+/// A common type of one-to-many and many-to-one arcs of the
+/// BF-hypergraph representation of c-e structures.
+///
+/// A hyperarc represents a monomial attached to a node.  There are
+/// two possible interpretations of a `Harc`: a [`Join`] is a B-arc
+/// which represents causes and a [`Fork`] is an F-arc representing
+/// effects.
 #[derive(Clone, Eq)]
-pub struct Split {
+pub struct Harc {
     atom_id:  Option<AtomID>,
     face:     node::Face,
     host_id:  NodeID,
     suit_ids: Vec<NodeID>,
 }
 
-impl Split {
+impl Harc {
     fn new(face: node::Face, host_id: NodeID, suit_ids: Vec<NodeID>) -> Self {
         if cfg!(debug_assertions) {
             let mut sit = suit_ids.iter();
@@ -626,17 +633,17 @@ impl Split {
                 panic!("Empty suit")
             }
         }
-        Split { atom_id: None, face, host_id, suit_ids }
+        Harc { atom_id: None, face, host_id, suit_ids }
     }
 
     pub fn new_fork(host_id: NodeID, suit_ids: Vec<NodeID>) -> Self {
         trace!("New fork: {:?} -> {:?}", host_id, suit_ids);
-        Split::new(node::Face::Tx, host_id, suit_ids)
+        Harc::new(node::Face::Tx, host_id, suit_ids)
     }
 
     pub fn new_join(host_id: NodeID, suit_ids: Vec<NodeID>) -> Self {
         trace!("New join: {:?} <- {:?}", host_id, suit_ids);
-        Split::new(node::Face::Rx, host_id, suit_ids)
+        Harc::new(node::Face::Rx, host_id, suit_ids)
     }
 
     pub fn get_atom_id(&self) -> AtomID {
@@ -669,7 +676,7 @@ impl Split {
     }
 }
 
-impl fmt::Debug for Split {
+impl fmt::Debug for Harc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -688,14 +695,14 @@ impl fmt::Debug for Split {
     }
 }
 
-impl PartialEq for Split {
+impl PartialEq for Harc {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.face == other.face && self.host_id == other.host_id && self.suit_ids == other.suit_ids
     }
 }
 
-impl hash::Hash for Split {
+impl hash::Hash for Harc {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.face.hash(state);
         self.host_id.hash(state);
@@ -703,7 +710,7 @@ impl hash::Hash for Split {
     }
 }
 
-impl ExclusivelyContextual for Split {
+impl ExclusivelyContextual for Harc {
     fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let host_name = ctx.get_node_name(self.get_host_id()).ok_or(match self.face {
             node::Face::Tx => AcesError::NodeMissingForFork(node::Face::Tx),
@@ -728,8 +735,11 @@ impl ExclusivelyContextual for Split {
     }
 }
 
-pub type Fork = Split;
-pub type Join = Split;
+/// Forward hyperarc representation of effects.
+pub type Fork = Harc;
+
+/// Backward hyperarc representation of causes.
+pub type Join = Harc;
 
 /// A trait of an identifier convertible into [`NodeID`] and into
 /// [`sat::Literal`].

@@ -5,7 +5,7 @@ use std::{
     error::Error,
 };
 use crate::{
-    ContentOrigin, PartialContent, Port, Link, Split, Fork, Join, ID, NodeID, AtomID, PortID,
+    ContentOrigin, PartialContent, Port, Link, Harc, Fork, Join, ID, NodeID, AtomID, PortID,
     LinkID, ForkID, JoinID, Semantics, Capacity, Weight,
     name::NameSpace,
     atom::{AtomSpace, Atom},
@@ -32,7 +32,7 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 ///
 /// This is an umbrella type which, currently, includes a collection
 /// of [`Atom`]s, two symbol tables (one for structure names, and
-/// another for node names), node capacities, split weights, and
+/// another for node names), node capacities, harc weights, and
 /// [`PartialContent`] of any c-e structure created in this `Context`.
 ///
 /// For usage, see [`ContextHandle`] type, [`Contextual`] trait and
@@ -218,8 +218,8 @@ impl Context {
     }
 
     #[inline]
-    pub fn is_split(&self, atom_id: AtomID) -> bool {
-        self.atoms.is_split(atom_id)
+    pub fn is_harc(&self, atom_id: AtomID) -> bool {
+        self.atoms.is_harc(atom_id)
     }
 
     #[inline]
@@ -263,8 +263,8 @@ impl Context {
     }
 
     #[inline]
-    pub fn get_split(&self, atom_id: AtomID) -> Option<&Split> {
-        self.atoms.get_split(atom_id)
+    pub fn get_harc(&self, atom_id: AtomID) -> Option<&Harc> {
+        self.atoms.get_harc(atom_id)
     }
 
     #[inline]
@@ -337,13 +337,13 @@ impl Context {
 
         let atom_id = match face {
             node::Face::Tx => {
-                let mut fork = Split::new_fork(host_id, suit_ids);
+                let mut fork = Harc::new_fork(host_id, suit_ids);
                 let fork_id = self.share_fork(&mut fork);
 
                 fork_id.get()
             }
             node::Face::Rx => {
-                let mut join = Split::new_join(host_id, suit_ids);
+                let mut join = Harc::new_join(host_id, suit_ids);
                 let join_id = self.share_join(&mut join);
 
                 join_id.get()

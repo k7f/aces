@@ -1,6 +1,6 @@
 use std::fmt::{self, Write};
 
-/// A scalar type common for node capacity, split weight and state.
+/// A scalar type common for node capacity, harc weight and state.
 ///
 /// Valid multiplicities are nonnegative integers or _&omega;_.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -143,7 +143,7 @@ impl fmt::Display for Multiplicity {
 /// capacities.
 pub type Capacity = Multiplicity;
 
-/// Multiplicity of a split (a monomial when attached to a node).
+/// Multiplicity of a harc (a monomial when attached to a node).
 ///
 /// Weight of a monomial occurring in effects of a node indicates the
 /// number of tokens to take out of that node if a corresponding

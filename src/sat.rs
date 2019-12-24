@@ -389,25 +389,25 @@ impl Formula {
         Ok(())
     }
 
-    /// Adds an _antisplit_ rule to this formula.
+    /// Adds an _antiharc_ rule to this formula.
     ///
     /// This set of clauses constrains nodes to a single part of a
     /// firing component, source or sink, so that the induced graph of
     /// any firing component is bipartite.  The `Formula` should
     /// contain one clause for each fork-join pair of each internal
     /// node of the c-e structure under analysis.
-    pub fn add_antisplits(
+    pub fn add_antiharcs(
         &mut self,
-        split_ids: &[AtomID],
-        antisplit_ids: &[AtomID],
+        harc_ids: &[AtomID],
+        antiharc_ids: &[AtomID],
     ) -> Result<(), AcesError> {
-        for &split_id in split_ids.iter() {
-            let split_lit = Lit::from_atom_id(split_id, true);
+        for &harc_id in harc_ids.iter() {
+            let harc_lit = Lit::from_atom_id(harc_id, true);
 
-            for &antisplit_id in antisplit_ids.iter() {
-                let antisplit_lit = Lit::from_atom_id(antisplit_id, true);
+            for &antiharc_id in antiharc_ids.iter() {
+                let antiharc_lit = Lit::from_atom_id(antiharc_id, true);
 
-                let clause = Clause::from_pair(split_lit, antisplit_lit, "antisplit");
+                let clause = Clause::from_pair(harc_lit, antiharc_lit, "antiharc");
                 self.add_clause(clause)?;
             }
         }
@@ -415,17 +415,17 @@ impl Formula {
         Ok(())
     }
 
-    /// Adds a _sidesplit_ rule to this formula.
+    /// Adds a _sideharc_ rule to this formula.
     ///
     /// This rule enforces monomiality of firing components.
-    pub fn add_sidesplits(&mut self, sidesplit_ids: &[AtomID]) -> Result<(), AcesError> {
-        for (pos, &split_id) in sidesplit_ids.iter().enumerate() {
-            let split_lit = Lit::from_atom_id(split_id, true);
+    pub fn add_sideharcs(&mut self, sideharc_ids: &[AtomID]) -> Result<(), AcesError> {
+        for (pos, &harc_id) in sideharc_ids.iter().enumerate() {
+            let harc_lit = Lit::from_atom_id(harc_id, true);
 
-            for &sidesplit_id in sidesplit_ids[pos + 1..].iter() {
-                let sidesplit_lit = Lit::from_atom_id(sidesplit_id, true);
+            for &sideharc_id in sideharc_ids[pos + 1..].iter() {
+                let sideharc_lit = Lit::from_atom_id(sideharc_id, true);
 
-                let clause = Clause::from_pair(split_lit, sidesplit_lit, "sidesplit");
+                let clause = Clause::from_pair(harc_lit, sideharc_lit, "sideharc");
                 self.add_clause(clause)?;
             }
         }
@@ -433,28 +433,28 @@ impl Formula {
         Ok(())
     }
 
-    pub fn add_cosplits(
+    pub fn add_coharcs(
         &mut self,
-        split_id: AtomID,
-        cosplit_ids: Vec<Vec<AtomID>>,
+        harc_id: AtomID,
+        coharc_ids: Vec<Vec<AtomID>>,
     ) -> Result<(), AcesError> {
-        let split_lit = Lit::from_atom_id(split_id, true);
+        let harc_lit = Lit::from_atom_id(harc_id, true);
 
-        if cosplit_ids.is_empty() {
+        if coharc_ids.is_empty() {
             Err(AcesError::IncoherencyLeak)
         } else {
-            for choice in cosplit_ids.iter() {
+            for choice in coharc_ids.iter() {
                 if choice.is_empty() {
                     return Err(AcesError::IncoherencyLeak)
                 } else {
-                    // Co-split rules are encoded below as plain
+                    // Co-harc rules are encoded below as plain
                     // disjunctions instead of exclusive choice,
                     // because we rely on reduction to minimal model
                     // when solving.  FIXME reconsider.
-                    let lits = Some(split_lit).into_iter().chain(
-                        choice.iter().map(|cosplit_id| Lit::from_atom_id(*cosplit_id, false)),
-                    );
-                    let clause = Clause::from_literals(lits, "cosplit");
+                    let lits = Some(harc_lit)
+                        .into_iter()
+                        .chain(choice.iter().map(|coharc_id| Lit::from_atom_id(*coharc_id, false)));
+                    let clause = Clause::from_literals(lits, "coharc");
 
                     self.add_clause(clause)?;
                 }
@@ -525,14 +525,14 @@ impl fmt::Display for Formula {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Context, Split, ForkID, JoinID};
+    use crate::{Context, Harc, ForkID, JoinID};
     use super::*;
 
     fn new_fork_id(ctx: &ContextHandle, host_name: &str, suit_names: &[&str]) -> ForkID {
         let mut ctx = ctx.lock().unwrap();
         let host_id = ctx.share_node_name(host_name);
         let suit_ids = suit_names.iter().map(|n| ctx.share_node_name(n)).collect();
-        let mut fork = Split::new_fork(host_id, suit_ids, Default::default());
+        let mut fork = Harc::new_fork(host_id, suit_ids, Default::default());
         ctx.share_fork(&mut fork)
     }
 
@@ -540,20 +540,20 @@ mod tests {
         let mut ctx = ctx.lock().unwrap();
         let host_id = ctx.share_node_name(host_name);
         let suit_ids = suit_names.iter().map(|n| ctx.share_node_name(n)).collect();
-        let mut join = Split::new_join(host_id, suit_ids, Default::default());
+        let mut join = Harc::new_join(host_id, suit_ids, Default::default());
         ctx.share_join(&mut join)
     }
 
     #[test]
-    fn test_cosplits() {
-        let ctx = Context::new_interactive("test_cosplits");
+    fn test_coharcs() {
+        let ctx = Context::new_interactive("test_coharcs");
         let a_fork_id = new_fork_id(&ctx, "a", &["z"]);
         let z_join_id = new_join_id(&ctx, "z", &["a"]);
 
         let mut test_formula = Formula::new(&ctx);
         let mut ref_formula = Formula::new(&ctx);
 
-        test_formula.add_cosplits(a_fork_id.get(), vec![vec![z_join_id.get()]]).unwrap();
+        test_formula.add_coharcs(a_fork_id.get(), vec![vec![z_join_id.get()]]).unwrap();
 
         ref_formula
             .add_clause(Clause::from_pair(
