@@ -68,7 +68,7 @@ impl Command for Validate {
 
                                         if self.do_abort {
                                             warn!("Aborting on structural error");
-                                            return Err(Box::new(err))
+                                            return Err(err.into())
                                         } else {
                                             error!(
                                                 "Structural error in file '{}'...\n\t{}",

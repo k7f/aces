@@ -14,19 +14,15 @@ pub(crate) enum ContentError {
 
 impl fmt::Display for ContentError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.description())
-    }
-}
-
-impl Error for ContentError {
-    fn description(&self) -> &str {
         use ContentError::*;
 
         match self {
-            OriginMismatch(_) => "Content origin mismatch",
+            OriginMismatch(_) => write!(f, "Content origin mismatch"),
         }
     }
 }
+
+impl Error for ContentError {}
 
 #[derive(Clone, Debug)]
 pub enum ContentOrigin {
@@ -123,7 +119,7 @@ pub(crate) fn content_from_str<S: AsRef<str>>(
 
         match origin {
             ContentOrigin::CexScript(_) => {}
-            _ => return Err(Box::new(ContentError::OriginMismatch(origin.clone()))),
+            _ => return Err(ContentError::OriginMismatch(origin.clone()).into()),
         }
     }
 

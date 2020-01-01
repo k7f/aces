@@ -65,10 +65,10 @@ impl ExclusivelyContextual for Var {
                 Atom::Link(link) => Ok(format!("{}:{}", atom_id, link.format_locked(ctx)?)),
                 Atom::Fork(fork) => Ok(format!("{}:{}", atom_id, fork.format_locked(ctx)?)),
                 Atom::Join(join) => Ok(format!("{}:{}", atom_id, join.format_locked(ctx)?)),
-                Atom::Bottom => Err(Box::new(AcesError::BottomAtomAccess)),
+                Atom::Bottom => Err(AcesError::BottomAtomAccess.into()),
             }
         } else {
-            Err(Box::new(AcesError::AtomMissingForID))
+            Err(AcesError::AtomMissingForID.into())
         }
     }
 }

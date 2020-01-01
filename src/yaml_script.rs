@@ -25,33 +25,30 @@ pub(crate) enum YamlScriptError {
 
 impl fmt::Display for YamlScriptError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.description())
-    }
-}
-
-impl Error for YamlScriptError {
-    fn description(&self) -> &str {
         use YamlScriptError::*;
 
         match self {
-            Empty => "YAML description is empty",
-            Multiple => "Multiple YAML descriptions",
-            NotADict => "Bad YAML description (not a dictionary)",
-            KeyNotString => "Non-string key in YAML description",
-            NameNotString => "Non-string c-e structure name in YAML description",
-            NameDup => "Duplicated c-e structure name in YAML description",
-            PolyInvalid => "Invalid YAML description of a polynomial",
-            PolyAmbiguous => "Ambiguous YAML description of a polynomial",
-            ShortPolyWithWords => {
+            Empty => write!(f, "YAML description is empty"),
+            Multiple => write!(f, "Multiple YAML descriptions"),
+            NotADict => write!(f, "Bad YAML description (not a dictionary)"),
+            KeyNotString => write!(f, "Non-string key in YAML description"),
+            NameNotString => write!(f, "Non-string c-e structure name in YAML description"),
+            NameDup => write!(f, "Duplicated c-e structure name in YAML description"),
+            PolyInvalid => write!(f, "Invalid YAML description of a polynomial"),
+            PolyAmbiguous => write!(f, "Ambiguous YAML description of a polynomial"),
+            ShortPolyWithWords => write!(
+                f,
                 "Multi-word node name is invalid in short YAML description of a polynomial"
-            }
-            MonoInvalid => "Invalid monomial in YAML description of a polynomial",
-            LinkInvalid => "Invalid link in YAML description of a polynomial",
-            LinkReversed => "Reversed link in YAML description of a polynomial",
-            LinkList => "Link list is invalid in YAML description of a polynomial",
+            ),
+            MonoInvalid => write!(f, "Invalid monomial in YAML description of a polynomial"),
+            LinkInvalid => write!(f, "Invalid link in YAML description of a polynomial"),
+            LinkReversed => write!(f, "Reversed link in YAML description of a polynomial"),
+            LinkList => write!(f, "Link list is invalid in YAML description of a polynomial"),
         }
     }
 }
+
+impl Error for YamlScriptError {}
 
 fn do_share_name<S: AsRef<str>>(
     ctx: &ContextHandle,
@@ -59,7 +56,7 @@ fn do_share_name<S: AsRef<str>>(
     single_word_only: bool,
 ) -> Result<NodeID, Box<dyn Error>> {
     if single_word_only && name.as_ref().contains(char::is_whitespace) {
-        Err(Box::new(YamlScriptError::ShortPolyWithWords))
+        Err(YamlScriptError::ShortPolyWithWords.into())
     } else {
         Ok(ctx.lock().unwrap().share_node_name(name))
     }
@@ -133,10 +130,10 @@ fn parse_link_description<S: AsRef<str> + Copy>(
             if ids.len() == 1 {
                 Ok((ids[0], true))
             } else {
-                Err(Box::new(YamlScriptError::LinkList))
+                Err(YamlScriptError::LinkList.into())
             }
         } else {
-            Err(Box::new(YamlScriptError::LinkReversed))
+            Err(YamlScriptError::LinkReversed.into())
         }
     } else {
         let id = do_share_name(ctx, description, single_word_only)?;
@@ -242,19 +239,19 @@ impl YamlContent {
                                         }
                                     }
                                 } else {
-                                    return Err(Box::new(YamlScriptError::LinkInvalid))
+                                    return Err(YamlScriptError::LinkInvalid.into())
                                 }
                             }
                             poly_content.add_mono(mono_content.into_content());
                         }
-                        _ => return Err(Box::new(YamlScriptError::MonoInvalid)),
+                        _ => return Err(YamlScriptError::MonoInvalid.into()),
                     }
                 }
                 if is_flat {
-                    return Err(Box::new(YamlScriptError::PolyAmbiguous))
+                    return Err(YamlScriptError::PolyAmbiguous.into())
                 }
             }
-            _ => return Err(Box::new(YamlScriptError::PolyInvalid)),
+            _ => return Err(YamlScriptError::PolyInvalid.into()),
         }
 
         if face == node::Face::Tx {
@@ -283,10 +280,10 @@ impl YamlContent {
 
                         Ok(())
                     } else {
-                        Err(Box::new(YamlScriptError::NameDup))
+                        Err(YamlScriptError::NameDup.into())
                     }
                 } else {
-                    Err(Box::new(YamlScriptError::NameNotString))
+                    Err(YamlScriptError::NameNotString.into())
                 }
             } else {
                 // FIXME handle duplicates
@@ -295,7 +292,7 @@ impl YamlContent {
                 Ok(())
             }
         } else {
-            Err(Box::new(YamlScriptError::KeyNotString))
+            Err(YamlScriptError::KeyNotString.into())
         }
     }
 
@@ -309,7 +306,7 @@ impl YamlContent {
 
             Ok(result)
         } else {
-            Err(Box::new(YamlScriptError::NotADict))
+            Err(YamlScriptError::NotADict.into())
         }
     }
 
@@ -320,12 +317,12 @@ impl YamlContent {
         let docs = YamlLoader::load_from_str(script.as_ref())?;
 
         if docs.is_empty() {
-            Err(Box::new(YamlScriptError::Empty))
+            Err(YamlScriptError::Empty.into())
         } else if docs.len() == 1 {
             let result = Self::from_yaml(ctx, &docs[0])?;
             Ok(result)
         } else {
-            Err(Box::new(YamlScriptError::Multiple))
+            Err(YamlScriptError::Multiple.into())
         }
     }
 }

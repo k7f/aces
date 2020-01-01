@@ -43,7 +43,19 @@ impl fmt::Display for AcesError {
         use AcesError::*;
 
         match self {
+            ContextMismatch => write!(f, "Context mismatch"),
+            PortMismatch => write!(f, "Port (dock) mismatch"),
+            HarcMismatch => write!(f, "Harc (fork/join) mismatch"),
+            NodeMissingForID => write!(f, "Node is missing for ID"),
+            AtomMissingForID => write!(f, "Atom is missing for ID"),
+            PortMissingForID => write!(f, "Port is missing for ID"),
             LinkMissingForID(link_id) => write!(f, "There is no link with ID {:?}", link_id),
+            HarcMissingForID => write!(f, "Harc is missing for ID"),
+            ForkMissingForID => write!(f, "Fork is missing for ID"),
+            JoinMissingForID => write!(f, "Join is missing for ID"),
+            BottomAtomAccess => write!(f, "Attempt to access the bottom atom"),
+            AtomicsNotOrdered => write!(f, "Atomics have to be given in strictly increasing order"),
+
             NodeMissingForPort(face) => write!(
                 f,
                 "Missing node for {} port",
@@ -75,6 +87,11 @@ impl fmt::Display for AcesError {
                 if *face == node::Face::Tx { "sending" } else { "receiving" }
             ),
             IncoherentStructure(name) => write!(f, "Structure '{}' is incoherent", name),
+
+            LeakedInhibitor => write!(f, "Leaked inhibitor"),
+            StateUnderflow => write!(f, "State underflow"),
+            StateOverflow => write!(f, "State overflow"),
+
             EmptyClauseRejectedByFormula(name) => {
                 write!(f, "Empty {} clause rejected by formula", name)
             }
@@ -87,49 +104,12 @@ impl fmt::Display for AcesError {
             EmptyEffectsOfInternalNode(name) => {
                 write!(f, "Empty effect polynomial of internal node '{}'", name)
             }
-            _ => write!(f, "{}", self.description()),
+
+            UnlistedAtomicInMonomial => write!(f, "Monomial contains an unlisted atomic"),
+            IncoherencyLeak => write!(f, "Unexpected incoherence of a c-e structure"),
+            NoModelToInhibit => write!(f, "Attempt to inhibit a nonexistent model"),
         }
     }
 }
 
-impl Error for AcesError {
-    fn description(&self) -> &str {
-        use AcesError::*;
-
-        match self {
-            ContextMismatch => "Context mismatch",
-            PortMismatch => "Port (dock) mismatch",
-            HarcMismatch => "Harc (fork/join) mismatch",
-            NodeMissingForID => "Node is missing for ID",
-            AtomMissingForID => "Atom is missing for ID",
-            PortMissingForID => "Port is missing for ID",
-            LinkMissingForID(_) => "Link is missing for ID",
-            HarcMissingForID => "Harc is missing for ID",
-            ForkMissingForID => "Fork is missing for ID",
-            JoinMissingForID => "Join is missing for ID",
-            BottomAtomAccess => "Attempt to access the bottom atom",
-            AtomicsNotOrdered => "Atomics have to be given in strictly increasing order",
-
-            NodeMissingForPort(_) => "Missing node for port",
-            NodeMissingForLink(_) => "Missing node for link",
-            NodeMissingForFork(_) => "Missing node for fork",
-            NodeMissingForJoin(_) => "Missing node for join",
-            FiringNodeMissing(_) => "Missing node in firing component",
-            FiringNodeDuplicated(_) => "Duplicated node in firing component",
-            IncoherentStructure(_) => "Incoherent c-e structure",
-
-            LeakedInhibitor => "Leaked inhibitor",
-            StateUnderflow => "State underflow",
-            StateOverflow => "State overflow",
-
-            EmptyClauseRejectedByFormula(_) => "Empty clause rejected by formula",
-            EmptyClauseRejectedBySolver(_) => "Empty clause rejected by solver",
-            EmptyCausesOfInternalNode(_) => "Empty cause polynomial of internal node",
-            EmptyEffectsOfInternalNode(_) => "Empty effect polynomial of internal node",
-
-            UnlistedAtomicInMonomial => "Monomial contains an unlisted atomic",
-            IncoherencyLeak => "Unexpected incoherence of a c-e structure",
-            NoModelToInhibit => "Attempt to inhibit a nonexistent model",
-        }
-    }
-}
+impl Error for AcesError {}

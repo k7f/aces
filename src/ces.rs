@@ -354,7 +354,7 @@ impl CEStructure {
                     let node_name =
                         self.context.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
 
-                    return Err(Box::new(AcesError::EmptyCausesOfInternalNode(node_name)))
+                    return Err(AcesError::EmptyCausesOfInternalNode(node_name).into())
                 }
 
                 self.add_causes(node_id, poly_ids)?;
@@ -365,7 +365,7 @@ impl CEStructure {
                     let node_name =
                         self.context.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
 
-                    return Err(Box::new(AcesError::EmptyEffectsOfInternalNode(node_name)))
+                    return Err(AcesError::EmptyEffectsOfInternalNode(node_name).into())
                 }
 
                 self.add_effects(node_id, poly_ids)?;
@@ -569,9 +569,8 @@ impl CEStructure {
         if !self.is_coherent() {
             self.resolution = Resolution::Incoherent;
 
-            Err(Box::new(AcesError::IncoherentStructure(
-                self.get_name().unwrap_or("anonymous").to_owned(),
-            )))
+            Err(AcesError::IncoherentStructure(self.get_name().unwrap_or("anonymous").to_owned())
+                .into())
         } else {
             let formula = self.get_formula()?;
 
