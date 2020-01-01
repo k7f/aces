@@ -27,7 +27,7 @@ the `Cargo.toml` file:
 
 ```toml
 [dependencies]
-aces = "0.0.9"
+aces = "0.0.10"
 ```
 
 See [API documentation](https://docs.rs/aces) for information on
@@ -38,7 +38,7 @@ public interface to the library.
 ### Installation
 
 Having [Rust](https://www.rust-lang.org/downloads.html) installed,
-ensure its version is at least 1.37: check with `cargo version` and
+ensure its version is at least 1.42: check with `cargo version` and
 run `rustup update` if needed.  Then
 
 ```bash
