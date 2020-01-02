@@ -1,6 +1,0 @@
-name: Structural error (link incoherence)
-
-a effects: x
-b effects: y
-x causes: b
-y causes: a

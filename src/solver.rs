@@ -6,10 +6,9 @@ use std::{
 };
 use varisat::{Var, Lit, ExtendFormula, solver::SolverError};
 use crate::{
-    ContextHandle, Contextual, NodeID, AtomID, ForkID, JoinID, Harc,
+    ContextHandle, Contextual, NodeID, AtomID, ForkID, JoinID, Harc, AcesError,
     atom::Atom,
     sat::{CEVar, CELit, Encoding, Search, Clause, Formula},
-    error::AcesError,
 };
 
 #[derive(Clone, Default, Debug)]

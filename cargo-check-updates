@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CRATES="log fern clap yaml-rust regex lazy_static rand glob string_cache bit-vec varisat"
+CRATES="log fern yaml-rust regex lazy_static rand string_cache bit-vec varisat"
 
 for crate in $CRATES ; do
     echo -n "$crate = "

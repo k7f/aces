@@ -7,20 +7,14 @@ aces
 
 [Algebra of Cause-Effect
 Structures](https://link.springer.com/book/10.1007/978-3-030-20461-7)
-&mdash; an implementation of the theory.  This is the core library and
-a set of command-line tools of the
-[_Ascesis_](https://github.com/k7f/ascesis) project.
+&mdash; an implementation of the theory.  This is the core library of
+the [_Ascesis_](https://github.com/k7f/ascesis) project.
 
-## Prerequisites
+## Installation
 
 In principle, `aces` should build wherever `rustc` and `cargo` runs.
-Its executables should run on any
-[platform](https://forge.rust-lang.org/platform-support.html)
-supporting the Rust `std` library.  Be aware, though, that the project
-is very much a WIP.  The main toolchain used in development is nightly
-channel of Rust 1.39.
-
-## Library
+Be aware, though, that the project is very much a WIP.  The main
+toolchain used in development is nightly channel of Rust 1.42.
 
 To use `aces` as a library in a Rust project, include these lines in
 the `Cargo.toml` file:
@@ -32,37 +26,6 @@ aces = "0.0.10"
 
 See [API documentation](https://docs.rs/aces) for information on
 public interface to the library.
-
-## Command line interface
-
-### Installation
-
-Having [Rust](https://www.rust-lang.org/downloads.html) installed,
-ensure its version is at least 1.42: check with `cargo version` and
-run `rustup update` if needed.  Then
-
-```bash
-$ cargo install aces
-```
-
-will automatically download, build, and install the latest `aces`
-release on [crates.io](https://crates.io/crates/aces).
-
-### Features
-
-C-e structures may be defined in `.cex` text files.  The format of
-textual description is YAML-based, but nowhere documented and very
-likely to change.  There are some, perhaps self-explanatory,
-[examples](data/).
-
-Run the `aces` executable to load c-e structures from `.cex` files and
-analyse them.  By default, the program will check link coherence and
-print firing components, if there are any, or inform about structural
-deadlock.  To see the list of available subcommands and options run
-
-```bash
-$ aces --help
-```
 
 ## License
 

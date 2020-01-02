@@ -3,9 +3,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     error::Error,
 };
-use crate::{
-    ID, NodeID, Context, Contextual, ExclusivelyContextual, InContext, node, sat, error::AcesError,
-};
+use crate::{ID, NodeID, Context, Contextual, ExclusivelyContextual, InContext, AcesError, node, sat};
 
 /// An abstract structural identifier serving as the common base of
 /// [`PortID`], [`LinkID`], [`ForkID`] and [`JoinID`].

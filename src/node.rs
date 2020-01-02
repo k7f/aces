@@ -1,5 +1,5 @@
 use std::{fmt, error::Error};
-use crate::{ID, Context, ExclusivelyContextual, InContext, Atomic, sat, error::AcesError};
+use crate::{ID, Context, ExclusivelyContextual, InContext, Atomic, AcesError, sat};
 
 /// An identifier of a single node used in c-e structures.
 ///

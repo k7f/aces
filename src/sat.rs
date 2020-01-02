@@ -8,7 +8,7 @@ use std::{
 use varisat::{Var, Lit, CnfFormula, ExtendFormula};
 use crate::{
     Atomic, Context, ContextHandle, Contextual, ExclusivelyContextual, Polynomial, AtomID, PortID,
-    LinkID, atom::Atom, FiringSet, error::AcesError,
+    LinkID, atom::Atom, FiringSet, AcesError,
 };
 
 #[derive(Debug)]
@@ -532,7 +532,7 @@ mod tests {
         let mut ctx = ctx.lock().unwrap();
         let host_id = ctx.share_node_name(host_name);
         let suit_ids = suit_names.iter().map(|n| ctx.share_node_name(n)).collect();
-        let mut fork = Harc::new_fork(host_id, suit_ids, Default::default());
+        let mut fork = Harc::new_fork(host_id, suit_ids);
         ctx.share_fork(&mut fork)
     }
 
@@ -540,7 +540,7 @@ mod tests {
         let mut ctx = ctx.lock().unwrap();
         let host_id = ctx.share_node_name(host_name);
         let suit_ids = suit_names.iter().map(|n| ctx.share_node_name(n)).collect();
-        let mut join = Harc::new_join(host_id, suit_ids, Default::default());
+        let mut join = Harc::new_join(host_id, suit_ids);
         ctx.share_join(&mut join)
     }
 

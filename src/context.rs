@@ -174,10 +174,7 @@ impl Context {
 
     // Nodes
 
-    #[inline]
-    pub(crate) fn get_nodes(&self) -> &NameSpace {
-        &self.nodes
-    }
+    // FIXME support node iteration (define a generic NameSpace iterator)
 
     #[inline]
     pub fn share_node_name<S: AsRef<str>>(&mut self, node_name: S) -> NodeID {

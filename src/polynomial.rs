@@ -2,7 +2,7 @@ use std::{slice, iter, cmp, ops, fmt, collections::BTreeSet, error::Error};
 use bit_vec::BitVec;
 use crate::{
     NodeID, Port, Link, LinkID, ContextHandle, Contextual, ExclusivelyContextual, InContextMut,
-    Atomic, node, sat, error::AcesError,
+    Atomic, AcesError, node, sat,
 };
 
 // FIXME sort rows as a way to fix Eq and, perhaps, to open some

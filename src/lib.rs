@@ -22,7 +22,6 @@ mod state;
 mod firing;
 mod runner;
 mod logging;
-pub mod cli;
 
 pub use error::AcesError;
 pub use context::{Context, ContextHandle, Contextual, ExclusivelyContextual, InContext, InContextMut};
