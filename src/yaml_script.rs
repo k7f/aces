@@ -296,17 +296,27 @@ impl YamlContent {
         }
     }
 
-    fn from_yaml(ctx: &ContextHandle, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
+    fn with_yaml(mut self, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
         if let Yaml::Hash(ref dict) = yaml {
-            let mut result = Self::new(ctx);
-
             for (key, value) in dict {
-                result.add_entry(key, value)?;
+                self.add_entry(key, value)?;
             }
 
-            Ok(result)
+            Ok(self)
         } else {
             Err(YamlScriptError::NotADict.into())
+        }
+    }
+
+    pub(crate) fn with_str<S: AsRef<str>>(self, script: S) -> Result<Self, Box<dyn Error>> {
+        let docs = YamlLoader::load_from_str(script.as_ref())?;
+
+        if docs.is_empty() {
+            Err(YamlScriptError::Empty.into())
+        } else if docs.len() == 1 {
+            self.with_yaml(&docs[0])
+        } else {
+            Err(YamlScriptError::Multiple.into())
         }
     }
 
@@ -314,16 +324,7 @@ impl YamlContent {
         ctx: &ContextHandle,
         script: S,
     ) -> Result<Self, Box<dyn Error>> {
-        let docs = YamlLoader::load_from_str(script.as_ref())?;
-
-        if docs.is_empty() {
-            Err(YamlScriptError::Empty.into())
-        } else if docs.len() == 1 {
-            let result = Self::from_yaml(ctx, &docs[0])?;
-            Ok(result)
-        } else {
-            Err(YamlScriptError::Multiple.into())
-        }
+        Self::new(ctx).with_str(script)
     }
 }
 

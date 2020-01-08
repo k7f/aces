@@ -26,8 +26,8 @@ mod logging;
 pub use error::AcesError;
 pub use context::{Context, ContextHandle, Contextual, ExclusivelyContextual, InContext, InContextMut};
 pub use content::{
-    Content, ContentOrigin, PartialContent, Compilable, CompilableMut, CompilableAsContent,
-    CompilableAsDependency,
+    Content, ContentOrigin, InteractiveOrigin, PartialContent, Compilable, CompilableMut,
+    CompilableAsContent, CompilableAsDependency,
 };
 pub use node::NodeID;
 pub use atom::{Port, Link, Harc, Fork, Join, AtomID, PortID, LinkID, ForkID, JoinID, Atomic};

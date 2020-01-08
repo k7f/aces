@@ -9,8 +9,8 @@ use std::{
 use log::Level::Trace;
 use crate::{
     ContextHandle, Contextual, ExclusivelyContextual, Port, Harc, AtomID, NodeID, PortID, LinkID,
-    ForkID, JoinID, Polynomial, FiringSet, Content, content::content_from_str, node, sat,
-    sat::Resolution, Solver, AcesError,
+    ForkID, JoinID, Polynomial, FiringSet, Content, node, sat, sat::Resolution, Solver, AcesError,
+    yaml_script::YamlContent,
 };
 
 #[derive(PartialEq, Debug)]
@@ -394,9 +394,18 @@ impl CEStructure {
     ///
     /// [`Context`]: crate::Context
     pub fn add_from_str<S: AsRef<str>>(&mut self, script: S) -> Result<(), Box<dyn Error>> {
-        let content = content_from_str(&self.context, script)?;
+        // FIXME infer the format of content description: yaml, sexpr, ...
+        // FIXME or better still, deal with formats as plugins and delegate the inference.
 
-        self.add_from_content(content)
+        if self.context.lock().unwrap().script_is_acceptable(script.as_ref()) {
+            println!("script format as expected...");
+        } else {
+            println!("script format mismatch...");
+        }
+
+        let content = YamlContent::from_str(&self.context, script)?;
+
+        self.add_from_content(content.into())
     }
 
     /// Creates a new c-e structure from a textual description, in a

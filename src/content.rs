@@ -1,59 +1,27 @@
 use std::{
     ops::{AddAssign, MulAssign},
     collections::{BTreeMap, BTreeSet},
-    path::{Path, PathBuf},
-    fmt::{self, Debug},
+    fmt,
     error::Error,
 };
-use crate::{NodeID, ContextHandle, yaml_script::YamlContent};
+use crate::{NodeID, ContextHandle};
 
-#[derive(Clone, Debug)]
-pub(crate) enum ContentError {
-    OriginMismatch(ContentOrigin),
+pub trait ContentOrigin: fmt::Debug {
+    fn script_is_acceptable(&self, script: &str) -> bool;
 }
 
-impl fmt::Display for ContentError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use ContentError::*;
+#[derive(Clone, Default, Debug)]
+pub struct InteractiveOrigin;
 
-        match self {
-            OriginMismatch(_) => write!(f, "Content origin mismatch"),
-        }
+impl InteractiveOrigin {
+    pub fn new() -> Self {
+        Default::default()
     }
 }
 
-impl Error for ContentError {}
-
-#[derive(Clone, Debug)]
-pub enum ContentOrigin {
-    Interactive,
-    CesScript(Option<PathBuf>),
-    CexScript(Option<PathBuf>),
-}
-
-impl ContentOrigin {
-    pub fn interactive() -> Self {
-        ContentOrigin::Interactive
-    }
-
-    pub fn ces_stream() -> Self {
-        ContentOrigin::CesScript(None)
-    }
-
-    pub fn cex_stream() -> Self {
-        ContentOrigin::CexScript(None)
-    }
-
-    pub fn ces_script<P: AsRef<Path>>(path: P) -> Self {
-        let path = path.as_ref().to_path_buf();
-
-        ContentOrigin::CesScript(Some(path))
-    }
-
-    pub fn cex_script<P: AsRef<Path>>(path: P) -> Self {
-        let path = path.as_ref().to_path_buf();
-
-        ContentOrigin::CexScript(Some(path))
+impl ContentOrigin for InteractiveOrigin {
+    fn script_is_acceptable(&self, _script: &str) -> bool {
+        false
     }
 }
 
@@ -70,7 +38,7 @@ impl ContentOrigin {
 ///
 /// [`CEStructure`]: crate::CEStructure
 /// [`YamlContent`]: crate::yaml_script::YamlContent
-pub trait Content: Debug {
+pub trait Content: fmt::Debug {
     /// `Script` is a content description in text, for example,
     /// YAML-formatted string or _Ascesis_ source.
     fn get_script(&self) -> Option<&str>;
@@ -102,30 +70,10 @@ impl Content for String {
     }
 }
 
-/// Parses a string description of a c-e structure.
-///
-/// Returns a [`Content`] trait object if parsing was successful,
-/// where a concrete type depends on a content description format.
-///
-/// Errors depend on a content description format.
-pub(crate) fn content_from_str<S: AsRef<str>>(
-    ctx: &ContextHandle,
-    script: S,
-) -> Result<Box<dyn Content>, Box<dyn Error>> {
-    {
-        // FIXME find a better way of releasing the lock, than wrapping in a block...
-        let ctx = ctx.lock().unwrap();
-        let origin = ctx.get_origin();
-
-        match origin {
-            ContentOrigin::CexScript(_) => {}
-            _ => return Err(ContentError::OriginMismatch(origin.clone()).into()),
-        }
+impl<'a, C: Content + 'a> From<C> for Box<dyn Content + 'a> {
+    fn from(content: C) -> Box<dyn Content + 'a> {
+        Box::new(content)
     }
-
-    // FIXME infer the format of content description: yaml, sexpr, ...
-    // FIXME or better still, deal with formats as plugins and delegate the inference.
-    Ok(Box::new(YamlContent::from_str(ctx, script)?))
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Default, Debug)]
