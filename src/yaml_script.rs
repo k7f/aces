@@ -1,8 +1,13 @@
-use std::{collections::BTreeMap, fmt, error::Error};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    fmt,
+    error::Error,
+};
 use regex::Regex;
 use yaml_rust::{Yaml, YamlLoader};
 use crate::{
-    ContextHandle, NodeID, node, Content, PartialContent,
+    ContextHandle, NodeID, node, Content, PartialContent, ContentFormat,
     content::{PolyForContent, MonoForContent},
 };
 
@@ -351,5 +356,40 @@ impl Content for YamlContent {
 
     fn get_effects_by_id(&self, id: NodeID) -> Option<&Vec<Vec<NodeID>>> {
         self.content.get_effects_by_id(id)
+    }
+}
+
+#[derive(Clone, Default, Debug)]
+pub struct YamlFormat {
+    path: Option<PathBuf>,
+}
+
+impl YamlFormat {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Self {
+        let path = path.as_ref().to_path_buf();
+
+        YamlFormat { path: Some(path) }
+    }
+}
+
+impl ContentFormat for YamlFormat {
+    fn expected_extensions(&self) -> &[&str] {
+        &["cex"]
+    }
+
+    fn script_is_acceptable(&self, _script: &str) -> bool {
+        true // FIXME
+    }
+
+    fn script_to_content(
+        &self,
+        ctx: &ContextHandle,
+        script: &str,
+    ) -> Result<Box<dyn Content>, Box<dyn Error>> {
+        YamlContent::from_str(ctx, script).map(|c| c.into())
     }
 }

@@ -36,6 +36,8 @@ pub enum AcesError {
     UnlistedAtomicInMonomial,
     IncoherencyLeak,
     NoModelToInhibit,
+
+    UnknownScriptFormat,
 }
 
 impl fmt::Display for AcesError {
@@ -108,6 +110,8 @@ impl fmt::Display for AcesError {
             UnlistedAtomicInMonomial => write!(f, "Monomial contains an unlisted atomic"),
             IncoherencyLeak => write!(f, "Unexpected incoherence of a c-e structure"),
             NoModelToInhibit => write!(f, "Attempt to inhibit a nonexistent model"),
+
+            UnknownScriptFormat => write!(f, "Unrecognized script format"),
         }
     }
 }

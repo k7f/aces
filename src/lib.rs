@@ -26,9 +26,10 @@ mod logging;
 pub use error::AcesError;
 pub use context::{Context, ContextHandle, Contextual, ExclusivelyContextual, InContext, InContextMut};
 pub use content::{
-    Content, ContentOrigin, InteractiveOrigin, PartialContent, Compilable, CompilableMut,
+    Content, ContentFormat, InteractiveFormat, PartialContent, Compilable, CompilableMut,
     CompilableAsContent, CompilableAsDependency,
 };
+pub use yaml_script::YamlFormat;
 pub use node::NodeID;
 pub use atom::{Port, Link, Harc, Fork, Join, AtomID, PortID, LinkID, ForkID, JoinID, Atomic};
 pub use polynomial::{Polynomial, Monomials};

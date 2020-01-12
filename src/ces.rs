@@ -8,9 +8,9 @@ use std::{
 };
 use log::Level::Trace;
 use crate::{
-    ContextHandle, Contextual, ExclusivelyContextual, Port, Harc, AtomID, NodeID, PortID, LinkID,
-    ForkID, JoinID, Polynomial, FiringSet, Content, node, sat, sat::Resolution, Solver, AcesError,
-    yaml_script::YamlContent,
+    ContextHandle, Contextual, ExclusivelyContextual, ContentFormat, Port, Harc, AtomID, NodeID,
+    PortID, LinkID, ForkID, JoinID, Polynomial, FiringSet, Content, node, sat, sat::Resolution,
+    Solver, AcesError,
 };
 
 #[derive(PartialEq, Debug)]
@@ -393,29 +393,36 @@ impl CEStructure {
     /// textual description.
     ///
     /// [`Context`]: crate::Context
-    pub fn add_from_str<S: AsRef<str>>(&mut self, script: S) -> Result<(), Box<dyn Error>> {
-        // FIXME infer the format of content description: yaml, sexpr, ...
-        // FIXME or better still, deal with formats as plugins and delegate the inference.
+    pub fn add_from_str<S: AsRef<str>>(
+        &mut self,
+        script: S,
+        formats: &[&dyn ContentFormat],
+    ) -> Result<(), Box<dyn Error>> {
+        let script = script.as_ref();
 
-        if self.context.lock().unwrap().script_is_acceptable(script.as_ref()) {
-            println!("script format as expected...");
-        } else {
-            println!("script format mismatch...");
+        for format in formats {
+            if format.script_is_acceptable(script) {
+                let content = format.script_to_content(&self.context, script)?;
+
+                return self.add_from_content(content)
+            }
         }
 
-        let content = YamlContent::from_str(&self.context, script)?;
-
-        self.add_from_content(content.into())
+        Err(AcesError::UnknownScriptFormat.into())
     }
 
     /// Creates a new c-e structure from a textual description, in a
     /// [`Context`] given by a [`ContextHandle`].
     ///
     /// [`Context`]: crate::Context
-    pub fn from_str<S: AsRef<str>>(ctx: &ContextHandle, script: S) -> Result<Self, Box<dyn Error>> {
+    pub fn from_str<S: AsRef<str>>(
+        ctx: &ContextHandle,
+        script: S,
+        formats: &[&dyn ContentFormat],
+    ) -> Result<Self, Box<dyn Error>> {
         let mut ces = Self::new(ctx);
 
-        ces.add_from_str(script)?;
+        ces.add_from_str(script, formats)?;
 
         Ok(ces)
     }
@@ -425,12 +432,28 @@ impl CEStructure {
     /// to be found along the `path`.
     ///
     /// [`Context`]: crate::Context
-    pub fn add_from_file<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Box<dyn Error>> {
+    pub fn add_from_file<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+        formats: &[&dyn ContentFormat],
+    ) -> Result<(), Box<dyn Error>> {
+        let path = path.as_ref();
+        let mut ok_formats = Vec::new();
+
+        for &format in formats {
+            if format.path_is_acceptable(path) {
+                ok_formats.push(format);
+            }
+        }
+
         let mut fp = File::open(path)?;
         let mut script = String::new();
         fp.read_to_string(&mut script)?;
 
-        self.add_from_str(&script)
+        self.add_from_str(
+            &script,
+            if ok_formats.is_empty() { formats } else { ok_formats.as_slice() },
+        )
     }
 
     /// Creates a new c-e structure from a script file to be found
@@ -438,10 +461,14 @@ impl CEStructure {
     /// [`ContextHandle`].
     ///
     /// [`Context`]: crate::Context
-    pub fn from_file<P: AsRef<Path>>(ctx: &ContextHandle, path: P) -> Result<Self, Box<dyn Error>> {
+    pub fn from_file<P: AsRef<Path>>(
+        ctx: &ContextHandle,
+        path: P,
+        formats: &[&dyn ContentFormat],
+    ) -> Result<Self, Box<dyn Error>> {
         let mut ces = Self::new(ctx);
 
-        ces.add_from_file(path)?;
+        ces.add_from_file(path, formats)?;
 
         Ok(ces)
     }

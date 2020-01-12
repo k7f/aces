@@ -6,7 +6,7 @@ use std::{
     error::Error,
 };
 use crate::{
-    ContentOrigin, InteractiveOrigin, PartialContent, Port, Link, Harc, Fork, Join, ID, NodeID,
+    ContentFormat, InteractiveFormat, PartialContent, Port, Link, Harc, Fork, Join, ID, NodeID,
     AtomID, PortID, LinkID, ForkID, JoinID, Semantics, Capacity, Weight,
     name::NameSpace,
     atom::{AtomSpace, Atom},
@@ -44,7 +44,7 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 pub struct Context {
     magic_id:     u64, // group ID
     name_id:      ID,  // given name
-    origin:       Rc<dyn ContentOrigin>,
+    origin:       Rc<dyn ContentFormat>,
     globals:      NameSpace,
     nodes:        NameSpace,
     atoms:        AtomSpace,
@@ -63,7 +63,7 @@ impl Context {
     /// the only public way of creating toplevel `Context` instances.
     ///
     /// [`new_interactive()`]: Context::new_interactive()
-    pub fn new_toplevel<S: AsRef<str>>(name: S, origin: Rc<dyn ContentOrigin>) -> ContextHandle {
+    pub fn new_toplevel<S: AsRef<str>>(name: S, origin: Rc<dyn ContentFormat>) -> ContextHandle {
         let magic_id = rand::random();
 
         let mut globals = NameSpace::default();
@@ -87,7 +87,7 @@ impl Context {
     }
 
     /// Creates a new toplevel `Context` instance, sets content origin
-    /// to [`InteractiveOrigin`] and returns the corresponding
+    /// to [`InteractiveFormat`] and returns the corresponding
     /// [`ContextHandle`].
     ///
     /// This is a specialized variant of the [`new_toplevel()`]
@@ -95,7 +95,7 @@ impl Context {
     ///
     /// [`new_toplevel()`]: Context::new_toplevel()
     pub fn new_interactive<S: AsRef<str>>(name: S) -> ContextHandle {
-        Context::new_toplevel(name, Rc::new(InteractiveOrigin::new()))
+        Context::new_toplevel(name, Rc::new(InteractiveFormat::new()))
     }
 
     /// Clears content map, capacities, weights and runtime
@@ -104,7 +104,7 @@ impl Context {
     /// This method preserves the collection of [`Atom`]s, the two
     /// symbol tables, and the `Context`'s own given name and group
     /// ID.
-    pub fn reset(&mut self, new_origin: Rc<dyn ContentOrigin>) {
+    pub fn reset(&mut self, new_origin: Rc<dyn ContentFormat>) {
         // Fields unchanged: magic_id, name_id, globals, nodes, atoms.
         self.origin = new_origin;
         self.content.clear();
@@ -277,10 +277,6 @@ impl Context {
     }
 
     // Content
-
-    pub fn script_is_acceptable(&self, script: &str) -> bool {
-        self.origin.script_is_acceptable(script)
-    }
 
     pub fn add_content<S: AsRef<str>>(
         &mut self,

@@ -1,27 +1,71 @@
 use std::{
     ops::{AddAssign, MulAssign},
     collections::{BTreeMap, BTreeSet},
+    path::Path,
     fmt,
     error::Error,
 };
 use crate::{NodeID, ContextHandle};
 
-pub trait ContentOrigin: fmt::Debug {
+pub trait ContentFormat: fmt::Debug {
+    // Note: this can't be declared as an associated const due to
+    // object safety constraints.
+    fn expected_extensions(&self) -> &[&str];
+
+    fn path_is_acceptable(&self, path: &Path) -> bool {
+        if let Some(ext) = path.extension() {
+            if !ext.is_empty() {
+                if let Some(ext) = ext.to_str() {
+                    for expected in self.expected_extensions() {
+                        if ext.eq_ignore_ascii_case(expected) {
+                            return true
+                        }
+                    }
+                }
+
+                // Reject unexpected non-empty extension, including
+                // any extension that isn't a valid UTF8.
+                return false
+            }
+        }
+
+        // Accept empty extension.
+        true
+    }
+
     fn script_is_acceptable(&self, script: &str) -> bool;
+
+    fn script_to_content(
+        &self,
+        cxt: &ContextHandle,
+        script: &str,
+    ) -> Result<Box<dyn Content>, Box<dyn Error>>;
 }
 
 #[derive(Clone, Default, Debug)]
-pub struct InteractiveOrigin;
+pub struct InteractiveFormat;
 
-impl InteractiveOrigin {
+impl InteractiveFormat {
     pub fn new() -> Self {
         Default::default()
     }
 }
 
-impl ContentOrigin for InteractiveOrigin {
+impl ContentFormat for InteractiveFormat {
+    fn expected_extensions(&self) -> &[&str] {
+        &[]
+    }
+
     fn script_is_acceptable(&self, _script: &str) -> bool {
         false
+    }
+
+    fn script_to_content(
+        &self,
+        _cxt: &ContextHandle,
+        _script: &str,
+    ) -> Result<Box<dyn Content>, Box<dyn Error>> {
+        panic!("Attempt to bypass a script acceptance test.")
     }
 }
 
