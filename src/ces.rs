@@ -1,6 +1,7 @@
 use std::{
     collections::{btree_map, BTreeMap, BTreeSet},
     convert::TryInto,
+    rc::Rc,
     io::Read,
     fs::File,
     path::Path,
@@ -8,9 +9,9 @@ use std::{
 };
 use log::Level::Trace;
 use crate::{
-    ContextHandle, Contextual, ExclusivelyContextual, ContentFormat, Port, Harc, AtomID, NodeID,
-    PortID, LinkID, ForkID, JoinID, Polynomial, FiringSet, Content, node, sat, sat::Resolution,
-    Solver, AcesError,
+    ContextHandle, Contextual, ExclusivelyContextual, ContentFormat, InteractiveFormat, Port, Harc,
+    AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Polynomial, FiringSet, Content, node, sat,
+    sat::Resolution, Solver, AcesError,
 };
 
 #[derive(PartialEq, Debug)]
@@ -34,6 +35,7 @@ enum LinkState {
 #[derive(Debug)]
 pub struct CEStructure {
     context:        ContextHandle,
+    origin:         Rc<dyn ContentFormat>,
     content:        Vec<Box<dyn Content>>,
     resolution:     Resolution,
     causes:         BTreeMap<PortID, Polynomial<LinkID>>,
@@ -52,22 +54,38 @@ impl CEStructure {
     /// Creates an empty c-e structure in a [`Context`] given by a
     /// [`ContextHandle`].
     ///
+    /// See also a specialized variant of this method,
+    /// [`new_interactive()`].
+    ///
     /// [`Context`]: crate::Context
-    pub fn new(ctx: &ContextHandle) -> Self {
+    /// [`new_interactive()`]: CEStructure::new_interactive()
+    pub fn new(ctx: &ContextHandle, origin: Rc<dyn ContentFormat>) -> Self {
         Self {
-            context:        ctx.clone(),
-            content:        Default::default(),
-            resolution:     Default::default(),
-            causes:         Default::default(),
-            effects:        Default::default(),
-            carrier:        Default::default(),
-            links:          Default::default(),
+            context: ctx.clone(),
+            origin,
+            content: Default::default(),
+            resolution: Default::default(),
+            causes: Default::default(),
+            effects: Default::default(),
+            carrier: Default::default(),
+            links: Default::default(),
             num_thin_links: 0,
-            forks:          Default::default(),
-            joins:          Default::default(),
-            co_forks:       Default::default(),
-            co_joins:       Default::default(),
+            forks: Default::default(),
+            joins: Default::default(),
+            co_forks: Default::default(),
+            co_joins: Default::default(),
         }
+    }
+
+    /// Creates an empty c-e structure in a [`Context`] given by a
+    /// [`ContextHandle`], and sets content origin to
+    /// [`InteractiveFormat`].
+    ///
+    /// This is a specialized variant of the [`new()`] method.
+    ///
+    /// [`new()`]: CEStructure::new()
+    pub fn new_interactive(ctx: &ContextHandle) -> Self {
+        CEStructure::new(ctx, Rc::new(InteractiveFormat::new()))
     }
 
     fn add_harc_to_host(&mut self, harc_id: AtomID, face: node::Face, node_id: NodeID) {
@@ -420,7 +438,7 @@ impl CEStructure {
         script: S,
         formats: &[&dyn ContentFormat],
     ) -> Result<Self, Box<dyn Error>> {
-        let mut ces = Self::new(ctx);
+        let mut ces = Self::new_interactive(ctx);
 
         ces.add_from_str(script, formats)?;
 
@@ -466,7 +484,7 @@ impl CEStructure {
         path: P,
         formats: &[&dyn ContentFormat],
     ) -> Result<Self, Box<dyn Error>> {
-        let mut ces = Self::new(ctx);
+        let mut ces = Self::new_interactive(ctx);
 
         ces.add_from_file(path, formats)?;
 

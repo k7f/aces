@@ -1,13 +1,12 @@
 use std::{
     cmp, fmt,
     collections::BTreeMap,
-    rc::Rc,
     sync::{Arc, Mutex},
     error::Error,
 };
 use crate::{
-    ContentFormat, InteractiveFormat, PartialContent, Port, Link, Harc, Fork, Join, ID, NodeID,
-    AtomID, PortID, LinkID, ForkID, JoinID, Semantics, Capacity, Weight,
+    PartialContent, Port, Link, Harc, Fork, Join, ID, NodeID, AtomID, PortID, LinkID, ForkID,
+    JoinID, Semantics, Capacity, Weight,
     name::NameSpace,
     atom::{AtomSpace, Atom},
     node, sat, solver, runner,
@@ -44,7 +43,6 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 pub struct Context {
     magic_id:     u64, // group ID
     name_id:      ID,  // given name
-    origin:       Rc<dyn ContentFormat>,
     globals:      NameSpace,
     nodes:        NameSpace,
     atoms:        AtomSpace,
@@ -59,11 +57,9 @@ impl Context {
     /// Creates a new toplevel `Context` instance and returns the
     /// corresponding [`ContextHandle`].
     ///
-    /// Calling this method, or its variant, [`new_interactive()`], is
-    /// the only public way of creating toplevel `Context` instances.
-    ///
-    /// [`new_interactive()`]: Context::new_interactive()
-    pub fn new_toplevel<S: AsRef<str>>(name: S, origin: Rc<dyn ContentFormat>) -> ContextHandle {
+    /// Calling this method is the only public way of creating
+    /// toplevel `Context` instances.
+    pub fn new_toplevel<S: AsRef<str>>(name: S) -> ContextHandle {
         let magic_id = rand::random();
 
         let mut globals = NameSpace::default();
@@ -72,7 +68,6 @@ impl Context {
         let ctx = Self {
             magic_id,
             name_id,
-            origin,
             globals,
             nodes: Default::default(),
             atoms: Default::default(),
@@ -86,27 +81,14 @@ impl Context {
         Arc::new(Mutex::new(ctx))
     }
 
-    /// Creates a new toplevel `Context` instance, sets content origin
-    /// to [`InteractiveFormat`] and returns the corresponding
-    /// [`ContextHandle`].
-    ///
-    /// This is a specialized variant of the [`new_toplevel()`]
-    /// method.
-    ///
-    /// [`new_toplevel()`]: Context::new_toplevel()
-    pub fn new_interactive<S: AsRef<str>>(name: S) -> ContextHandle {
-        Context::new_toplevel(name, Rc::new(InteractiveFormat::new()))
-    }
-
     /// Clears content map, capacities, weights and runtime
     /// attributes, but doesn't destroy shared resources.
     ///
     /// This method preserves the collection of [`Atom`]s, the two
     /// symbol tables, and the `Context`'s own given name and group
     /// ID.
-    pub fn reset(&mut self, new_origin: Rc<dyn ContentFormat>) {
+    pub fn reset(&mut self) {
         // Fields unchanged: magic_id, name_id, globals, nodes, atoms.
-        self.origin = new_origin;
         self.content.clear();
         self.capacities.clear();
         self.weights.clear();
@@ -129,7 +111,6 @@ impl Context {
             // not in further ancestors).  See `partial_cmp`.
             let name_id = parent.globals.share_name(name);
 
-            let origin = parent.origin.clone();
             let globals = parent.globals.clone();
             let nodes = parent.nodes.clone();
             let atoms = parent.atoms.clone();
@@ -142,7 +123,6 @@ impl Context {
             Self {
                 magic_id,
                 name_id,
-                origin,
                 globals,
                 nodes,
                 atoms,
