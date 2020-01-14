@@ -581,7 +581,7 @@ mod tests {
 
     #[test]
     fn test_partial_order() {
-        let toplevel = Context::new_interactive("toplevel");
+        let toplevel = Context::new_toplevel("toplevel");
         let derived = Context::new_derived("derived", &toplevel);
 
         assert_eq!(
@@ -592,7 +592,7 @@ mod tests {
 
     #[test]
     fn test_derivation() {
-        let toplevel = Context::new_interactive("toplevel");
+        let toplevel = Context::new_toplevel("toplevel");
         let (a_port, a_port_id) = new_port(&toplevel, node::Face::Tx, "a");
 
         {

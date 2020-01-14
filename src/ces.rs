@@ -83,6 +83,7 @@ impl CEStructure {
     ///
     /// This is a specialized variant of the [`new()`] method.
     ///
+    /// [`Context`]: crate::Context
     /// [`new()`]: CEStructure::new()
     pub fn new_interactive(ctx: &ContextHandle) -> Self {
         CEStructure::new(ctx, Rc::new(InteractiveFormat::new()))
@@ -410,23 +411,50 @@ impl CEStructure {
     /// in the [`Context`] of the old c-e structure from a given
     /// textual description.
     ///
+    /// The `script` is interpreted according to an appropriate format
+    /// of content description listed in the `formats` array.
+    ///
+    /// On success, returns the chosen format as a [`ContentFormat`]
+    /// trait object.
+    ///
     /// [`Context`]: crate::Context
     pub fn add_from_str<S: AsRef<str>>(
         &mut self,
         script: S,
-        formats: &[&dyn ContentFormat],
-    ) -> Result<(), Box<dyn Error>> {
+        formats: &[Rc<dyn ContentFormat>],
+    ) -> Result<Rc<dyn ContentFormat>, Box<dyn Error>> {
         let script = script.as_ref();
 
         for format in formats {
             if format.script_is_acceptable(script) {
                 let content = format.script_to_content(&self.context, script)?;
 
-                return self.add_from_content(content)
+                return self.add_from_content(content).map(|_| format.clone())
             }
         }
 
         Err(AcesError::UnknownScriptFormat.into())
+    }
+
+    /// Extends this c-e structure with another one, which is created
+    /// in the [`Context`] of the old c-e structure from a given
+    /// textual description.
+    ///
+    /// The `script` is interpreted according to an appropriate format
+    /// of content description listed in the `formats` array.
+    ///
+    /// On success, stores the chosen format as the new content
+    /// origin.
+    ///
+    /// [`Context`]: crate::Context
+    pub fn add_from_str_as_origin<S: AsRef<str>>(
+        &mut self,
+        script: S,
+        formats: &[Rc<dyn ContentFormat>],
+    ) -> Result<(), Box<dyn Error>> {
+        self.origin = self.add_from_str(script, formats)?;
+
+        Ok(())
     }
 
     /// Creates a new c-e structure from a textual description, in a
@@ -436,11 +464,11 @@ impl CEStructure {
     pub fn from_str<S: AsRef<str>>(
         ctx: &ContextHandle,
         script: S,
-        formats: &[&dyn ContentFormat],
+        formats: &[Rc<dyn ContentFormat>],
     ) -> Result<Self, Box<dyn Error>> {
         let mut ces = Self::new_interactive(ctx);
 
-        ces.add_from_str(script, formats)?;
+        ces.add_from_str_as_origin(script, formats)?;
 
         Ok(ces)
     }
@@ -449,18 +477,24 @@ impl CEStructure {
     /// in the [`Context`] of the old c-e structure from a script file
     /// to be found along the `path`.
     ///
+    /// The script file is interpreted according to an appropriate
+    /// format of content description listed in the `formats` array.
+    ///
+    /// On success, returns the chosen format as a [`ContentFormat`]
+    /// trait object.
+    ///
     /// [`Context`]: crate::Context
     pub fn add_from_file<P: AsRef<Path>>(
         &mut self,
         path: P,
-        formats: &[&dyn ContentFormat],
-    ) -> Result<(), Box<dyn Error>> {
+        formats: &[Rc<dyn ContentFormat>],
+    ) -> Result<Rc<dyn ContentFormat>, Box<dyn Error>> {
         let path = path.as_ref();
         let mut ok_formats = Vec::new();
 
-        for &format in formats {
+        for format in formats {
             if format.path_is_acceptable(path) {
-                ok_formats.push(format);
+                ok_formats.push(format.clone());
             }
         }
 
@@ -474,6 +508,27 @@ impl CEStructure {
         )
     }
 
+    /// Extends this c-e structure with another one, which is created
+    /// in the [`Context`] of the old c-e structure from a script file
+    /// to be found along the `path`.
+    ///
+    /// The script file is interpreted according to an appropriate
+    /// format of content description listed in the `formats` array.
+    ///
+    /// On success, stores the chosen format as the new content
+    /// origin.
+    ///
+    /// [`Context`]: crate::Context
+    pub fn add_from_file_as_origin<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+        formats: &[Rc<dyn ContentFormat>],
+    ) -> Result<(), Box<dyn Error>> {
+        self.origin = self.add_from_file(path, formats)?;
+
+        Ok(())
+    }
+
     /// Creates a new c-e structure from a script file to be found
     /// along the `path`, in a [`Context`] given by a
     /// [`ContextHandle`].
@@ -482,11 +537,11 @@ impl CEStructure {
     pub fn from_file<P: AsRef<Path>>(
         ctx: &ContextHandle,
         path: P,
-        formats: &[&dyn ContentFormat],
+        formats: &[Rc<dyn ContentFormat>],
     ) -> Result<Self, Box<dyn Error>> {
         let mut ces = Self::new_interactive(ctx);
 
-        ces.add_from_file(path, formats)?;
+        ces.add_from_file_as_origin(path, formats)?;
 
         Ok(ces)
     }

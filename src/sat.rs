@@ -546,7 +546,7 @@ mod tests {
 
     #[test]
     fn test_coharcs() {
-        let ctx = Context::new_interactive("test_coharcs");
+        let ctx = Context::new_toplevel("test_coharcs");
         let a_fork_id = new_fork_id(&ctx, "a", &["z"]);
         let z_join_id = new_join_id(&ctx, "z", &["a"]);
 
