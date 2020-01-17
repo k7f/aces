@@ -307,7 +307,7 @@ impl Context {
         I::Item: AsRef<str>,
     {
         let host_id = self.share_node_name(host_name.as_ref());
-        let suit_ids = suit_names.into_iter().map(|n| self.share_node_name(n.as_ref())).collect();
+        let suit_ids = suit_names.into_iter().map(|n| self.share_node_name(n.as_ref()));
 
         let atom_id = match face {
             node::Face::Tx => {

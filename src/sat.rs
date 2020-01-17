@@ -531,7 +531,7 @@ mod tests {
     fn new_fork_id(ctx: &ContextHandle, host_name: &str, suit_names: &[&str]) -> ForkID {
         let mut ctx = ctx.lock().unwrap();
         let host_id = ctx.share_node_name(host_name);
-        let suit_ids = suit_names.iter().map(|n| ctx.share_node_name(n)).collect();
+        let suit_ids = suit_names.iter().map(|n| ctx.share_node_name(n));
         let mut fork = Harc::new_fork(host_id, suit_ids);
         ctx.share_fork(&mut fork)
     }
@@ -539,7 +539,7 @@ mod tests {
     fn new_join_id(ctx: &ContextHandle, host_name: &str, suit_names: &[&str]) -> JoinID {
         let mut ctx = ctx.lock().unwrap();
         let host_id = ctx.share_node_name(host_name);
-        let suit_ids = suit_names.iter().map(|n| ctx.share_node_name(n)).collect();
+        let suit_ids = suit_names.iter().map(|n| ctx.share_node_name(n));
         let mut join = Harc::new_join(host_id, suit_ids);
         ctx.share_join(&mut join)
     }

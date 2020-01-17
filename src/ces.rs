@@ -159,7 +159,6 @@ impl CEStructure {
         use node::Face::{Tx, Rx};
 
         for mono in poly.get_monomials() {
-            let mut co_node_ids = Vec::new();
             let mut fat_co_node_ids = Vec::new();
 
             // Link sequence `mono` is ordered by link ID, reorder
@@ -180,9 +179,7 @@ impl CEStructure {
                 }
             }
 
-            for (co_node_id, link_state) in co_node_map {
-                co_node_ids.push(co_node_id);
-
+            for (&co_node_id, link_state) in co_node_map.iter() {
                 match link_state {
                     LinkState::Fat => {
                         fat_co_node_ids.push(co_node_id);
@@ -220,11 +217,11 @@ impl CEStructure {
 
             let harc_id: AtomID = match face {
                 Tx => {
-                    let mut fork = Harc::new_fork(node_id, co_node_ids);
+                    let mut fork = Harc::new_fork_unchecked(node_id, co_node_map.keys().copied());
                     self.context.lock().unwrap().share_fork(&mut fork).into()
                 }
                 Rx => {
-                    let mut join = Harc::new_join(node_id, co_node_ids);
+                    let mut join = Harc::new_join_unchecked(node_id, co_node_map.keys().copied());
                     self.context.lock().unwrap().share_join(&mut join).into()
                 }
             };

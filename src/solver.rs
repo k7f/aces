@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeSet, BTreeMap},
-    iter::FromIterator,
     mem, fmt,
     error::Error,
 };
@@ -577,14 +576,12 @@ impl Solution {
         }
 
         fork_set.extend(fork_map.into_iter().map(|(host, suit)| {
-            let suit = Vec::from_iter(suit.into_iter());
-            let mut fork = Harc::new_fork(host, suit);
+            let mut fork = Harc::new_fork_unchecked(host, suit);
             solution.context.lock().unwrap().share_fork(&mut fork)
         }));
 
         join_set.extend(join_map.into_iter().map(|(host, suit)| {
-            let suit = Vec::from_iter(suit.into_iter());
-            let mut join = Harc::new_join(host, suit);
+            let mut join = Harc::new_join_unchecked(host, suit);
             solution.context.lock().unwrap().share_join(&mut join)
         }));
 

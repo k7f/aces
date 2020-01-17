@@ -1,6 +1,6 @@
 use std::{
     fmt, hash,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     error::Error,
 };
 use crate::{ID, NodeID, Context, Contextual, ExclusivelyContextual, InContext, AcesError, node, sat};
@@ -616,7 +616,7 @@ pub struct Harc {
 }
 
 impl Harc {
-    fn new(face: node::Face, host_id: NodeID, suit_ids: Vec<NodeID>) -> Self {
+    fn new_unchecked(face: node::Face, host_id: NodeID, suit_ids: Vec<NodeID>) -> Self {
         if cfg!(debug_assertions) {
             let mut sit = suit_ids.iter();
 
@@ -634,14 +634,40 @@ impl Harc {
         Harc { atom_id: None, face, host_id, suit_ids }
     }
 
-    pub fn new_fork(host_id: NodeID, suit_ids: Vec<NodeID>) -> Self {
-        trace!("New fork: {:?} -> {:?}", host_id, suit_ids);
-        Harc::new(node::Face::Tx, host_id, suit_ids)
+    pub fn new_fork<I>(host_id: NodeID, suit_ids: I) -> Self
+    where
+        I: IntoIterator<Item = NodeID>,
+    {
+        let suit_ids: BTreeSet<_> = suit_ids.into_iter().collect();
+
+        Self::new_fork_unchecked(host_id, suit_ids)
     }
 
-    pub fn new_join(host_id: NodeID, suit_ids: Vec<NodeID>) -> Self {
+    pub fn new_join<I>(host_id: NodeID, suit_ids: I) -> Self
+    where
+        I: IntoIterator<Item = NodeID>,
+    {
+        let suit_ids: BTreeSet<_> = suit_ids.into_iter().collect();
+
+        Self::new_join_unchecked(host_id, suit_ids)
+    }
+
+    pub fn new_fork_unchecked<I>(host_id: NodeID, suit_ids: I) -> Self
+    where
+        I: IntoIterator<Item = NodeID>,
+    {
+        let suit_ids: Vec<_> = suit_ids.into_iter().collect();
+        trace!("New fork: {:?} -> {:?}", host_id, suit_ids);
+        Harc::new_unchecked(node::Face::Tx, host_id, suit_ids)
+    }
+
+    pub fn new_join_unchecked<I>(host_id: NodeID, suit_ids: I) -> Self
+    where
+        I: IntoIterator<Item = NodeID>,
+    {
+        let suit_ids: Vec<_> = suit_ids.into_iter().collect();
         trace!("New join: {:?} <- {:?}", host_id, suit_ids);
-        Harc::new(node::Face::Rx, host_id, suit_ids)
+        Harc::new_unchecked(node::Face::Rx, host_id, suit_ids)
     }
 
     pub fn get_atom_id(&self) -> AtomID {
