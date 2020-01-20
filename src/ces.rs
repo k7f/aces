@@ -7,14 +7,14 @@ use std::{
     path::Path,
     error::Error,
 };
-use log::Level::Trace;
+use log::Level::{Debug, Trace};
 use crate::{
     ContextHandle, Contextual, ExclusivelyContextual, ContentFormat, InteractiveFormat, Port, Harc,
     AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Polynomial, FiringSet, Content, node, sat,
     sat::Resolution, Solver, AcesError,
 };
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum LinkState {
     /// Single-face link (structure containing it is incoherent).  The
     /// [`node::Face`] value is the missing face.
@@ -671,12 +671,60 @@ impl CEStructure {
         }
     }
 
+    fn get_thin_link_names(
+        &self,
+        link_id: LinkID,
+        missing_face: node::Face,
+    ) -> Result<(String, String), Box<dyn Error>> {
+        let ctx = self.context.lock().unwrap();
+
+        if let Some(link) = ctx.get_link(link_id) {
+            let node_id = link.get_node_id(!missing_face);
+            let conode_id = link.get_node_id(missing_face);
+
+            Ok((node_id.format_locked(&ctx)?, conode_id.format_locked(&ctx)?))
+        } else {
+            Err(AcesError::LinkMissingForID(link_id).into())
+        }
+    }
+
+    pub fn check_coherence(&self) -> Result<(), Box<dyn Error>> {
+        if self.is_coherent() {
+            Ok(())
+        } else {
+            let mut first_link_info = None;
+
+            for (&link_id, &link_state) in self.links.iter() {
+                if let LinkState::Thin(missing_face) = link_state {
+                    if log_enabled!(Debug) || first_link_info.is_none() {
+                        let (tx_name, rx_name) = self.get_thin_link_names(link_id, missing_face)?;
+
+                        match missing_face {
+                            node::Face::Rx => debug!("Tx-only link: {} -> {}", tx_name, rx_name,),
+                            node::Face::Tx => debug!("Rx-only link: {} <- {}", tx_name, rx_name,),
+                        }
+
+                        if first_link_info.is_none() {
+                            first_link_info = Some((!missing_face, tx_name, rx_name));
+                        }
+                    }
+                }
+            }
+
+            Err(AcesError::IncoherentStructure(
+                self.get_name().unwrap_or("anonymous").to_owned(),
+                self.num_thin_links,
+                first_link_info.unwrap(),
+            )
+            .into())
+        }
+    }
+
     pub fn solve(&mut self) -> Result<(), Box<dyn Error>> {
-        if !self.is_coherent() {
+        if let Err(err) = self.check_coherence() {
             self.resolution = Resolution::Incoherent;
 
-            Err(AcesError::IncoherentStructure(self.get_name().unwrap_or("anonymous").to_owned())
-                .into())
+            Err(err)
         } else {
             let formula = self.get_formula()?;
 

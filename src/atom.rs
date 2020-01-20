@@ -464,6 +464,11 @@ impl hash::Hash for Atom {
     }
 }
 
+/// Representation of a port.
+///
+/// This is one of the two [`Face`]s of a node.
+///
+/// [`Face`]: node::Face
 #[derive(Clone, Eq, Debug)]
 pub struct Port {
     face:    node::Face,
@@ -512,6 +517,15 @@ impl ExclusivelyContextual for Port {
     }
 }
 
+/// Representation of a link.
+///
+/// This is a fat link, if used on its own, or a thin link, if paired
+/// with a [`node::Face`].  See [`CEStructure`]'s private field
+/// `links`, or the implementation of
+/// [`CEStructure::check_coherence()`].
+///
+/// [`CEStructure`]: crate::CEStructure
+/// [`CEStructure::check_coherence()`]: crate::CEStructure::check_coherence()
 #[derive(Clone, Eq, Debug)]
 pub struct Link {
     atom_id:    Option<AtomID>,
@@ -634,6 +648,9 @@ impl Harc {
         Harc { atom_id: None, face, host_id, suit_ids }
     }
 
+    /// [`Fork`]'s constructor.
+    ///
+    /// See also  [`Harc::new_fork_unchecked()`].
     pub fn new_fork<I>(host_id: NodeID, suit_ids: I) -> Self
     where
         I: IntoIterator<Item = NodeID>,
@@ -643,6 +660,9 @@ impl Harc {
         Self::new_fork_unchecked(host_id, suit_ids)
     }
 
+    /// [`Join`]'s constructor.
+    ///
+    /// See also  [`Harc::new_join_unchecked()`].
     pub fn new_join<I>(host_id: NodeID, suit_ids: I) -> Self
     where
         I: IntoIterator<Item = NodeID>,
@@ -652,6 +672,13 @@ impl Harc {
         Self::new_join_unchecked(host_id, suit_ids)
     }
 
+    /// A more efficient variant of [`Harc::new_fork()`].
+    ///
+    /// Note: new [`Fork`] is created under the assumption that
+    /// `suit_ids` are listed in ascending order.  If the caller fails
+    /// to provide an ordered suit, the library may panic in some
+    /// other call (the constructor itself panics immediately in debug
+    /// mode).
     pub fn new_fork_unchecked<I>(host_id: NodeID, suit_ids: I) -> Self
     where
         I: IntoIterator<Item = NodeID>,
@@ -661,6 +688,13 @@ impl Harc {
         Harc::new_unchecked(node::Face::Tx, host_id, suit_ids)
     }
 
+    /// A more efficient variant of [`Harc::new_join()`].
+    ///
+    /// Note: new [`Join`] is created under the assumption that
+    /// `suit_ids` are listed in ascending order.  If the caller fails
+    /// to provide an ordered suit, the library may panic in some
+    /// other call (the constructor itself panics immediately in debug
+    /// mode).
     pub fn new_join_unchecked<I>(host_id: NodeID, suit_ids: I) -> Self
     where
         I: IntoIterator<Item = NodeID>,

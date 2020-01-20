@@ -22,7 +22,7 @@ pub enum AcesError {
     NodeMissingForJoin(node::Face),
     FiringNodeMissing(node::Face),
     FiringNodeDuplicated(node::Face),
-    IncoherentStructure(String),
+    IncoherentStructure(String, u32, (node::Face, String, String)),
 
     LeakedInhibitor,
     StateUnderflow,
@@ -88,7 +88,29 @@ impl fmt::Display for AcesError {
                 "Duplicated {} node in firing component",
                 if *face == node::Face::Tx { "sending" } else { "receiving" }
             ),
-            IncoherentStructure(name) => write!(f, "Structure '{}' is incoherent", name),
+            IncoherentStructure(ces_name, num_thin_links, (face, tx_name, rx_name)) => {
+                if *num_thin_links == 1 {
+                    write!(
+                        f,
+                        "Structure '{}' is incoherent; there is one thin link: ({} {} {})",
+                        ces_name,
+                        tx_name,
+                        if *face == node::Face::Tx { ">" } else { "<" },
+                        rx_name
+                    )
+                } else {
+                    write!(
+                        f,
+                        "Structure '{}' is incoherent; there are thin links: ({} {} {}) and {} \
+                         more..",
+                        ces_name,
+                        tx_name,
+                        if *face == node::Face::Tx { ">" } else { "<" },
+                        rx_name,
+                        *num_thin_links - 1,
+                    )
+                }
+            }
 
             LeakedInhibitor => write!(f, "Leaked inhibitor"),
             StateUnderflow => write!(f, "State underflow"),
