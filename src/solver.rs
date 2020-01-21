@@ -5,7 +5,7 @@ use std::{
 };
 use varisat::{Var, Lit, ExtendFormula, solver::SolverError};
 use crate::{
-    ContextHandle, Contextual, NodeID, AtomID, ForkID, JoinID, Harc, AcesError,
+    ContextHandle, Contextual, NodeID, AtomID, ForkID, JoinID, Harc, AcesError, AcesErrorKind,
     atom::Atom,
     sat::{CEVar, CELit, Encoding, Search, Clause, Formula},
 };
@@ -192,7 +192,8 @@ impl<'a> Solver<'a> {
     /// Only for internal use.
     fn add_clause(&mut self, clause: Clause) -> Result<(), AcesError> {
         if clause.is_empty() {
-            Err(AcesError::EmptyClauseRejectedBySolver(clause.get_info().to_owned()))
+            Err(AcesErrorKind::EmptyClauseRejectedBySolver(clause.get_info().to_owned())
+                .with_context(&self.context))
         } else {
             debug!("Add (to solver) {} clause: {}", clause.get_info(), clause.with(&self.context));
 
@@ -249,14 +250,14 @@ impl<'a> Solver<'a> {
             // depending on in which case the clause grows less.
             if fork_lits.len() > join_lits.len() {
                 if join_lits.is_empty() {
-                    return Err(AcesError::IncoherencyLeak)
+                    return Err(AcesErrorKind::IncoherencyLeak.with_context(&self.context))
                 } else {
                     all_lits.append(&mut join_lits);
                 }
             } else if !fork_lits.is_empty() {
                 all_lits.append(&mut fork_lits);
             } else if !join_lits.is_empty() {
-                return Err(AcesError::IncoherencyLeak)
+                return Err(AcesErrorKind::IncoherencyLeak.with_context(&self.context))
             }
 
             Clause::from_vec(all_lits, "void inhibition")
@@ -291,7 +292,7 @@ impl<'a> Solver<'a> {
 
             self.add_clause(clause)
         } else {
-            Err(AcesError::NoModelToInhibit)
+            Err(AcesErrorKind::NoModelToInhibit.with_context(&self.context))
         }
     }
 
@@ -555,22 +556,34 @@ impl Solution {
                             if let Some(fork_id) = fork.get_fork_id() {
                                 pre_set.insert(fork.get_host_id());
                                 fork_set.insert(fork_id);
+                            } else if let Some(join_id) = fork.get_join_id() {
+                                return Err(AcesErrorKind::HarcNotAForkMismatch(join_id)
+                                    .with_context(&solution.context))
                             } else {
-                                return Err(AcesError::HarcMismatch)
+                                unreachable!()
                             }
                         }
                         Atom::Join(join) => {
                             if let Some(join_id) = join.get_join_id() {
                                 post_set.insert(join.get_host_id());
                                 join_set.insert(join_id);
+                            } else if let Some(fork_id) = join.get_fork_id() {
+                                return Err(AcesErrorKind::HarcNotAJoinMismatch(fork_id)
+                                    .with_context(&solution.context))
                             } else {
-                                return Err(AcesError::HarcMismatch)
+                                unreachable!()
                             }
                         }
-                        Atom::Bottom => return Err(AcesError::BottomAtomAccess),
+                        Atom::Bottom => {
+                            return Err(
+                                AcesErrorKind::BottomAtomAccess.with_context(&solution.context)
+                            )
+                        }
                     }
                 } else {
-                    return Err(AcesError::AtomMissingForID)
+                    return Err(
+                        AcesErrorKind::AtomMissingForID(atom_id).with_context(&solution.context)
+                    )
                 }
             }
         }

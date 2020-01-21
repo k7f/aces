@@ -23,7 +23,7 @@ mod firing;
 mod runner;
 mod logging;
 
-pub use error::AcesError;
+pub use error::{AcesError, AcesErrorKind};
 pub use context::{Context, ContextHandle, Contextual, ExclusivelyContextual, InContext, InContextMut};
 pub use content::{
     Content, ContentFormat, InteractiveFormat, PartialContent, Compilable, CompilableMut,

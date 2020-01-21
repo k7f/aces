@@ -2,7 +2,7 @@ use std::{slice, iter, cmp, ops, fmt, collections::BTreeSet, error::Error};
 use bit_vec::BitVec;
 use crate::{
     NodeID, Port, Link, LinkID, ContextHandle, Contextual, ExclusivelyContextual, InContextMut,
-    Atomic, AcesError, node, sat,
+    Atomic, AcesError, AcesErrorKind, node, sat,
 };
 
 // FIXME sort rows as a way to fix Eq and, perhaps, to open some
@@ -168,7 +168,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
                     if thing <= prev {
                         self.atomics.clear();
 
-                        return Err(AcesError::AtomicsNotOrdered)
+                        return Err(AcesErrorKind::AtomicsNotOrdered.into())
                     }
                 }
                 prev_thing = Some(thing);
@@ -212,7 +212,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
                         self.terms = old_terms;
                     }
 
-                    return Err(AcesError::AtomicsNotOrdered)
+                    return Err(AcesErrorKind::AtomicsNotOrdered.into())
                 }
             }
             prev_thing = Some(thing);
@@ -294,7 +294,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
 
             Ok(changed)
         } else {
-            Err(AcesError::PortMismatch)
+            Err(AcesErrorKind::PolynomialFaceMismatch.into())
         }
     }
 
@@ -480,7 +480,9 @@ impl Contextual for Polynomial<LinkID> {
 
                 let s = if let Some(face) = self.dock {
                     let ctx = ctx.lock().unwrap();
-                    let link = ctx.get_link(id).ok_or(AcesError::LinkMissingForID(id))?;
+                    let link = ctx
+                        .get_link(id)
+                        .ok_or_else(|| AcesError::from(AcesErrorKind::LinkMissingForID(id)))?;
 
                     match face {
                         node::Face::Tx => link.get_rx_node_id().format_locked(&ctx),
@@ -503,7 +505,7 @@ impl<'a> InContextMut<'a, Polynomial<LinkID>> {
         if self.same_context(other) {
             self.get_thing_mut().add_polynomial(other.get_thing())
         } else {
-            Err(AcesError::ContextMismatch)
+            Err(AcesErrorKind::ContextMismatch.with_context(self.get_context()))
         }
     }
 }

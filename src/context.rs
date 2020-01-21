@@ -495,7 +495,7 @@ pub struct InContext<'a, D: Contextual> {
 }
 
 impl<D: Contextual> InContext<'_, D> {
-    pub fn with_context<T, F>(&self, f: F) -> T
+    pub fn using_context<T, F>(&self, f: F) -> T
     where
         F: FnOnce(&D, &Context) -> T,
     {
@@ -507,6 +507,11 @@ impl<D: Contextual> InContext<'_, D> {
     #[inline]
     pub fn same_context(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.context, &other.context)
+    }
+
+    #[inline]
+    pub fn get_context(&self) -> &ContextHandle {
+        &self.context
     }
 
     #[inline]
@@ -534,7 +539,7 @@ pub struct InContextMut<'a, D: Contextual> {
 }
 
 impl<D: Contextual> InContextMut<'_, D> {
-    pub fn with_context<T, F>(&mut self, f: F) -> T
+    pub fn using_context<T, F>(&mut self, f: F) -> T
     where
         F: FnOnce(&mut D, &Context) -> T,
     {
@@ -546,6 +551,11 @@ impl<D: Contextual> InContextMut<'_, D> {
     #[inline]
     pub fn same_context(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.context, &other.context)
+    }
+
+    #[inline]
+    pub fn get_context(&self) -> &ContextHandle {
+        &self.context
     }
 
     #[inline]

@@ -1,18 +1,21 @@
 use std::{fmt, error::Error};
-use crate::{node, LinkID};
+use crate::{
+    ContextHandle, Contextual, node, AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Multiplicity,
+};
 
 #[derive(Debug, Clone)]
-pub enum AcesError {
+pub enum AcesErrorKind {
     ContextMismatch,
-    PortMismatch,
-    HarcMismatch,
-    NodeMissingForID,
-    AtomMissingForID,
-    PortMissingForID,
+    PolynomialFaceMismatch,
+    HarcNotAForkMismatch(JoinID),
+    HarcNotAJoinMismatch(ForkID),
+    NodeMissingForID(NodeID),
+    AtomMissingForID(AtomID),
+    PortMissingForID(PortID),
     LinkMissingForID(LinkID),
-    HarcMissingForID,
-    ForkMissingForID,
-    JoinMissingForID,
+    HarcMissingForID(AtomID),
+    ForkMissingForID(ForkID),
+    JoinMissingForID(JoinID),
     BottomAtomAccess,
     AtomicsNotOrdered,
 
@@ -24,9 +27,9 @@ pub enum AcesError {
     FiringNodeDuplicated(node::Face),
     IncoherentStructure(String, u32, (node::Face, String, String)),
 
-    LeakedInhibitor,
-    StateUnderflow,
-    StateOverflow,
+    LeakedInhibitor(NodeID, Multiplicity),
+    StateUnderflow(NodeID, Multiplicity, Multiplicity),
+    StateOverflow(NodeID, Multiplicity, Multiplicity),
 
     EmptyClauseRejectedByFormula(String),
     EmptyClauseRejectedBySolver(String),
@@ -40,21 +43,24 @@ pub enum AcesError {
     UnknownScriptFormat,
 }
 
-impl fmt::Display for AcesError {
+impl fmt::Display for AcesErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use AcesError::*;
+        use AcesErrorKind::*;
 
         match self {
             ContextMismatch => write!(f, "Context mismatch"),
-            PortMismatch => write!(f, "Port (dock) mismatch"),
-            HarcMismatch => write!(f, "Harc (fork/join) mismatch"),
-            NodeMissingForID => write!(f, "Node is missing for ID"),
-            AtomMissingForID => write!(f, "Atom is missing for ID"),
-            PortMissingForID => write!(f, "Port is missing for ID"),
-            LinkMissingForID(link_id) => write!(f, "There is no link with ID {:?}", link_id),
-            HarcMissingForID => write!(f, "Harc is missing for ID"),
-            ForkMissingForID => write!(f, "Fork is missing for ID"),
-            JoinMissingForID => write!(f, "Join is missing for ID"),
+            PolynomialFaceMismatch => {
+                write!(f, "Attempt to combine polynomials attached to opposite faces")
+            }
+            HarcNotAForkMismatch(join_id) => write!(f, "Expected fork, but harc is {:?}", join_id),
+            HarcNotAJoinMismatch(fork_id) => write!(f, "Expected join, but harc is {:?}", fork_id),
+            NodeMissingForID(node_id) => write!(f, "There is no node with {:?}", node_id),
+            AtomMissingForID(atom_id) => write!(f, "There is no atom with {:?}", atom_id),
+            PortMissingForID(port_id) => write!(f, "There is no port with {:?}", port_id),
+            LinkMissingForID(link_id) => write!(f, "There is no link with {:?}", link_id),
+            HarcMissingForID(harc_id) => write!(f, "There is no harc with {:?}", harc_id),
+            ForkMissingForID(fork_id) => write!(f, "There is no fork with {:?}", fork_id),
+            JoinMissingForID(join_id) => write!(f, "There is no join with {:?}", join_id),
             BottomAtomAccess => write!(f, "Attempt to access the bottom atom"),
             AtomicsNotOrdered => write!(f, "Atomics have to be given in strictly increasing order"),
 
@@ -112,9 +118,19 @@ impl fmt::Display for AcesError {
                 }
             }
 
-            LeakedInhibitor => write!(f, "Leaked inhibitor"),
-            StateUnderflow => write!(f, "State underflow"),
-            StateOverflow => write!(f, "State overflow"),
+            LeakedInhibitor(node_id, tokens_before) => {
+                write!(f, "Leaked inhibitor at {:?} firing from {} tokens", node_id, tokens_before)
+            }
+            StateUnderflow(node_id, tokens_before, num_tokens) => write!(
+                f,
+                "State underflow at {:?} after subtracting {} from {}",
+                node_id, num_tokens, tokens_before
+            ),
+            StateOverflow(node_id, tokens_before, num_tokens) => write!(
+                f,
+                "State overflow at {:?} after adding {} to {}",
+                node_id, num_tokens, tokens_before
+            ),
 
             EmptyClauseRejectedByFormula(name) => {
                 write!(f, "Empty {} clause rejected by formula", name)
@@ -134,6 +150,65 @@ impl fmt::Display for AcesError {
             NoModelToInhibit => write!(f, "Attempt to inhibit a nonexistent model"),
 
             UnknownScriptFormat => write!(f, "Unrecognized script format"),
+        }
+    }
+}
+
+impl AcesErrorKind {
+    pub fn with_context(self, context: &ContextHandle) -> AcesError {
+        AcesError { context: Some(context.clone()), kind: self }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AcesError {
+    context: Option<ContextHandle>,
+    kind:    AcesErrorKind,
+}
+
+impl From<AcesErrorKind> for AcesError {
+    fn from(kind: AcesErrorKind) -> Self {
+        AcesError { context: None, kind }
+    }
+}
+
+impl fmt::Display for AcesError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use AcesErrorKind::*;
+
+        if let Some(ref ctx) = self.context {
+            match self.kind {
+                HarcNotAForkMismatch(join_id) => {
+                    write!(f, "Expected fork, but harc is a join {}", join_id.with(ctx))
+                }
+                HarcNotAJoinMismatch(fork_id) => {
+                    write!(f, "Expected join, but harc is a fork {}", fork_id.with(ctx))
+                }
+                LeakedInhibitor(node_id, tokens_before) => write!(
+                    f,
+                    "Leaked inhibitor at node \"{}\" firing from {} tokens",
+                    node_id.with(ctx),
+                    tokens_before
+                ),
+                StateUnderflow(node_id, tokens_before, num_tokens) => write!(
+                    f,
+                    "State underflow at node \"{}\" after subtracting {} from {}",
+                    node_id.with(ctx),
+                    num_tokens,
+                    tokens_before
+                ),
+                StateOverflow(node_id, tokens_before, num_tokens) => write!(
+                    f,
+                    "State overflow at node \"{}\" after adding {} to {}",
+                    node_id.with(ctx),
+                    num_tokens,
+                    tokens_before
+                ),
+
+                ref kind => kind.fmt(f),
+            }
+        } else {
+            self.kind.fmt(f)
         }
     }
 }

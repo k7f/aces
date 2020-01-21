@@ -8,7 +8,7 @@ use std::{
 use varisat::{Var, Lit, CnfFormula, ExtendFormula};
 use crate::{
     Atomic, Context, ContextHandle, Contextual, ExclusivelyContextual, Polynomial, AtomID, PortID,
-    LinkID, atom::Atom, FiringSet, AcesError,
+    LinkID, atom::Atom, FiringSet, AcesError, AcesErrorKind,
 };
 
 #[derive(Debug)]
@@ -65,10 +65,10 @@ impl ExclusivelyContextual for Var {
                 Atom::Link(link) => Ok(format!("{}:{}", atom_id, link.format_locked(ctx)?)),
                 Atom::Fork(fork) => Ok(format!("{}:{}", atom_id, fork.format_locked(ctx)?)),
                 Atom::Join(join) => Ok(format!("{}:{}", atom_id, join.format_locked(ctx)?)),
-                Atom::Bottom => Err(AcesError::BottomAtomAccess.into()),
+                Atom::Bottom => Err(AcesError::from(AcesErrorKind::BottomAtomAccess).into()),
             }
         } else {
-            Err(AcesError::AtomMissingForID.into())
+            Err(AcesError::from(AcesErrorKind::AtomMissingForID(atom_id)).into())
         }
     }
 }
@@ -302,7 +302,8 @@ impl Formula {
     /// Only for internal use.
     fn add_clause(&mut self, clause: Clause) -> Result<(), AcesError> {
         if clause.is_empty() {
-            Err(AcesError::EmptyClauseRejectedByFormula(clause.info))
+            Err(AcesErrorKind::EmptyClauseRejectedByFormula(clause.info)
+                .with_context(&self.context))
         } else {
             debug!("Add (to formula) {} clause: {}", clause.info, clause.with(&self.context));
 
@@ -361,7 +362,7 @@ impl Formula {
                     Lit::from_atom_id(rx_port_id.into(), false),
                 )
             } else {
-                return Err(AcesError::LinkMissingForID(link_id))
+                return Err(AcesErrorKind::LinkMissingForID(link_id).with_context(&self.context))
             }
         };
 
@@ -441,11 +442,11 @@ impl Formula {
         let harc_lit = Lit::from_atom_id(harc_id, true);
 
         if coharc_ids.is_empty() {
-            Err(AcesError::IncoherencyLeak)
+            Err(AcesErrorKind::IncoherencyLeak.with_context(&self.context))
         } else {
             for choice in coharc_ids.iter() {
                 if choice.is_empty() {
-                    return Err(AcesError::IncoherencyLeak)
+                    return Err(AcesErrorKind::IncoherencyLeak.with_context(&self.context))
                 } else {
                     // Co-harc rules are encoded below as plain
                     // disjunctions instead of exclusive choice,

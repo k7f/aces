@@ -1,6 +1,9 @@
 use std::{slice, collections::BTreeMap, convert::TryFrom, error::Error};
 use rand::{RngCore, Rng};
-use crate::{ContextHandle, Contextual, NodeID, ForkID, JoinID, node, Solution, State, AcesError};
+use crate::{
+    ContextHandle, Contextual, NodeID, ForkID, JoinID, node, Solution, State, AcesError,
+    AcesErrorKind,
+};
 
 #[derive(Default, Debug)]
 pub struct FiringComponent {
@@ -81,40 +84,48 @@ impl TryFrom<Solution> for FiringComponent {
         let mut pre_set = BTreeMap::new();
         let mut post_set = BTreeMap::new();
 
-        'outer_forks: for &fid in sol.get_fork_set() {
-            let fork = ctx.get_fork(fid).ok_or(AcesError::ForkMissingForID)?;
+        'outer_forks: for &fork_id in sol.get_fork_set() {
+            let fork = ctx
+                .get_fork(fork_id)
+                .ok_or_else(|| AcesError::from(AcesErrorKind::ForkMissingForID(fork_id)))?;
             let tx_node_id = fork.get_host_id();
 
             for &node_id in sol.get_pre_set().iter() {
                 if node_id == tx_node_id {
                     if pre_set.contains_key(&node_id) {
-                        return Err(AcesError::FiringNodeDuplicated(node::Face::Tx))
+                        return Err(AcesError::from(AcesErrorKind::FiringNodeDuplicated(
+                            node::Face::Tx,
+                        )))
                     } else {
-                        pre_set.insert(node_id, fid);
+                        pre_set.insert(node_id, fork_id);
                         continue 'outer_forks
                     }
                 }
             }
 
-            return Err(AcesError::FiringNodeMissing(node::Face::Tx))
+            return Err(AcesError::from(AcesErrorKind::FiringNodeMissing(node::Face::Tx)))
         }
 
-        'outer_joins: for &jid in sol.get_join_set() {
-            let join = ctx.get_join(jid).ok_or(AcesError::JoinMissingForID)?;
+        'outer_joins: for &join_id in sol.get_join_set() {
+            let join = ctx
+                .get_join(join_id)
+                .ok_or_else(|| AcesError::from(AcesErrorKind::JoinMissingForID(join_id)))?;
             let rx_node_id = join.get_host_id();
 
             for &node_id in sol.get_post_set().iter() {
                 if node_id == rx_node_id {
                     if post_set.contains_key(&node_id) {
-                        return Err(AcesError::FiringNodeDuplicated(node::Face::Rx))
+                        return Err(AcesError::from(AcesErrorKind::FiringNodeDuplicated(
+                            node::Face::Rx,
+                        )))
                     } else {
-                        post_set.insert(node_id, jid);
+                        post_set.insert(node_id, join_id);
                         continue 'outer_joins
                     }
                 }
             }
 
-            return Err(AcesError::FiringNodeMissing(node::Face::Rx))
+            return Err(AcesError::from(AcesErrorKind::FiringNodeMissing(node::Face::Rx)))
         }
 
         Ok(FiringComponent { pre_set, post_set })

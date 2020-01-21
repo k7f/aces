@@ -4,19 +4,21 @@ use std::{
     error::Error,
 };
 use log::Level::{Debug, Trace};
-use crate::{Multiplicity, ContextHandle, Contextual, NodeID, FiringSet, AcesError};
+use crate::{Multiplicity, ContextHandle, Contextual, NodeID, FiringSet, AcesError, AcesErrorKind};
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Debug)]
 pub struct State {
-    tokens: BTreeMap<NodeID, Multiplicity>,
+    context: ContextHandle,
+    tokens:  BTreeMap<NodeID, Multiplicity>,
 }
 
 impl State {
     pub fn from_trigger<S: AsRef<str>>(ctx: &ContextHandle, trigger_name: S) -> Self {
         let trigger_id = ctx.lock().unwrap().share_node_name(trigger_name);
         let tokens = BTreeMap::from_iter(Some((trigger_id, Multiplicity::one())));
+        let context = ctx.clone();
 
-        State { tokens }
+        State { context, tokens }
     }
 
     pub fn clear(&mut self) {
@@ -54,16 +56,24 @@ impl State {
                         if let Some(tokens_after) = tokens_before.checked_sub(num_tokens) {
                             *entry.get_mut() = tokens_after;
                         } else {
-                            return Err(AcesError::StateUnderflow)
+                            return Err(AcesErrorKind::StateUnderflow(
+                                node_id,
+                                tokens_before,
+                                num_tokens,
+                            )
+                            .with_context(&self.context))
                         }
                     } else {
-                        return Err(AcesError::LeakedInhibitor)
+                        return Err(AcesErrorKind::LeakedInhibitor(node_id, tokens_before)
+                            .with_context(&self.context))
                     }
                 } else if num_tokens.is_finite() {
-                    return Err(AcesError::StateUnderflow)
+                    return Err(AcesErrorKind::StateUnderflow(node_id, tokens_before, num_tokens)
+                        .with_context(&self.context))
                 }
-            } else {
-                return Err(AcesError::StateUnderflow)
+            } else if num_tokens.is_finite() {
+                return Err(AcesErrorKind::StateUnderflow(node_id, Multiplicity::zero(), num_tokens)
+                    .with_context(&self.context))
             }
         }
 
@@ -88,10 +98,20 @@ impl State {
                             if tokens_after.is_finite() {
                                 *entry.get_mut() = tokens_after;
                             } else {
-                                return Err(AcesError::StateOverflow)
+                                return Err(AcesErrorKind::StateOverflow(
+                                    node_id,
+                                    tokens_before,
+                                    num_tokens,
+                                )
+                                .with_context(&self.context))
                             }
                         } else {
-                            return Err(AcesError::StateOverflow)
+                            return Err(AcesErrorKind::StateOverflow(
+                                node_id,
+                                tokens_before,
+                                num_tokens,
+                            )
+                            .with_context(&self.context))
                         }
                     }
                 }

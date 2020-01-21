@@ -11,7 +11,7 @@ use log::Level::{Debug, Trace};
 use crate::{
     ContextHandle, Contextual, ExclusivelyContextual, ContentFormat, InteractiveFormat, Port, Harc,
     AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Polynomial, FiringSet, Content, node, sat,
-    sat::Resolution, Solver, AcesError,
+    sat::Resolution, Solver, AcesError, AcesErrorKind,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -172,10 +172,10 @@ impl CEStructure {
                     if let Some(link) = ctx.get_link(lid) {
                         co_node_map.insert(link.get_node_id(!face), link_state);
                     } else {
-                        return Err(AcesError::LinkMissingForID(lid))
+                        return Err(AcesErrorKind::LinkMissingForID(lid).with_context(&self.context))
                     }
                 } else {
-                    return Err(AcesError::UnlistedAtomicInMonomial)
+                    return Err(AcesErrorKind::UnlistedAtomicInMonomial.with_context(&self.context))
                 }
             }
 
@@ -211,7 +211,7 @@ impl CEStructure {
                     // This co_node has no co_harcs yet, a condition
                     // which should have been detected above as a thin
                     // link.
-                    return Err(AcesError::IncoherencyLeak)
+                    return Err(AcesErrorKind::IncoherencyLeak.with_context(&self.context))
                 }
             }
 
@@ -370,7 +370,9 @@ impl CEStructure {
                     let node_name =
                         self.context.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
 
-                    return Err(AcesError::EmptyCausesOfInternalNode(node_name).into())
+                    return Err(AcesErrorKind::EmptyCausesOfInternalNode(node_name)
+                        .with_context(&self.context)
+                        .into())
                 }
 
                 self.add_causes(node_id, poly_ids)?;
@@ -381,7 +383,9 @@ impl CEStructure {
                     let node_name =
                         self.context.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
 
-                    return Err(AcesError::EmptyEffectsOfInternalNode(node_name).into())
+                    return Err(AcesErrorKind::EmptyEffectsOfInternalNode(node_name)
+                        .with_context(&self.context)
+                        .into())
                 }
 
                 self.add_effects(node_id, poly_ids)?;
@@ -430,7 +434,7 @@ impl CEStructure {
             }
         }
 
-        Err(AcesError::UnknownScriptFormat.into())
+        Err(AcesErrorKind::UnknownScriptFormat.with_context(&self.context).into())
     }
 
     /// Extends this c-e structure with another one, which is created
@@ -595,7 +599,7 @@ impl CEStructure {
     fn group_coharcs(&self, coharc_ids: &[AtomID]) -> Result<Vec<Vec<AtomID>>, AcesError> {
         if coharc_ids.len() < 2 {
             if coharc_ids.is_empty() {
-                Err(AcesError::IncoherencyLeak)
+                Err(AcesErrorKind::IncoherencyLeak.with_context(&self.context))
             } else {
                 Ok(vec![coharc_ids.to_vec()])
             }
@@ -604,7 +608,9 @@ impl CEStructure {
 
             for &coharc_id in coharc_ids.iter() {
                 let ctx = self.context.lock().unwrap();
-                let coharc = ctx.get_harc(coharc_id).ok_or(AcesError::HarcMissingForID)?;
+                let coharc = ctx.get_harc(coharc_id).ok_or_else(|| {
+                    AcesErrorKind::HarcMissingForID(coharc_id).with_context(&self.context)
+                })?;
                 let cohost_id = coharc.get_host_id();
 
                 match cohost_map.entry(cohost_id) {
@@ -684,7 +690,7 @@ impl CEStructure {
 
             Ok((node_id.format_locked(&ctx)?, conode_id.format_locked(&ctx)?))
         } else {
-            Err(AcesError::LinkMissingForID(link_id).into())
+            Err(AcesErrorKind::LinkMissingForID(link_id).with_context(&self.context).into())
         }
     }
 
@@ -711,11 +717,12 @@ impl CEStructure {
                 }
             }
 
-            Err(AcesError::IncoherentStructure(
+            Err(AcesErrorKind::IncoherentStructure(
                 self.get_name().unwrap_or("anonymous").to_owned(),
                 self.num_thin_links,
                 first_link_info.unwrap(),
             )
+            .with_context(&self.context)
             .into())
         }
     }
