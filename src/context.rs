@@ -390,34 +390,26 @@ impl PartialEq for Context {
 
 impl Eq for Context {}
 
+// Ancestors are _greater_ than their offspring.
 impl PartialOrd for Context {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         if self.magic_id == other.magic_id {
             if other.globals.get_id(self.get_name()) == Some(self.name_id) {
-                // ID of self's name in self and other is the same...
-                if self.name_id < other.name_id {
-                    // ...self is an ancestor of other,
-                    Some(cmp::Ordering::Greater)
-                } else if self.name_id > other.name_id {
-                    // ...other is _the_ parent of self,
-                    Some(cmp::Ordering::Less)
-                } else {
-                    // ...they are equal.
-                    Some(cmp::Ordering::Equal)
-                }
+                // Since ID of self's name in self and other is the
+                // same, self is either an ancestor of other, or
+                // a direct child of other, or equals the other.
+                Some(other.name_id.cmp(&self.name_id))
             } else if self.globals.get_id(other.get_name()) == Some(other.name_id) {
                 // ID of other's name in self and other is the same...
-                if self.name_id < other.name_id {
-                    // ...self is _the_ parent of other: this case
-                    // should have already been covered,
-                    unreachable!()
-                } else if self.name_id > other.name_id {
+                match other.name_id.cmp(&self.name_id) {
                     // ...other is an ancestor of self,
-                    Some(cmp::Ordering::Less)
-                } else {
+                    cmp::Ordering::Less => Some(cmp::Ordering::Less),
+                    // ...self is the parent of other: this case
+                    // should have already been covered,
+                    cmp::Ordering::Greater => unreachable!(),
                     // ...they are equal: this case should have
                     // already been covered.
-                    unreachable!()
+                    cmp::Ordering::Equal => unreachable!(),
                 }
             } else if self.name_id == other.name_id {
                 // This case should have already been covered.
