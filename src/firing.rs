@@ -1,22 +1,19 @@
 use std::{slice, collections::BTreeMap, convert::TryFrom, error::Error};
 use rand::{RngCore, Rng};
 use crate::{
-    ContextHandle, Contextual, NodeID, ForkID, JoinID, node, Solution, State, AcesError,
+    ContextHandle, Contextual, NodeID, node, Capacity, Weight, Solution, State, AcesError,
     AcesErrorKind,
 };
 
 #[derive(Default, Debug)]
 pub struct FiringComponent {
-    pre_set:  BTreeMap<NodeID, ForkID>,
-    post_set: BTreeMap<NodeID, JoinID>,
+    pre_set:  BTreeMap<NodeID, Weight>,
+    post_set: BTreeMap<NodeID, (Weight, Capacity)>,
 }
 
 impl FiringComponent {
-    pub fn is_enabled(&self, ctx: &ContextHandle, state: &State) -> bool {
-        let ctx = ctx.lock().unwrap();
-
-        for (&node_id, fork_id) in self.pre_set.iter() {
-            let weight = ctx.get_weight(fork_id.get());
+    pub fn is_enabled(&self, state: &State) -> bool {
+        for (&node_id, &weight) in self.pre_set.iter() {
             let tokens = state.get(node_id);
 
             if weight.is_omega() {
@@ -28,10 +25,7 @@ impl FiringComponent {
             }
         }
 
-        for (&node_id, join_id) in self.post_set.iter() {
-            let capacity = ctx.get_capacity(node_id);
-            let weight = ctx.get_weight(join_id.get());
-
+        for (&node_id, &(weight, capacity)) in self.post_set.iter() {
             if let Some(tokens_after) = state.get(node_id).checked_add(weight) {
                 if tokens_after > capacity {
                     return false
@@ -56,18 +50,12 @@ impl FiringComponent {
     ///
     /// [`is_enabled()`]: FiringComponent::is_enabled()
     /// [`fire()`]: FiringComponent::fire()
-    pub fn fire(&self, ctx: &ContextHandle, state: &mut State) -> Result<(), AcesError> {
-        let ctx = ctx.lock().unwrap();
-
-        for (&node_id, fork_id) in self.pre_set.iter() {
-            let weight = ctx.get_weight(fork_id.get());
-
+    pub fn fire(&self, state: &mut State) -> Result<(), AcesError> {
+        for (&node_id, &weight) in self.pre_set.iter() {
             state.decrease(node_id, weight)?;
         }
 
-        for (&node_id, join_id) in self.post_set.iter() {
-            let weight = ctx.get_weight(join_id.get());
-
+        for (&node_id, &(weight, _)) in self.post_set.iter() {
             state.increase(node_id, weight)?;
         }
 
@@ -85,6 +73,7 @@ impl TryFrom<Solution> for FiringComponent {
         let mut post_set = BTreeMap::new();
 
         'outer_forks: for &fork_id in sol.get_fork_set() {
+            let weight = ctx.get_weight(fork_id.get());
             let fork = ctx
                 .get_fork(fork_id)
                 .ok_or_else(|| AcesError::from(AcesErrorKind::ForkMissingForID(fork_id)))?;
@@ -97,7 +86,7 @@ impl TryFrom<Solution> for FiringComponent {
                             node::Face::Tx,
                         )))
                     } else {
-                        pre_set.insert(node_id, fork_id);
+                        pre_set.insert(node_id, weight);
                         continue 'outer_forks
                     }
                 }
@@ -107,6 +96,7 @@ impl TryFrom<Solution> for FiringComponent {
         }
 
         'outer_joins: for &join_id in sol.get_join_set() {
+            let weight = ctx.get_weight(join_id.get());
             let join = ctx
                 .get_join(join_id)
                 .ok_or_else(|| AcesError::from(AcesErrorKind::JoinMissingForID(join_id)))?;
@@ -119,7 +109,8 @@ impl TryFrom<Solution> for FiringComponent {
                             node::Face::Rx,
                         )))
                     } else {
-                        post_set.insert(node_id, join_id);
+                        let capacity = ctx.get_capacity(node_id);
+                        post_set.insert(node_id, (weight, capacity));
                         continue 'outer_joins
                     }
                 }
@@ -175,11 +166,11 @@ impl FiringSet {
         self.fcs.as_slice()
     }
 
-    pub fn get_enabled(&self, ctx: &ContextHandle, state: &State) -> FiringSequence {
+    pub fn get_enabled(&self, state: &State) -> FiringSequence {
         let mut enabled_fcs = FiringSequence::new();
 
         for (pos, fc) in self.fcs.as_slice().iter().enumerate() {
-            if fc.is_enabled(ctx, state) {
+            if fc.is_enabled(state) {
                 enabled_fcs.push(pos)
             }
         }

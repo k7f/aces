@@ -65,7 +65,7 @@ impl Runner {
             let fc_id = if log_enabled!(Debug) {
                 self.current_state.transition_debug(&self.context, num_steps, fset, &mut rng)?
             } else {
-                self.current_state.transition(&self.context, fset, &mut rng)?
+                self.current_state.transition(fset, &mut rng)?
             };
 
             if let Some(fc_id) = fc_id {

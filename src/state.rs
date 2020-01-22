@@ -138,7 +138,7 @@ impl State {
             }
         }
 
-        let enabled_fcs = fset.get_enabled(ctx, self);
+        let enabled_fcs = fset.get_enabled(self);
 
         if let Some(fc_id) = enabled_fcs.get_random(rng) {
             if log_enabled!(Trace) {
@@ -154,7 +154,7 @@ impl State {
                 }
             }
 
-            fset.as_slice()[fc_id].fire(ctx, self)?;
+            fset.as_slice()[fc_id].fire(self)?;
 
             Ok(Some(fc_id))
         } else {
@@ -166,14 +166,13 @@ impl State {
     /// given [`FiringSet`].
     pub fn transition<R: rand::RngCore>(
         &mut self,
-        ctx: &ContextHandle,
         fset: &FiringSet,
         rng: &mut R,
     ) -> Result<Option<usize>, AcesError> {
-        let enabled_fcs = fset.get_enabled(ctx, self);
+        let enabled_fcs = fset.get_enabled(self);
 
         if let Some(fc_id) = enabled_fcs.get_random(rng) {
-            fset.as_slice()[fc_id].fire(ctx, self)?;
+            fset.as_slice()[fc_id].fire(self)?;
 
             Ok(Some(fc_id))
         } else {
