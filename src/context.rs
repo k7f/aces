@@ -5,11 +5,11 @@ use std::{
     error::Error,
 };
 use crate::{
-    PartialContent, Port, Link, Harc, Fork, Join, ID, NodeID, AtomID, PortID, LinkID, ForkID,
+    PartialContent, Port, Link, Harc, Fork, Join, Face, ID, NodeID, AtomID, PortID, LinkID, ForkID,
     JoinID, Semantics, Capacity, Weight,
     name::NameSpace,
     atom::{AtomSpace, Atom},
-    node, sat, solver, runner, vis,
+    sat, solver, runner, vis,
 };
 
 /// A handle to a [`Context`] instance.
@@ -301,7 +301,7 @@ impl Context {
 
     pub fn set_weight_by_name<S, I>(
         &mut self,
-        face: node::Face,
+        face: Face,
         host_name: S,
         suit_names: I,
         weight: Weight,
@@ -315,13 +315,13 @@ impl Context {
         let suit_ids = suit_names.into_iter().map(|n| self.share_node_name(n.as_ref()));
 
         let atom_id = match face {
-            node::Face::Tx => {
+            Face::Tx => {
                 let mut fork = Harc::new_fork(host_id, suit_ids);
                 let fork_id = self.share_fork(&mut fork);
 
                 fork_id.get()
             }
-            node::Face::Rx => {
+            Face::Rx => {
                 let mut join = Harc::new_join(host_id, suit_ids);
                 let join_id = self.share_join(&mut join);
 
@@ -334,7 +334,7 @@ impl Context {
 
     pub fn set_inhibitor_by_name<S, I>(
         &mut self,
-        face: node::Face,
+        face: Face,
         host_name: S,
         suit_names: I,
     ) -> Option<Weight>
@@ -593,9 +593,8 @@ impl<'a, D: Contextual> fmt::Display for InContextMut<'a, D> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node;
 
-    fn new_port(ctx: &ContextHandle, face: node::Face, host_name: &str) -> (Port, PortID) {
+    fn new_port(ctx: &ContextHandle, face: Face, host_name: &str) -> (Port, PortID) {
         let mut ctx = ctx.lock().unwrap();
         let node_id = ctx.share_node_name(host_name);
         let mut port = Port::new(face, node_id);
@@ -618,17 +617,17 @@ mod tests {
     #[test]
     fn test_derivation() {
         let toplevel = Context::new_toplevel("toplevel");
-        let (a_port, a_port_id) = new_port(&toplevel, node::Face::Tx, "a");
+        let (a_port, a_port_id) = new_port(&toplevel, Face::Tx, "a");
 
         {
             let derived = Context::new_derived("derived", &toplevel);
-            let (_, z_port_id) = new_port(&derived, node::Face::Rx, "z");
+            let (_, z_port_id) = new_port(&derived, Face::Rx, "z");
 
             assert_eq!(derived.lock().unwrap().get_port(a_port_id), Some(&a_port));
             assert_eq!(toplevel.lock().unwrap().get_port(z_port_id), None);
         }
 
-        let (b_port, b_port_id) = new_port(&toplevel, node::Face::Tx, "b");
+        let (b_port, b_port_id) = new_port(&toplevel, Face::Tx, "b");
 
         assert_eq!(toplevel.lock().unwrap().get_port(b_port_id), Some(&b_port));
     }

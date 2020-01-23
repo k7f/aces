@@ -7,7 +7,7 @@ use std::{
 use regex::Regex;
 use yaml_rust::{Yaml, YamlLoader};
 use crate::{
-    ContextHandle, NodeID, node, Content, PartialContent, ContentFormat,
+    ContextHandle, Face, NodeID, Content, PartialContent, ContentFormat,
     content::{PolyForContent, MonoForContent},
 };
 
@@ -88,7 +88,7 @@ fn post_process_port_description<S: AsRef<str>>(
     }
 }
 
-type PortParsed = (Vec<NodeID>, node::Face);
+type PortParsed = (Vec<NodeID>, Face);
 
 fn do_parse_port_description<S: AsRef<str>>(
     ctx: &ContextHandle,
@@ -105,11 +105,11 @@ fn do_parse_port_description<S: AsRef<str>>(
     if let Some(cap) = TX_RE.captures(description.as_ref()) {
         let ids = post_process_port_description(ctx, &cap[1], single_word_only)?;
 
-        Ok(Some((ids, node::Face::Tx)))
+        Ok(Some((ids, Face::Tx)))
     } else if let Some(cap) = RX_RE.captures(description.as_ref()) {
         let ids = post_process_port_description(ctx, &cap[1], single_word_only)?;
 
-        Ok(Some((ids, node::Face::Rx)))
+        Ok(Some((ids, Face::Rx)))
     } else {
         Ok(None)
     }
@@ -125,7 +125,7 @@ fn parse_port_description<S: AsRef<str>>(
 fn parse_link_description<S: AsRef<str> + Copy>(
     ctx: &ContextHandle,
     description: S,
-    valid_face: node::Face,
+    valid_face: Face,
     single_word_only: bool,
 ) -> Result<(NodeID, bool), Box<dyn Error>> {
     let link_with_colink = do_parse_port_description(ctx, description, single_word_only)?;
@@ -171,7 +171,7 @@ impl YamlContent {
     fn add_ports(
         &mut self,
         ids: &[NodeID],
-        face: node::Face,
+        face: Face,
         poly_yaml: &Yaml,
     ) -> Result<(), Box<dyn Error>> {
         assert!(!ids.is_empty());
@@ -190,7 +190,7 @@ impl YamlContent {
                 poly_content.add_mono(vec![other_id]);
 
                 if with_colink {
-                    if face == node::Face::Tx {
+                    if face == Face::Tx {
                         self.content.add_to_causes(other_id, &[ids.to_owned()]);
                     } else {
                         self.content.add_to_effects(other_id, &[ids.to_owned()]);
@@ -213,7 +213,7 @@ impl YamlContent {
                             poly_content.add_mono(vec![other_id]);
 
                             if with_colink {
-                                if face == node::Face::Tx {
+                                if face == Face::Tx {
                                     self.content.add_to_causes(other_id, &[ids.to_owned()]);
                                 } else {
                                     self.content.add_to_effects(other_id, &[ids.to_owned()]);
@@ -236,7 +236,7 @@ impl YamlContent {
                                     mono_content.add_node(other_id);
 
                                     if with_colink {
-                                        if face == node::Face::Tx {
+                                        if face == Face::Tx {
                                             self.content.add_to_causes(other_id, &[ids.to_owned()]);
                                         } else {
                                             self.content
@@ -259,7 +259,7 @@ impl YamlContent {
             _ => return Err(YamlScriptError::PolyInvalid.into()),
         }
 
-        if face == node::Face::Tx {
+        if face == Face::Tx {
             for &id in ids {
                 self.content.add_to_effects(id, poly_content.as_content());
             }

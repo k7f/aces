@@ -8,7 +8,7 @@ extern crate lazy_static;
 
 mod error;
 mod name;
-pub mod node;
+mod node;
 mod atom;
 mod multiset;
 mod polynomial;
@@ -31,7 +31,7 @@ pub use content::{
     CompilableAsContent, CompilableAsDependency,
 };
 pub use yaml_script::YamlFormat;
-pub use node::NodeID;
+pub use node::{NodeID, Face};
 pub use atom::{Port, Link, Harc, Fork, Join, AtomID, PortID, LinkID, ForkID, JoinID, Atomic};
 pub use polynomial::{Polynomial, Monomials};
 pub use multiset::{Multiplicity, Capacity, Weight};

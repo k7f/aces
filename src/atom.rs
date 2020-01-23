@@ -4,8 +4,8 @@ use std::{
     error::Error,
 };
 use crate::{
-    ID, NodeID, Context, Contextual, ExclusivelyContextual, InContext, AcesError, AcesErrorKind,
-    node, sat,
+    Face, ID, NodeID, Context, Contextual, ExclusivelyContextual, InContext, AcesError,
+    AcesErrorKind, sat,
 };
 
 /// An abstract structural identifier serving as the common base of
@@ -229,7 +229,7 @@ impl AtomSpace {
         let host = port.node_id;
 
         match port.face {
-            node::Face::Tx => {
+            Face::Tx => {
                 let atom_id = self.do_share_atom(Atom::Tx(port.clone()));
 
                 port.atom_id = Some(atom_id);
@@ -245,7 +245,7 @@ impl AtomSpace {
 
                 pid
             }
-            node::Face::Rx => {
+            Face::Rx => {
                 let atom_id = self.do_share_atom(Atom::Rx(port.clone()));
 
                 port.atom_id = Some(atom_id);
@@ -387,14 +387,14 @@ impl AtomSpace {
         if let Some(port) = self.get_port(pid) {
             if let Some(&(tx_id, rx_id)) = self.internal_nodes.get(&port.node_id) {
                 match port.face {
-                    node::Face::Tx => {
+                    Face::Tx => {
                         if tx_id == pid {
                             return Some(rx_id)
                         } else {
                             panic!("Corrupt atom space")
                         }
                     }
-                    node::Face::Rx => {
+                    Face::Rx => {
                         if rx_id == pid {
                             return Some(tx_id)
                         } else {
@@ -486,21 +486,19 @@ impl hash::Hash for Atom {
 /// Representation of a port.
 ///
 /// This is one of the two [`Face`]s of a node.
-///
-/// [`Face`]: node::Face
 #[derive(Clone, Eq, Debug)]
 pub struct Port {
-    face:    node::Face,
+    face:    Face,
     atom_id: Option<AtomID>,
     node_id: NodeID,
 }
 
 impl Port {
-    pub(crate) fn new(face: node::Face, node_id: NodeID) -> Self {
+    pub(crate) fn new(face: Face, node_id: NodeID) -> Self {
         Self { face, atom_id: None, node_id }
     }
 
-    pub(crate) fn get_face(&self) -> node::Face {
+    pub(crate) fn get_face(&self) -> Face {
         self.face
     }
 
@@ -539,9 +537,8 @@ impl ExclusivelyContextual for Port {
 /// Representation of a link.
 ///
 /// This is a fat link, if used on its own, or a thin link, if paired
-/// with a [`node::Face`].  See [`CEStructure`]'s private field
-/// `links`, or the implementation of
-/// [`CEStructure::check_coherence()`].
+/// with a [`Face`].  See [`CEStructure`]'s private field `links`, or
+/// the implementation of [`CEStructure::check_coherence()`].
 ///
 /// [`CEStructure`]: crate::CEStructure
 /// [`CEStructure::check_coherence()`]: crate::CEStructure::check_coherence()
@@ -572,16 +569,16 @@ impl Link {
         LinkID(self.get_atom_id())
     }
 
-    pub fn get_port_id(&self, face: node::Face) -> PortID {
-        if face == node::Face::Rx {
+    pub fn get_port_id(&self, face: Face) -> PortID {
+        if face == Face::Rx {
             self.rx_port_id
         } else {
             self.tx_port_id
         }
     }
 
-    pub fn get_node_id(&self, face: node::Face) -> NodeID {
-        if face == node::Face::Rx {
+    pub fn get_node_id(&self, face: Face) -> NodeID {
+        if face == Face::Rx {
             self.rx_node_id
         } else {
             self.tx_node_id
@@ -624,10 +621,10 @@ impl ExclusivelyContextual for Link {
     fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let tx_node_name = ctx
             .get_node_name(self.get_tx_node_id())
-            .ok_or_else(|| AcesError::from(AcesErrorKind::NodeMissingForLink(node::Face::Tx)))?;
+            .ok_or_else(|| AcesError::from(AcesErrorKind::NodeMissingForLink(Face::Tx)))?;
         let rx_node_name = ctx
             .get_node_name(self.get_rx_node_id())
-            .ok_or_else(|| AcesError::from(AcesErrorKind::NodeMissingForLink(node::Face::Rx)))?;
+            .ok_or_else(|| AcesError::from(AcesErrorKind::NodeMissingForLink(Face::Rx)))?;
 
         Ok(format!("({} > {})", tx_node_name, rx_node_name))
     }
@@ -643,13 +640,13 @@ impl ExclusivelyContextual for Link {
 #[derive(Clone, Eq)]
 pub struct Harc {
     atom_id:  Option<AtomID>,
-    face:     node::Face,
+    face:     Face,
     host_id:  NodeID,
     suit_ids: Vec<NodeID>,
 }
 
 impl Harc {
-    fn new_unchecked(face: node::Face, host_id: NodeID, suit_ids: Vec<NodeID>) -> Self {
+    fn new_unchecked(face: Face, host_id: NodeID, suit_ids: Vec<NodeID>) -> Self {
         if cfg!(debug_assertions) {
             let mut sit = suit_ids.iter();
 
@@ -704,7 +701,7 @@ impl Harc {
     {
         let suit_ids: Vec<_> = suit_ids.into_iter().collect();
         trace!("New fork: {:?} -> {:?}", host_id, suit_ids);
-        Harc::new_unchecked(node::Face::Tx, host_id, suit_ids)
+        Harc::new_unchecked(Face::Tx, host_id, suit_ids)
     }
 
     /// A more efficient variant of [`Harc::new_join()`].
@@ -720,27 +717,27 @@ impl Harc {
     {
         let suit_ids: Vec<_> = suit_ids.into_iter().collect();
         trace!("New join: {:?} <- {:?}", host_id, suit_ids);
-        Harc::new_unchecked(node::Face::Rx, host_id, suit_ids)
+        Harc::new_unchecked(Face::Rx, host_id, suit_ids)
     }
 
     pub fn get_atom_id(&self) -> AtomID {
         match self.face {
-            node::Face::Tx => self.atom_id.expect("Attempt to access an uninitialized fork"),
-            node::Face::Rx => self.atom_id.expect("Attempt to access an uninitialized join"),
+            Face::Tx => self.atom_id.expect("Attempt to access an uninitialized fork"),
+            Face::Rx => self.atom_id.expect("Attempt to access an uninitialized join"),
         }
     }
 
     pub fn get_fork_id(&self) -> Option<ForkID> {
         match self.face {
-            node::Face::Tx => Some(ForkID(self.get_atom_id())),
-            node::Face::Rx => None,
+            Face::Tx => Some(ForkID(self.get_atom_id())),
+            Face::Rx => None,
         }
     }
 
     pub fn get_join_id(&self) -> Option<JoinID> {
         match self.face {
-            node::Face::Tx => None,
-            node::Face::Rx => Some(JoinID(self.get_atom_id())),
+            Face::Tx => None,
+            Face::Rx => Some(JoinID(self.get_atom_id())),
         }
     }
 
@@ -759,8 +756,8 @@ impl fmt::Debug for Harc {
             f,
             "{} {{ atom_id: ",
             match self.face {
-                node::Face::Tx => "Fork",
-                node::Face::Rx => "Join",
+                Face::Tx => "Fork",
+                Face::Rx => "Join",
             }
         )?;
         self.atom_id.fmt(f)?;
@@ -790,8 +787,8 @@ impl hash::Hash for Harc {
 impl ExclusivelyContextual for Harc {
     fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
         let host_name = ctx.get_node_name(self.get_host_id()).ok_or(match self.face {
-            node::Face::Tx => AcesError::from(AcesErrorKind::NodeMissingForFork(node::Face::Tx)),
-            node::Face::Rx => AcesError::from(AcesErrorKind::NodeMissingForJoin(node::Face::Rx)),
+            Face::Tx => AcesError::from(AcesErrorKind::NodeMissingForFork(Face::Tx)),
+            Face::Rx => AcesError::from(AcesErrorKind::NodeMissingForJoin(Face::Rx)),
         })?;
 
         let suit_names: Result<Vec<_>, AcesError> = self
@@ -799,19 +796,15 @@ impl ExclusivelyContextual for Harc {
             .iter()
             .map(|&node_id| {
                 ctx.get_node_name(node_id).ok_or(match self.face {
-                    node::Face::Tx => {
-                        AcesError::from(AcesErrorKind::NodeMissingForFork(node::Face::Rx))
-                    }
-                    node::Face::Rx => {
-                        AcesError::from(AcesErrorKind::NodeMissingForJoin(node::Face::Tx))
-                    }
+                    Face::Tx => AcesError::from(AcesErrorKind::NodeMissingForFork(Face::Rx)),
+                    Face::Rx => AcesError::from(AcesErrorKind::NodeMissingForJoin(Face::Tx)),
                 })
             })
             .collect();
 
         match self.face {
-            node::Face::Tx => Ok(format!("({} > {:?})", host_name, suit_names?)),
-            node::Face::Rx => Ok(format!("({:?} > {})", suit_names?, host_name)),
+            Face::Tx => Ok(format!("({} > {:?})", host_name, suit_names?)),
+            Face::Rx => Ok(format!("({:?} > {})", suit_names?, host_name)),
         }
     }
 }
@@ -829,7 +822,7 @@ pub trait Atomic:
 {
     fn into_node_id(this: InContext<Self>) -> Option<NodeID>;
 
-    fn into_node_id_docked(this: InContext<Self>, _dock: node::Face) -> Option<NodeID> {
+    fn into_node_id_docked(this: InContext<Self>, _dock: Face) -> Option<NodeID> {
         Self::into_node_id(this)
     }
 
@@ -852,7 +845,7 @@ impl Atomic for LinkID {
         None
     }
 
-    fn into_node_id_docked(this: InContext<Self>, dock: node::Face) -> Option<NodeID> {
+    fn into_node_id_docked(this: InContext<Self>, dock: Face) -> Option<NodeID> {
         this.using_context(|lid, ctx| ctx.get_link(*lid).map(|link| link.get_node_id(dock)))
     }
 
@@ -889,7 +882,7 @@ mod tests {
     use super::*;
 
     fn new_tx_port(id: usize) -> Port {
-        Port::new(node::Face::Tx, NodeID(unsafe { ID::new_unchecked(id) }))
+        Port::new(Face::Tx, NodeID(unsafe { ID::new_unchecked(id) }))
     }
 
     #[test]

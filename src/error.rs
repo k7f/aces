@@ -1,6 +1,6 @@
 use std::{fmt, error::Error};
 use crate::{
-    ContextHandle, Contextual, node, AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Multiplicity,
+    ContextHandle, Contextual, Face, AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Multiplicity,
 };
 
 #[derive(Debug, Clone)]
@@ -19,13 +19,13 @@ pub enum AcesErrorKind {
     BottomAtomAccess,
     AtomicsNotOrdered,
 
-    NodeMissingForPort(node::Face),
-    NodeMissingForLink(node::Face),
-    NodeMissingForFork(node::Face),
-    NodeMissingForJoin(node::Face),
-    FiringNodeMissing(node::Face),
-    FiringNodeDuplicated(node::Face),
-    IncoherentStructure(String, u32, (node::Face, String, String)),
+    NodeMissingForPort(Face),
+    NodeMissingForLink(Face),
+    NodeMissingForFork(Face),
+    NodeMissingForJoin(Face),
+    FiringNodeMissing(Face),
+    FiringNodeDuplicated(Face),
+    IncoherentStructure(String, u32, (Face, String, String)),
 
     LeakedInhibitor(NodeID, Multiplicity),
     StateUnderflow(NodeID, Multiplicity, Multiplicity),
@@ -67,42 +67,39 @@ impl fmt::Display for AcesErrorKind {
             NodeMissingForPort(face) => write!(
                 f,
                 "Missing node for {} port",
-                if *face == node::Face::Tx { "sending" } else { "receiving" }
+                if *face == Face::Tx { "sending" } else { "receiving" }
             ),
             NodeMissingForLink(face) => write!(
                 f,
                 "Missing {} node for link",
-                if *face == node::Face::Tx { "sending" } else { "receiving" }
+                if *face == Face::Tx { "sending" } else { "receiving" }
             ),
             NodeMissingForFork(face) => write!(
                 f,
                 "Missing {} node for fork",
-                if *face == node::Face::Tx { "sending" } else { "receiving" }
+                if *face == Face::Tx { "sending" } else { "receiving" }
             ),
             NodeMissingForJoin(face) => write!(
                 f,
                 "Missing {} node for join",
-                if *face == node::Face::Tx { "sending" } else { "receiving" }
+                if *face == Face::Tx { "sending" } else { "receiving" }
             ),
             FiringNodeMissing(face) => write!(
                 f,
                 "Missing {} node in firing component",
-                if *face == node::Face::Tx { "sending" } else { "receiving" }
+                if *face == Face::Tx { "sending" } else { "receiving" }
             ),
             FiringNodeDuplicated(face) => write!(
                 f,
                 "Duplicated {} node in firing component",
-                if *face == node::Face::Tx { "sending" } else { "receiving" }
+                if *face == Face::Tx { "sending" } else { "receiving" }
             ),
             IncoherentStructure(ces_name, num_thin_links, (face, tx_name, rx_name)) => {
                 if *num_thin_links == 1 {
                     write!(
                         f,
                         "Structure '{}' is incoherent; there is one thin link: ({} {} {})",
-                        ces_name,
-                        tx_name,
-                        if *face == node::Face::Tx { ">" } else { "<" },
-                        rx_name
+                        ces_name, tx_name, face, rx_name
                     )
                 } else {
                     write!(
@@ -111,7 +108,7 @@ impl fmt::Display for AcesErrorKind {
                          more..",
                         ces_name,
                         tx_name,
-                        if *face == node::Face::Tx { ">" } else { "<" },
+                        face,
                         rx_name,
                         *num_thin_links - 1,
                     )

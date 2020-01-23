@@ -1,7 +1,7 @@
 use std::{slice, collections::BTreeMap, convert::TryFrom, error::Error};
 use rand::{RngCore, Rng};
 use crate::{
-    ContextHandle, Contextual, NodeID, node, Capacity, Weight, Solution, State, AcesError,
+    ContextHandle, Contextual, Face, NodeID, Capacity, Weight, Solution, State, AcesError,
     AcesErrorKind,
 };
 
@@ -82,9 +82,7 @@ impl TryFrom<Solution> for FiringComponent {
             for &node_id in sol.get_pre_set().iter() {
                 if node_id == tx_node_id {
                     if pre_set.contains_key(&node_id) {
-                        return Err(AcesError::from(AcesErrorKind::FiringNodeDuplicated(
-                            node::Face::Tx,
-                        )))
+                        return Err(AcesError::from(AcesErrorKind::FiringNodeDuplicated(Face::Tx)))
                     } else {
                         pre_set.insert(node_id, weight);
                         continue 'outer_forks
@@ -92,7 +90,7 @@ impl TryFrom<Solution> for FiringComponent {
                 }
             }
 
-            return Err(AcesError::from(AcesErrorKind::FiringNodeMissing(node::Face::Tx)))
+            return Err(AcesError::from(AcesErrorKind::FiringNodeMissing(Face::Tx)))
         }
 
         'outer_joins: for &join_id in sol.get_join_set() {
@@ -105,9 +103,7 @@ impl TryFrom<Solution> for FiringComponent {
             for &node_id in sol.get_post_set().iter() {
                 if node_id == rx_node_id {
                     if post_set.contains_key(&node_id) {
-                        return Err(AcesError::from(AcesErrorKind::FiringNodeDuplicated(
-                            node::Face::Rx,
-                        )))
+                        return Err(AcesError::from(AcesErrorKind::FiringNodeDuplicated(Face::Rx)))
                     } else {
                         let capacity = ctx.get_capacity(node_id);
                         post_set.insert(node_id, (weight, capacity));
@@ -116,7 +112,7 @@ impl TryFrom<Solution> for FiringComponent {
                 }
             }
 
-            return Err(AcesError::from(AcesErrorKind::FiringNodeMissing(node::Face::Rx)))
+            return Err(AcesError::from(AcesErrorKind::FiringNodeMissing(Face::Rx)))
         }
 
         Ok(FiringComponent { pre_set, post_set })

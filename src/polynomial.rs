@@ -1,8 +1,8 @@
 use std::{slice, iter, cmp, ops, fmt, collections::BTreeSet, error::Error};
 use bit_vec::BitVec;
 use crate::{
-    NodeID, Port, Link, LinkID, ContextHandle, Contextual, ExclusivelyContextual, InContextMut,
-    Atomic, AcesError, AcesErrorKind, node, sat,
+    Face, NodeID, Port, Link, LinkID, ContextHandle, Contextual, ExclusivelyContextual,
+    InContextMut, Atomic, AcesError, AcesErrorKind, sat,
 };
 
 // FIXME sort rows as a way to fix Eq and, perhaps, to open some
@@ -35,7 +35,7 @@ pub struct Polynomial<T: Atomic + fmt::Debug> {
     atomics: Vec<T>,
     // FIXME choose a better representation of a boolean matrix.
     terms:   Vec<BitVec>,
-    dock:    Option<node::Face>,
+    dock:    Option<Face>,
 }
 
 impl Polynomial<LinkID> {
@@ -45,7 +45,7 @@ impl Polynomial<LinkID> {
     /// [`Context`]: crate::Context
     pub fn from_nodes_in_context<'a, I>(
         ctx: &ContextHandle,
-        face: node::Face,
+        face: Face,
         node_id: NodeID,
         poly_ids: I,
     ) -> Self
@@ -69,8 +69,8 @@ impl Polynomial<LinkID> {
                 let copid = ctx.share_port(&mut coport);
 
                 let mut link = match face {
-                    node::Face::Tx => Link::new(pid, host, copid, cohost),
-                    node::Face::Rx => Link::new(copid, cohost, pid, host),
+                    Face::Tx => Link::new(pid, host, copid, cohost),
+                    Face::Rx => Link::new(copid, cohost, pid, host),
                 };
                 let id = ctx.share_link(&mut link);
 
@@ -91,9 +91,9 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
     }
 
     /// Creates an empty polynomial, _&theta;_, docked at a given
-    /// [`node::Face`].
+    /// [`Face`].
     #[allow(clippy::new_without_default)]
-    pub fn new_docked(dock: node::Face) -> Self {
+    pub fn new_docked(dock: Face) -> Self {
         Self { atomics: Default::default(), terms: Default::default(), dock: Some(dock) }
     }
 
@@ -485,8 +485,8 @@ impl Contextual for Polynomial<LinkID> {
                         .ok_or_else(|| AcesError::from(AcesErrorKind::LinkMissingForID(id)))?;
 
                     match face {
-                        node::Face::Tx => link.get_rx_node_id().format_locked(&ctx),
-                        node::Face::Rx => link.get_tx_node_id().format_locked(&ctx),
+                        Face::Tx => link.get_rx_node_id().format_locked(&ctx),
+                        Face::Rx => link.get_tx_node_id().format_locked(&ctx),
                     }
                 } else {
                     id.format(ctx)

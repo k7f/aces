@@ -10,15 +10,15 @@ use std::{
 use log::Level::{Debug, Trace};
 use crate::{
     ContextHandle, Contextual, ExclusivelyContextual, ContentFormat, InteractiveFormat, Port, Harc,
-    AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Polynomial, FiringSet, Content, node, sat,
+    Face, AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Polynomial, FiringSet, Content, sat,
     sat::Resolution, Solver, AcesError, AcesErrorKind,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum LinkState {
     /// Single-face link (structure containing it is incoherent).  The
-    /// [`node::Face`] value is the missing face.
-    Thin(node::Face),
+    /// [`Face`] value is the missing face.
+    Thin(Face),
     Fat,
 }
 
@@ -89,10 +89,10 @@ impl CEStructure {
         CEStructure::new(ctx, Rc::new(InteractiveFormat::new()))
     }
 
-    fn add_harc_to_host(&mut self, harc_id: AtomID, face: node::Face, node_id: NodeID) {
+    fn add_harc_to_host(&mut self, harc_id: AtomID, face: Face, node_id: NodeID) {
         let harc_entry = match face {
-            node::Face::Tx => self.forks.entry(node_id),
-            node::Face::Rx => self.joins.entry(node_id),
+            Face::Tx => self.forks.entry(node_id),
+            Face::Rx => self.joins.entry(node_id),
         };
 
         match harc_entry {
@@ -109,23 +109,23 @@ impl CEStructure {
         }
     }
 
-    fn add_harc_to_suit(&mut self, harc_id: AtomID, face: node::Face, co_harc_ids: &[AtomID]) {
+    fn add_harc_to_suit(&mut self, harc_id: AtomID, face: Face, co_harc_ids: &[AtomID]) {
         for &co_harc_id in co_harc_ids.iter() {
             let harc_entry = match face {
-                node::Face::Tx => self.co_forks.entry(co_harc_id),
-                node::Face::Rx => self.co_joins.entry(co_harc_id),
+                Face::Tx => self.co_forks.entry(co_harc_id),
+                Face::Rx => self.co_joins.entry(co_harc_id),
             };
 
             if log_enabled!(Trace) {
                 match face {
-                    node::Face::Tx => {
+                    Face::Tx => {
                         trace!(
                             "Old join's co_forks[{}] -> {}",
                             JoinID(co_harc_id).with(&self.context),
                             ForkID(harc_id).with(&self.context),
                         );
                     }
-                    node::Face::Rx => {
+                    Face::Rx => {
                         trace!(
                             "Old fork's co_joins[{}] -> {}",
                             ForkID(co_harc_id).with(&self.context),
@@ -152,12 +152,10 @@ impl CEStructure {
 
     fn create_harcs(
         &mut self,
-        face: node::Face,
+        face: Face,
         node_id: NodeID,
         poly: &Polynomial<LinkID>,
     ) -> Result<(), AcesError> {
-        use node::Face::{Tx, Rx};
-
         for mono in poly.get_monomials() {
             let mut fat_co_node_ids = Vec::new();
 
@@ -192,15 +190,15 @@ impl CEStructure {
 
             for nid in fat_co_node_ids.iter() {
                 if let Some(harc_ids) = match face {
-                    Tx => self.joins.get(nid),
-                    Rx => self.forks.get(nid),
+                    Face::Tx => self.joins.get(nid),
+                    Face::Rx => self.forks.get(nid),
                 } {
                     let ctx = self.context.lock().unwrap();
 
                     for &sid in harc_ids {
                         if let Some(harc) = match face {
-                            Tx => ctx.get_join(sid.into()),
-                            Rx => ctx.get_fork(sid.into()),
+                            Face::Tx => ctx.get_join(sid.into()),
+                            Face::Rx => ctx.get_fork(sid.into()),
                         } {
                             if harc.get_suit_ids().binary_search(&node_id).is_ok() {
                                 co_harcs.push(sid);
@@ -216,11 +214,11 @@ impl CEStructure {
             }
 
             let harc_id: AtomID = match face {
-                Tx => {
+                Face::Tx => {
                     let mut fork = Harc::new_fork_unchecked(node_id, co_node_map.keys().copied());
                     self.context.lock().unwrap().share_fork(&mut fork).into()
                 }
-                Rx => {
+                Face::Rx => {
                     let mut join = Harc::new_join_unchecked(node_id, co_node_map.keys().copied());
                     self.context.lock().unwrap().share_join(&mut join).into()
                 }
@@ -233,14 +231,14 @@ impl CEStructure {
 
                 if log_enabled!(Trace) {
                     match face {
-                        Tx => {
+                        Face::Tx => {
                             trace!(
                                 "New fork's co_joins[{}] -> {:?}",
                                 ForkID(harc_id).with(&self.context),
                                 co_harcs
                             );
                         }
-                        Rx => {
+                        Face::Rx => {
                             trace!(
                                 "New join's co_forks[{}] -> {:?}",
                                 JoinID(harc_id).with(&self.context),
@@ -251,8 +249,8 @@ impl CEStructure {
                 }
 
                 match face {
-                    Tx => self.co_joins.insert(harc_id, co_harcs),
-                    Rx => self.co_forks.insert(harc_id, co_harcs),
+                    Face::Tx => self.co_joins.insert(harc_id, co_harcs),
+                    Face::Rx => self.co_forks.insert(harc_id, co_harcs),
                 };
             }
         }
@@ -271,7 +269,7 @@ impl CEStructure {
     /// [`add_effects()`]: CEStructure::add_effects()
     fn add_causes_or_effects<'a, I>(
         &mut self,
-        face: node::Face,
+        face: Face,
         node_id: NodeID,
         poly_ids: I,
     ) -> Result<(), AcesError>
@@ -305,8 +303,8 @@ impl CEStructure {
         self.create_harcs(face, node_id, &poly)?;
 
         let poly_entry = match face {
-            node::Face::Rx => self.causes.entry(port_id),
-            node::Face::Tx => self.effects.entry(port_id),
+            Face::Rx => self.causes.entry(port_id),
+            Face::Tx => self.effects.entry(port_id),
         };
 
         match poly_entry {
@@ -336,7 +334,7 @@ impl CEStructure {
         I: IntoIterator + 'a,
         I::Item: IntoIterator<Item = &'a NodeID>,
     {
-        self.add_causes_or_effects(node::Face::Rx, node_id, poly_ids)
+        self.add_causes_or_effects(Face::Rx, node_id, poly_ids)
     }
 
     /// Constructs new [`Polynomial`] from a sequence of sequences of
@@ -352,7 +350,7 @@ impl CEStructure {
         I: IntoIterator + 'a,
         I::Item: IntoIterator<Item = &'a NodeID>,
     {
-        self.add_causes_or_effects(node::Face::Tx, node_id, poly_ids)
+        self.add_causes_or_effects(Face::Tx, node_id, poly_ids)
     }
 
     /// Extends this c-e structure with another one, which is created
@@ -680,7 +678,7 @@ impl CEStructure {
     fn get_thin_link_names(
         &self,
         link_id: LinkID,
-        missing_face: node::Face,
+        missing_face: Face,
     ) -> Result<(String, String), Box<dyn Error>> {
         let ctx = self.context.lock().unwrap();
 
@@ -706,8 +704,8 @@ impl CEStructure {
                         let (tx_name, rx_name) = self.get_thin_link_names(link_id, missing_face)?;
 
                         match missing_face {
-                            node::Face::Rx => debug!("Tx-only link: {} -> {}", tx_name, rx_name,),
-                            node::Face::Tx => debug!("Rx-only link: {} <- {}", tx_name, rx_name,),
+                            Face::Rx => debug!("Tx-only link: {} -> {}", tx_name, rx_name,),
+                            Face::Tx => debug!("Rx-only link: {} <- {}", tx_name, rx_name,),
                         }
 
                         if first_link_info.is_none() {
