@@ -9,7 +9,7 @@ use crate::{
     JoinID, Semantics, Capacity, Weight,
     name::NameSpace,
     atom::{AtomSpace, Atom},
-    node, sat, solver, runner,
+    node, sat, solver, runner, vis,
 };
 
 /// A handle to a [`Context`] instance.
@@ -51,6 +51,7 @@ pub struct Context {
     weights:      BTreeMap<AtomID, Weight>,
     solver_props: solver::Props,
     runner_props: runner::Props,
+    vis_props:    vis::Props,
 }
 
 impl Context {
@@ -76,6 +77,7 @@ impl Context {
             weights: Default::default(),
             solver_props: Default::default(),
             runner_props: Default::default(),
+            vis_props: Default::default(),
         };
 
         Arc::new(Mutex::new(ctx))
@@ -94,6 +96,7 @@ impl Context {
         self.weights.clear();
         self.solver_props.clear();
         self.runner_props.clear();
+        self.vis_props.clear();
     }
 
     /// Creates a new derived `Context` instance and returns a
@@ -119,6 +122,7 @@ impl Context {
             let weights = parent.weights.clone();
             let solver_props = parent.solver_props.clone();
             let runner_props = parent.runner_props.clone();
+            let vis_props = parent.vis_props.clone();
 
             Self {
                 magic_id,
@@ -131,6 +135,7 @@ impl Context {
                 weights,
                 solver_props,
                 runner_props,
+                vis_props,
             }
         };
 
@@ -379,6 +384,24 @@ impl Context {
 
     pub fn get_max_steps(&self) -> Option<usize> {
         self.runner_props.max_steps
+    }
+
+    // Vis props
+
+    pub fn set_title<S: AsRef<str>>(&mut self, title: S) {
+        self.vis_props.title = Some(title.as_ref().to_owned());
+    }
+
+    pub fn get_title(&self) -> Option<&str> {
+        self.vis_props.title.as_ref().map(|t| t.as_str())
+    }
+
+    pub fn set_label<S: AsRef<str>>(&mut self, node_id: NodeID, label: S) {
+        self.vis_props.labels.insert(node_id, label.as_ref().to_owned());
+    }
+
+    pub fn get_label(&self, node_id: NodeID) -> Option<&str> {
+        self.vis_props.labels.get(&node_id).map(|t| t.as_str())
     }
 }
 

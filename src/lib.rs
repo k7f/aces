@@ -21,6 +21,7 @@ mod solver;
 mod state;
 mod firing;
 mod runner;
+mod vis;
 mod logging;
 
 pub use error::{AcesError, AcesErrorKind};
