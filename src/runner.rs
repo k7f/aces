@@ -1,5 +1,7 @@
 use log::Level::Debug;
-use crate::{ContextHandle, Contextual, State, Semantics, FiringSet, FiringSequence, AcesError};
+use crate::{
+    ContextHandle, Contextual, Multiplicity, State, Semantics, FiringSet, FiringSequence, AcesError,
+};
 
 #[derive(Clone, Default, Debug)]
 pub(crate) struct Props {
@@ -36,9 +38,13 @@ impl Runner {
         }
     }
 
-    pub fn new<S: AsRef<str>>(ctx: &ContextHandle, trigger_name: S) -> Self {
+    pub fn new<S, I>(ctx: &ContextHandle, triggers: I) -> Self
+    where
+        S: AsRef<str>,
+        I: IntoIterator<Item = (S, Multiplicity)>,
+    {
         let context = ctx.clone();
-        let initial_state = State::from_trigger(&context, trigger_name);
+        let initial_state = State::from_triggers(&context, triggers);
         let current_state = initial_state.clone();
         let semantics = Semantics::default();
         let max_steps = 1;

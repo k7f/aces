@@ -3,7 +3,7 @@ use crate::{
     ContextHandle, Contextual, Face, AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Multiplicity,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum AcesErrorKind {
     ContextMismatch,
     PolynomialFaceMismatch,
@@ -157,7 +157,7 @@ impl AcesErrorKind {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct AcesError {
     context: Option<ContextHandle>,
     kind:    AcesErrorKind,

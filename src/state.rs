@@ -4,7 +4,7 @@ use std::{
     error::Error,
 };
 use log::Level::{Debug, Trace};
-use crate::{Multiplicity, ContextHandle, Contextual, NodeID, FiringSet, AcesError, AcesErrorKind};
+use crate::{ContextHandle, Contextual, Multiplicity, NodeID, FiringSet, AcesError, AcesErrorKind};
 
 #[derive(Clone, Debug)]
 pub struct State {
@@ -13,10 +13,16 @@ pub struct State {
 }
 
 impl State {
-    pub fn from_trigger<S: AsRef<str>>(ctx: &ContextHandle, trigger_name: S) -> Self {
-        let trigger_id = ctx.lock().unwrap().share_node_name(trigger_name);
-        let tokens = BTreeMap::from_iter(Some((trigger_id, Multiplicity::one())));
+    pub fn from_triggers<S, I>(ctx: &ContextHandle, triggers: I) -> Self
+    where
+        S: AsRef<str>,
+        I: IntoIterator<Item = (S, Multiplicity)>,
+    {
         let context = ctx.clone();
+        let mut ctx = ctx.lock().unwrap();
+        let tokens = BTreeMap::from_iter(
+            triggers.into_iter().map(|(name, mul)| (ctx.share_node_name(name), mul)),
+        );
 
         State { context, tokens }
     }
