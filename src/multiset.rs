@@ -1,4 +1,8 @@
-use std::fmt::{self, Write};
+use std::{
+    str::FromStr,
+    fmt::{self, Write},
+};
+use crate::{AcesError, AcesErrorKind};
 
 /// A scalar type common for node capacity, harc weight and state.
 ///
@@ -132,6 +136,22 @@ impl fmt::Display for Multiplicity {
             self.0.fmt(f)
         } else {
             f.write_char('ω')
+        }
+    }
+}
+
+impl FromStr for Multiplicity {
+    type Err = AcesError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.eq_ignore_ascii_case("omega") || s == "ω" || s == "Ω" {
+            Ok(Multiplicity::omega())
+        } else {
+            match s.parse::<u64>() {
+                Ok(value) => Multiplicity::finite(value)
+                    .ok_or_else(|| AcesError::from(AcesErrorKind::MultiplicityOverflow)),
+                Err(err) => Err(AcesError::from(AcesErrorKind::from(err))),
+            }
         }
     }
 }

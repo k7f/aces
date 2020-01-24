@@ -1,4 +1,4 @@
-use std::{fmt, error::Error};
+use std::{num, fmt, error::Error};
 use crate::{
     ContextHandle, Contextual, Face, AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Multiplicity,
 };
@@ -30,6 +30,9 @@ pub enum AcesErrorKind {
     LeakedInhibitor(NodeID, Multiplicity),
     StateUnderflow(NodeID, Multiplicity, Multiplicity),
     StateOverflow(NodeID, Multiplicity, Multiplicity),
+    MultiplicityOverflow,
+    ParseIntError(num::ParseIntError),
+    ParseFloatError(num::ParseFloatError),
 
     EmptyClauseRejectedByFormula(String),
     EmptyClauseRejectedBySolver(String),
@@ -128,6 +131,9 @@ impl fmt::Display for AcesErrorKind {
                 "State overflow at {:?} after adding {} to {}",
                 node_id, num_tokens, tokens_before
             ),
+            MultiplicityOverflow => write!(f, "Multiplicity overflow"),
+            ParseIntError(err) => err.fmt(f),
+            ParseFloatError(err) => err.fmt(f),
 
             EmptyClauseRejectedByFormula(name) => {
                 write!(f, "Empty {} clause rejected by formula", name)
@@ -154,6 +160,18 @@ impl fmt::Display for AcesErrorKind {
 impl AcesErrorKind {
     pub fn with_context(self, context: &ContextHandle) -> AcesError {
         AcesError { context: Some(context.clone()), kind: self }
+    }
+}
+
+impl From<num::ParseIntError> for AcesErrorKind {
+    fn from(kind: num::ParseIntError) -> Self {
+        AcesErrorKind::ParseIntError(kind)
+    }
+}
+
+impl From<num::ParseFloatError> for AcesErrorKind {
+    fn from(kind: num::ParseFloatError) -> Self {
+        AcesErrorKind::ParseFloatError(kind)
     }
 }
 
