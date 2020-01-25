@@ -21,7 +21,7 @@ the `Cargo.toml` file:
 
 ```toml
 [dependencies]
-aces = "0.0.11"
+aces = "0.0.12"
 ```
 
 See [API documentation](https://docs.rs/aces) for information on
