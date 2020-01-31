@@ -23,8 +23,8 @@ pub trait ContentFormat: fmt::Debug {
                     }
                 }
 
-                // Reject unexpected non-empty extension, including
-                // any extension that isn't a valid UTF8.
+                // Reject unexpected nonempty extension, including any
+                // extension that isn't a valid UTF8.
                 return false
             }
         }

@@ -673,6 +673,10 @@ impl Harc {
     {
         let suit_ids: BTreeSet<_> = suit_ids.into_iter().collect();
 
+        if suit_ids.is_empty() {
+            // FIXME
+        }
+
         Self::new_fork_unchecked(host_id, suit_ids)
     }
 
@@ -685,16 +689,20 @@ impl Harc {
     {
         let suit_ids: BTreeSet<_> = suit_ids.into_iter().collect();
 
+        if suit_ids.is_empty() {
+            // FIXME
+        }
+
         Self::new_join_unchecked(host_id, suit_ids)
     }
 
     /// A more efficient variant of [`Harc::new_fork()`].
     ///
     /// Note: new [`Fork`] is created under the assumption that
-    /// `suit_ids` are listed in ascending order.  If the caller fails
-    /// to provide an ordered suit, the library may panic in some
-    /// other call (the constructor itself panics immediately in debug
-    /// mode).
+    /// `suit_ids` are nonempty and listed in ascending order.  If the
+    /// caller fails to provide an ordered suit, the library may panic
+    /// in some other call (the constructor itself panics immediately
+    /// in debug mode).
     pub fn new_fork_unchecked<I>(host_id: NodeID, suit_ids: I) -> Self
     where
         I: IntoIterator<Item = NodeID>,
@@ -707,10 +715,10 @@ impl Harc {
     /// A more efficient variant of [`Harc::new_join()`].
     ///
     /// Note: new [`Join`] is created under the assumption that
-    /// `suit_ids` are listed in ascending order.  If the caller fails
-    /// to provide an ordered suit, the library may panic in some
-    /// other call (the constructor itself panics immediately in debug
-    /// mode).
+    /// `suit_ids` are nonempty and listed in ascending order.  If the
+    /// caller fails to provide an ordered suit, the library may panic
+    /// in some other call (the constructor itself panics immediately
+    /// in debug mode).
     pub fn new_join_unchecked<I>(host_id: NodeID, suit_ids: I) -> Self
     where
         I: IntoIterator<Item = NodeID>,

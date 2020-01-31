@@ -164,6 +164,8 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             let mut prev_thing = None;
 
             for thing in atomics.into_iter() {
+                trace!("Start {:?} with {:?}", self, thing);
+
                 if let Some(prev) = prev_thing {
                     if thing <= prev {
                         self.atomics.clear();
@@ -191,15 +193,15 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
         let mut prev_thing = None;
         let mut no_new_things = true;
 
-        // These are used for error recovery; `old_terms` also helps in
-        // the implementation of inserting extra bits into rows of the
-        // `terms` matrix.
+        // These are used for error recovery.
         let mut old_atomics = None;
         let mut old_terms = None;
 
         let mut ndx = 0;
 
         for thing in atomics.into_iter() {
+            trace!("Grow {:?} with {:?}", self, thing);
+
             if let Some(prev) = prev_thing {
                 if thing <= prev {
                     // Error recovery.
@@ -235,21 +237,22 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
                     }
                     new_row.push(true);
 
-                    self.atomics.insert(ndx, thing);
-
                     if old_atomics.is_none() {
                         old_atomics = Some(self.atomics.clone());
                     }
-                    if old_terms.is_none() {
-                        old_terms = Some(self.terms.clone());
+
+                    self.atomics.insert(ndx, thing);
+
+                    let old_rows = self.terms.clone();
+
+                    for (new_row, old_row) in self.terms.iter_mut().zip(old_rows.iter()) {
+                        new_row.truncate(ndx);
+                        new_row.push(false);
+                        new_row.extend(old_row.iter().skip(ndx));
                     }
 
-                    let all_rows = old_terms.as_ref().unwrap();
-
-                    for (row, tail_row) in self.terms.iter_mut().zip(all_rows.iter()) {
-                        row.truncate(ndx);
-                        row.push(false);
-                        row.extend(tail_row.iter().skip(ndx));
+                    if old_terms.is_none() {
+                        old_terms = Some(old_rows);
                     }
 
                     ndx += 1;
