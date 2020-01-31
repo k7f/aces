@@ -10,10 +10,11 @@ macro_rules! error_pre_log {
 
 #[derive(Default)]
 pub struct Logger {
-    app_name:   String,
-    dispatcher: Option<fern::Dispatch>,
-    colors:     ColoredLevelConfig,
-    directory:  Option<PathBuf>,
+    app_name:       String,
+    dispatcher:     Option<fern::Dispatch>,
+    level_colors:   ColoredLevelConfig,
+    message_colors: ColoredLevelConfig,
+    directory:      Option<PathBuf>,
 }
 
 impl Logger {
@@ -22,30 +23,35 @@ impl Logger {
         let dispatcher = Some(fern::Dispatch::new());
 
         // FIXME these should be configurable by the user
-        let colors = ColoredLevelConfig::new()
+        let level_colors = ColoredLevelConfig::new()
             .trace(Color::Blue)
             .debug(Color::Yellow)
-            .info(Color::Green)
-            .warn(Color::Magenta)
-            .error(Color::Red);
+            .info(Color::BrightGreen)
+            .warn(Color::BrightMagenta)
+            .error(Color::BrightRed);
 
-        Self { app_name, dispatcher, colors, directory: None }
+        let message_colors = ColoredLevelConfig::new()
+            .trace(Color::White)
+            .debug(Color::White)
+            .info(Color::BrightWhite)
+            .warn(Color::BrightWhite)
+            .error(Color::BrightWhite);
+
+        Self { app_name, dispatcher, level_colors, message_colors, directory: None }
     }
 
     pub fn with_console(mut self, level: log::LevelFilter) -> Self {
-        let colors = self.colors;
+        let level_colors = self.level_colors;
+        let message_colors = self.message_colors;
 
         let dispatcher = self.dispatcher.unwrap().chain(
             fern::Dispatch::new()
                 .format(move |out, message, record| match record.level() {
                     log::Level::Info => out.finish(format_args!("{}.", message)),
-                    log::Level::Warn | log::Level::Debug => {
-                        out.finish(format_args!("[{}]\t{}.", colors.color(record.level()), message))
-                    }
                     _ => out.finish(format_args!(
                         "[{}]\t\x1B[{}m{}.\x1B[0m",
-                        colors.color(record.level()),
-                        colors.get_color(&record.level()).to_fg_str(),
+                        level_colors.color(record.level()),
+                        message_colors.get_color(&record.level()).to_fg_str(),
                         message
                     )),
                 })
@@ -146,8 +152,8 @@ impl Logger {
     fn console_prefix(&self, level: log::Level) -> String {
         format!(
             "[{}]\t\x1B[{}m",
-            self.colors.color(level),
-            self.colors.get_color(&level).to_fg_str()
+            self.level_colors.color(level),
+            self.message_colors.get_color(&level).to_fg_str()
         )
     }
 
