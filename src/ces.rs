@@ -545,6 +545,7 @@ impl CEStructure {
         Ok(ces)
     }
 
+    #[inline]
     pub fn get_context(&self) -> &ContextHandle {
         &self.context
     }

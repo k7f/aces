@@ -1,7 +1,7 @@
 use std::{
     collections::{btree_map, BTreeMap},
     iter::FromIterator,
-    error::Error,
+    fmt,
 };
 use log::Level::{Debug, Trace};
 use crate::{ContextHandle, Contextual, Multiplicity, NodeID, FiringSet, AcesError, AcesErrorKind};
@@ -136,11 +136,11 @@ impl State {
     ) -> Result<Option<usize>, AcesError> {
         if log_enabled!(Debug) {
             if num_steps == 0 {
-                debug!("Go from {}", self.with(ctx));
+                debug!("Go from {}", self);
             } else if num_steps < 10 {
-                debug!("Step {}  {}", num_steps, self.with(ctx));
+                debug!("Step {}  {}", num_steps, self);
             } else {
-                debug!("Step {} {}", num_steps, self.with(ctx));
+                debug!("Step {} {}", num_steps, self);
             }
         }
 
@@ -187,29 +187,50 @@ impl State {
     }
 }
 
-impl Contextual for State {
-    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
-        let mut result = String::new();
+impl fmt::Display for State {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut at_start = true;
 
-        result.push('{');
+        '{'.fmt(f)?;
 
         for (node_id, &num_tokens) in self.tokens.iter() {
             if num_tokens.is_positive() {
                 if at_start {
                     at_start = false;
                 } else {
-                    result.push(',');
+                    ','.fmt(f)?;
                 }
-                result.push_str(&format!(" {}: {}", node_id.format(ctx)?.as_str(), num_tokens));
+                write!(f, " {}: {}", node_id.with(&self.context), num_tokens)?;
             }
         }
 
-        result.push_str(" }");
-
-        Ok(result)
+        " }".fmt(f)
     }
 }
+
+// impl Contextual for State {
+//     fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
+//         let mut result = String::new();
+//         let mut at_start = true;
+
+//         result.push('{');
+
+//         for (node_id, &num_tokens) in self.tokens.iter() {
+//             if num_tokens.is_positive() {
+//                 if at_start {
+//                     at_start = false;
+//                 } else {
+//                     result.push(',');
+//                 }
+//                 result.push_str(&format!(" {}: {}", node_id.format(ctx)?.as_str(), num_tokens));
+//             }
+//         }
+
+//         result.push_str(" }");
+
+//         Ok(result)
+//     }
+// }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Semantics {

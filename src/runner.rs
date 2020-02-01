@@ -1,6 +1,6 @@
 use log::Level::Debug;
 use crate::{
-    ContextHandle, Contextual, Multiplicity, State, Semantics, FiringSet, FiringSequence, AcesError,
+    ContextHandle, Multiplicity, State, Semantics, FiringSet, FiringSequence, AcesError,
 };
 
 #[derive(Clone, Default, Debug)]
@@ -84,7 +84,7 @@ impl Runner {
         }
 
         if log_enabled!(Debug) {
-            debug!("Stop at {}", self.current_state.with(&self.context));
+            debug!("Stop at {}", self.current_state);
             debug!("Done after {} steps", self.max_steps);
         }
 
