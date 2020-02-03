@@ -1,6 +1,7 @@
 use std::{num, fmt, error::Error};
 use crate::{
     ContextHandle, Contextual, Face, AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Multiplicity,
+    Capacity,
 };
 
 #[derive(Clone, Debug)]
@@ -30,7 +31,8 @@ pub enum AcesErrorKind {
     LeakedInhibitor(NodeID, Multiplicity),
     StateUnderflow(NodeID, Multiplicity, Multiplicity),
     StateOverflow(NodeID, Multiplicity, Multiplicity),
-    MultiplicityOverflow,
+    CapacityOverflow(NodeID, Capacity, Multiplicity),
+    MultiplicityOverflow(String),
     ParseIntError(num::ParseIntError),
     ParseFloatError(num::ParseFloatError),
 
@@ -131,7 +133,12 @@ impl fmt::Display for AcesErrorKind {
                 "State overflow at {:?} after adding {} to {}",
                 node_id, num_tokens, tokens_before
             ),
-            MultiplicityOverflow => write!(f, "Multiplicity overflow"),
+            CapacityOverflow(node_id, capacity, num_tokens) => {
+                write!(f, "Capacity overflow at {:?} set to {} > {}", node_id, num_tokens, capacity)
+            }
+            MultiplicityOverflow(when_happened) => {
+                write!(f, "Multiplicity overflow when {}", when_happened)
+            }
             ParseIntError(err) => err.fmt(f),
             ParseFloatError(err) => err.fmt(f),
 
@@ -218,6 +225,13 @@ impl fmt::Display for AcesError {
                     node_id.with(ctx),
                     num_tokens,
                     tokens_before
+                ),
+                CapacityOverflow(node_id, capacity, num_tokens) => write!(
+                    f,
+                    "Capacity overflow at node \"{}\" set to {} > {}",
+                    node_id.with(ctx),
+                    num_tokens,
+                    capacity
                 ),
 
                 ref kind => kind.fmt(f),

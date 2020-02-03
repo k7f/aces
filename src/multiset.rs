@@ -148,8 +148,9 @@ impl FromStr for Multiplicity {
             Ok(Multiplicity::omega())
         } else {
             match s.parse::<u64>() {
-                Ok(value) => Multiplicity::finite(value)
-                    .ok_or_else(|| AcesError::from(AcesErrorKind::MultiplicityOverflow)),
+                Ok(value) => Multiplicity::finite(value).ok_or_else(|| {
+                    AcesError::from(AcesErrorKind::MultiplicityOverflow("parsing".into()))
+                }),
                 Err(err) => Err(AcesError::from(AcesErrorKind::from(err))),
             }
         }

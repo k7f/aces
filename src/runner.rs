@@ -1,7 +1,5 @@
 use log::Level::Debug;
-use crate::{
-    ContextHandle, Multiplicity, State, Semantics, FiringSet, FiringSequence, AcesError,
-};
+use crate::{ContextHandle, Multiplicity, State, Semantics, FiringSet, FiringSequence, AcesError};
 
 #[derive(Clone, Default, Debug)]
 pub(crate) struct Props {
@@ -44,7 +42,7 @@ impl Runner {
         I: IntoIterator<Item = (S, Multiplicity)>,
     {
         let context = ctx.clone();
-        let initial_state = State::from_triggers(&context, triggers);
+        let initial_state = State::from_triggers_saturated(&context, triggers);
         let current_state = initial_state.clone();
         let semantics = Semantics::default();
         let max_steps = 1;

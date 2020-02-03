@@ -13,18 +13,66 @@ pub struct State {
 }
 
 impl State {
-    pub fn from_triggers<S, I>(ctx: &ContextHandle, triggers: I) -> Self
+    pub fn from_triggers_saturated<S, I>(ctx: &ContextHandle, triggers: I) -> Self
     where
         S: AsRef<str>,
         I: IntoIterator<Item = (S, Multiplicity)>,
     {
         let context = ctx.clone();
         let mut ctx = ctx.lock().unwrap();
-        let tokens = BTreeMap::from_iter(
-            triggers.into_iter().map(|(name, mul)| (ctx.share_node_name(name), mul)),
-        );
+        let tokens = BTreeMap::from_iter(triggers.into_iter().map(|(name, mul)| {
+            let node_id = ctx.share_node_name(name.as_ref());
+            let cap = ctx.get_capacity(node_id);
+
+            if mul > cap {
+                warn!(
+                    "Clamping trigger's {:?} to Capacity({}) of node \"{}\"",
+                    mul,
+                    cap,
+                    name.as_ref()
+                );
+
+                (node_id, cap)
+            } else {
+                (node_id, mul)
+            }
+        }));
 
         State { context, tokens }
+    }
+
+    pub fn from_triggers_checked<S, I>(ctx: &ContextHandle, triggers: I) -> Result<Self, AcesError>
+    where
+        S: AsRef<str>,
+        I: IntoIterator<Item = (S, Multiplicity)>,
+    {
+        let mut error = None;
+        let tokens = BTreeMap::from_iter(
+            triggers
+                .into_iter()
+                .map(|(name, mul)| {
+                    let node_id = ctx.lock().unwrap().share_node_name(name.as_ref());
+
+                    (node_id, mul)
+                })
+                .take_while(|&(node_id, mul)| {
+                    let cap = ctx.lock().unwrap().get_capacity(node_id);
+
+                    if mul > cap {
+                        error = Some((node_id, cap, mul));
+                        false
+                    } else {
+                        true
+                    }
+                }),
+        );
+
+        let context = ctx.clone();
+
+        match error {
+            Some((n, c, m)) => Err(AcesErrorKind::CapacityOverflow(n, c, m).with_context(&context)),
+            None => Ok(State { context, tokens }),
+        }
     }
 
     pub fn clear(&mut self) {
@@ -35,7 +83,7 @@ impl State {
         self.tokens.get(&node_id).copied().unwrap_or_else(Multiplicity::zero)
     }
 
-    pub fn set(&mut self, node_id: NodeID, num_tokens: Multiplicity) {
+    pub fn set_unchecked(&mut self, node_id: NodeID, num_tokens: Multiplicity) {
         match self.tokens.entry(node_id) {
             btree_map::Entry::Vacant(entry) => {
                 if num_tokens.is_positive() {
@@ -52,7 +100,14 @@ impl State {
         }
     }
 
-    pub fn decrease(&mut self, node_id: NodeID, num_tokens: Multiplicity) -> Result<(), AcesError> {
+    /// See also [`FiringComponent::fire()`].
+    ///
+    /// [`FiringComponent::fire()`]: crate::FiringComponent::fire()
+    pub(crate) fn decrease(
+        &mut self,
+        node_id: NodeID,
+        num_tokens: Multiplicity,
+    ) -> Result<(), AcesError> {
         if num_tokens.is_positive() {
             if let btree_map::Entry::Occupied(mut entry) = self.tokens.entry(node_id) {
                 let tokens_before = *entry.get_mut();
@@ -86,7 +141,16 @@ impl State {
         Ok(())
     }
 
-    pub fn increase(&mut self, node_id: NodeID, num_tokens: Multiplicity) -> Result<(), AcesError> {
+    /// Note: this routine doesn't check for capacity overflow.
+    ///
+    /// See also [`FiringComponent::fire()`].
+    ///
+    /// [`FiringComponent::fire()`]: crate::FiringComponent::fire()
+    pub(crate) fn increase(
+        &mut self,
+        node_id: NodeID,
+        num_tokens: Multiplicity,
+    ) -> Result<(), AcesError> {
         if num_tokens.is_positive() {
             match self.tokens.entry(node_id) {
                 btree_map::Entry::Vacant(entry) => {
@@ -207,30 +271,6 @@ impl fmt::Display for State {
         " }".fmt(f)
     }
 }
-
-// impl Contextual for State {
-//     fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
-//         let mut result = String::new();
-//         let mut at_start = true;
-
-//         result.push('{');
-
-//         for (node_id, &num_tokens) in self.tokens.iter() {
-//             if num_tokens.is_positive() {
-//                 if at_start {
-//                     at_start = false;
-//                 } else {
-//                     result.push(',');
-//                 }
-//                 result.push_str(&format!(" {}: {}", node_id.format(ctx)?.as_str(), num_tokens));
-//             }
-//         }
-
-//         result.push_str(" }");
-
-//         Ok(result)
-//     }
-// }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Semantics {
