@@ -31,7 +31,7 @@ impl FiringComponent {
                     return false
                 }
             } else {
-                warn!("Overflow of state when checking enablement");
+                warn!("Overflow of state at {:?} when checking enablement", node_id);
 
                 if capacity.is_finite() {
                     return false

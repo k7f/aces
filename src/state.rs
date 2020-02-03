@@ -67,11 +67,9 @@ impl State {
                 }),
         );
 
-        let context = ctx.clone();
-
         match error {
-            Some((n, c, m)) => Err(AcesErrorKind::CapacityOverflow(n, c, m).with_context(&context)),
-            None => Ok(State { context, tokens }),
+            Some((n, c, m)) => Err(AcesErrorKind::CapacityOverflow(n, c, m).with_context(ctx)),
+            None => Ok(State { context: ctx.clone(), tokens }),
         }
     }
 
@@ -269,6 +267,61 @@ impl fmt::Display for State {
         }
 
         " }".fmt(f)
+    }
+}
+
+#[derive(Debug)]
+pub struct Goal {
+    targets: BTreeMap<NodeID, Multiplicity>,
+}
+
+impl Goal {
+    pub fn from_targets_checked<S, I>(ctx: &ContextHandle, targets: I) -> Result<Self, AcesError>
+    where
+        S: AsRef<str>,
+        I: IntoIterator<Item = (S, Multiplicity)>,
+    {
+        let mut error = None;
+        let targets = BTreeMap::from_iter(
+            targets
+                .into_iter()
+                .map(|(name, mul)| {
+                    let node_id = ctx.lock().unwrap().share_node_name(name.as_ref());
+
+                    (node_id, mul)
+                })
+                .take_while(|&(node_id, mul)| {
+                    let cap = ctx.lock().unwrap().get_capacity(node_id);
+
+                    if mul > cap {
+                        error = Some((node_id, cap, mul));
+                        false
+                    } else {
+                        true
+                    }
+                }),
+        );
+
+        match error {
+            Some((n, c, m)) => Err(AcesErrorKind::CapacityOverflow(n, c, m).with_context(ctx)),
+            None => Ok(Goal { targets }),
+        }
+    }
+
+    pub fn is_reached(&self, state: &State) -> Option<NodeID> {
+        for (&node_id, &target_tokens) in self.targets.iter() {
+            let tokens = state.get(node_id);
+
+            if target_tokens.is_omega() {
+                if tokens.is_omega() {
+                    return Some(node_id)
+                }
+            } else if tokens >= target_tokens {
+                return Some(node_id)
+            }
+        }
+
+        None
     }
 }
 

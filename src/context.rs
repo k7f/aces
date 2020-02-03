@@ -393,7 +393,7 @@ impl Context {
     }
 
     pub fn get_title(&self) -> Option<&str> {
-        self.vis_props.title.as_ref().map(|t| t.as_str())
+        self.vis_props.title.as_deref()
     }
 
     pub fn set_label<S: AsRef<str>>(&mut self, node_id: NodeID, label: S) {

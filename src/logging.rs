@@ -2,10 +2,11 @@ use std::path::PathBuf;
 use fern::colors::{Color, ColoredLevelConfig};
 
 macro_rules! error_pre_log {
-    ($lgr:expr,$($arg:tt)*) => (eprintln!("{}{}{}",
-                                          $lgr.console_prefix(log::Level::Error),
-                                          format_args!($($arg)*),
-                                          $lgr.console_suffix()));
+    ($lgr:expr,$($arg:tt)*) => (
+        eprintln!("{}{}{}",
+                  $lgr.console_prefix(log::Level::Error),
+                  format_args!($($arg)*),
+                  $lgr.console_suffix()));
 }
 
 #[derive(Default)]
