@@ -17,6 +17,14 @@ impl Props {
 }
 
 #[derive(Debug)]
+pub enum StopCondition {
+    GoalReached(NodeID, usize),
+    Stalemate(usize),
+    Pause(usize),
+    UnimplementedFeature(String),
+}
+
+#[derive(Debug)]
 pub struct Runner {
     context:         ContextHandle,
     initial_state:   State,
@@ -77,23 +85,23 @@ impl Runner {
         Ok(self)
     }
 
-    pub fn go(&mut self, fset: &FiringSet) -> Result<(), AcesError> {
+    pub fn go(&mut self, fset: &FiringSet) -> Result<StopCondition, AcesError> {
         let mut rng = rand::thread_rng();
 
         self.update_props();
 
         if self.semantics == Semantics::Parallel {
             // FIXME implement firing under parallel semantics
-            println!("Firing under parallel semantics isn't implemented yet.");
+            debug!("Firing under parallel semantics isn't implemented yet");
 
-            return Ok(())
+            return Ok(StopCondition::UnimplementedFeature("parallel semantics".into()))
         }
 
         for num_steps in 0..self.max_steps {
             if let Some(node_id) = self.goal_is_reached() {
                 debug!("Goal reached at {:?} after {} steps", node_id, num_steps);
 
-                return Ok(())
+                return Ok(StopCondition::GoalReached(node_id, num_steps))
             }
 
             let fc_id = if log_enabled!(Debug) {
@@ -105,10 +113,16 @@ impl Runner {
             if let Some(fc_id) = fc_id {
                 self.firing_sequence.push(fc_id);
             } else {
-                debug!("Stuck after {} steps", num_steps);
+                debug!("Stuck after {} steps", num_steps + 1);
 
-                return Ok(())
+                return Ok(StopCondition::Stalemate(num_steps))
             }
+        }
+
+        if let Some(node_id) = self.goal_is_reached() {
+            debug!("Goal reached at {:?} after {} steps", node_id, self.max_steps);
+
+            return Ok(StopCondition::GoalReached(node_id, self.max_steps))
         }
 
         if log_enabled!(Debug) {
@@ -116,7 +130,7 @@ impl Runner {
             debug!("Done after {} steps", self.max_steps);
         }
 
-        Ok(())
+        Ok(StopCondition::Pause(self.max_steps))
     }
 
     #[inline]

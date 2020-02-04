@@ -39,7 +39,7 @@ pub use ces::CEStructure;
 pub use solver::{Solver, Solution};
 pub use firing::{FiringComponent, FiringSet, FiringSequence};
 pub use state::{State, Goal, Semantics};
-pub use runner::Runner;
+pub use runner::{Runner, StopCondition};
 pub use logging::Logger;
 
 use std::num::NonZeroUsize;
