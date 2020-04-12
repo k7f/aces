@@ -1,4 +1,4 @@
-use std::{slice, collections::BTreeMap, convert::TryFrom, error::Error};
+use std::{slice, collections::BTreeMap, convert::TryFrom};
 use rand::{RngCore, Rng};
 use crate::{
     ContextHandle, Contextual, Face, NodeID, Capacity, Weight, Solution, State, AcesError,
@@ -16,8 +16,8 @@ impl FiringComponent {
         for (&node_id, &weight) in self.pre_set.iter() {
             let tokens = state.get(node_id);
 
-            if weight.is_omega() {
-                if tokens.is_positive() {
+            if tokens.is_zero() {
+                if weight.is_finite() {
                     return false
                 }
             } else if tokens < weight {
@@ -120,7 +120,7 @@ impl TryFrom<Solution> for FiringComponent {
 }
 
 impl Contextual for FiringComponent {
-    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, AcesError> {
         let mut result = String::new();
 
         if self.pre_set.is_empty() {
@@ -176,6 +176,7 @@ impl FiringSet {
 }
 
 impl From<Vec<FiringComponent>> for FiringSet {
+    #[inline]
     fn from(fcs: Vec<FiringComponent>) -> Self {
         FiringSet { fcs }
     }

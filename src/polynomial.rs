@@ -1,4 +1,4 @@
-use std::{slice, iter, cmp, ops, fmt, collections::BTreeSet, error::Error};
+use std::{slice, iter, cmp, ops, fmt, collections::BTreeSet};
 use bit_vec::BitVec;
 use crate::{
     Face, NodeID, Port, Link, LinkID, ContextHandle, Contextual, ExclusivelyContextual,
@@ -460,7 +460,7 @@ impl<T: Atomic + fmt::Debug> PartialOrd for Polynomial<T> {
 }
 
 impl Contextual for Polynomial<LinkID> {
-    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, AcesError> {
         let mut result = String::new();
 
         let mut first_mono = true;

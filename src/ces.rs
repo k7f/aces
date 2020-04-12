@@ -358,10 +358,7 @@ impl CEStructure {
     /// [`Content`] trait object.
     ///
     /// [`Context`]: crate::Context
-    pub fn add_from_content(
-        &mut self,
-        mut content: Box<dyn Content>,
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn add_from_content(&mut self, mut content: Box<dyn Content>) -> Result<(), AcesError> {
         for node_id in content.get_carrier_ids() {
             if let Some(poly_ids) = content.get_causes_by_id(node_id) {
                 if poly_ids.is_empty() {
@@ -369,8 +366,7 @@ impl CEStructure {
                         self.context.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
 
                     return Err(AcesErrorKind::EmptyCausesOfInternalNode(node_name)
-                        .with_context(&self.context)
-                        .into())
+                        .with_context(&self.context))
                 }
 
                 self.add_causes(node_id, poly_ids)?;
@@ -382,8 +378,7 @@ impl CEStructure {
                         self.context.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
 
                     return Err(AcesErrorKind::EmptyEffectsOfInternalNode(node_name)
-                        .with_context(&self.context)
-                        .into())
+                        .with_context(&self.context))
                 }
 
                 self.add_effects(node_id, poly_ids)?;
@@ -400,7 +395,7 @@ impl CEStructure {
     /// [`Content`] trait object.
     ///
     /// [`Context`]: crate::Context
-    pub fn with_content(mut self, content: Box<dyn Content>) -> Result<Self, Box<dyn Error>> {
+    pub fn with_content(mut self, content: Box<dyn Content>) -> Result<Self, AcesError> {
         self.add_from_content(content)?;
 
         Ok(self)
@@ -428,7 +423,7 @@ impl CEStructure {
             if format.script_is_acceptable(script) {
                 let content = format.script_to_content(&self.context, script)?;
 
-                return self.add_from_content(content).map(|_| format.clone())
+                return self.add_from_content(content).map(|_| format.clone()).map_err(Into::into)
             }
         }
 
@@ -570,7 +565,7 @@ impl CEStructure {
         self.num_thin_links == 0
     }
 
-    pub fn get_port_link_formula(&self) -> Result<sat::Formula, Box<dyn Error>> {
+    pub fn get_port_link_formula(&self) -> Result<sat::Formula, AcesError> {
         let mut formula = sat::Formula::new(&self.context);
 
         for (&pid, poly) in self.causes.iter() {
@@ -624,7 +619,7 @@ impl CEStructure {
                         } else {
                             warn!(
                                 "Multiple occurrences of {} in coharc array",
-                                coharc.format_locked(&ctx).unwrap()
+                                coharc.format_locked(&ctx)?
                             );
                         }
                     }
@@ -635,7 +630,7 @@ impl CEStructure {
         }
     }
 
-    pub fn get_fork_join_formula(&self) -> Result<sat::Formula, Box<dyn Error>> {
+    pub fn get_fork_join_formula(&self) -> Result<sat::Formula, AcesError> {
         let mut formula = sat::Formula::new(&self.context);
 
         for (node_id, fork_atom_ids) in self.forks.iter() {
@@ -663,7 +658,7 @@ impl CEStructure {
         Ok(formula)
     }
 
-    pub fn get_formula(&self) -> Result<sat::Formula, Box<dyn Error>> {
+    pub fn get_formula(&self) -> Result<sat::Formula, AcesError> {
         // FIXME if not set, choose one or the other, heuristically
         let encoding =
             self.context.lock().unwrap().get_encoding().unwrap_or(sat::Encoding::ForkJoin);
@@ -680,7 +675,7 @@ impl CEStructure {
         &self,
         link_id: LinkID,
         missing_face: Face,
-    ) -> Result<(String, String), Box<dyn Error>> {
+    ) -> Result<(String, String), AcesError> {
         let ctx = self.context.lock().unwrap();
 
         if let Some(link) = ctx.get_link(link_id) {
@@ -689,11 +684,11 @@ impl CEStructure {
 
             Ok((node_id.format_locked(&ctx)?, conode_id.format_locked(&ctx)?))
         } else {
-            Err(AcesErrorKind::LinkMissingForID(link_id).with_context(&self.context).into())
+            Err(AcesErrorKind::LinkMissingForID(link_id).with_context(&self.context))
         }
     }
 
-    pub fn check_coherence(&self) -> Result<(), Box<dyn Error>> {
+    pub fn check_coherence(&self) -> Result<(), AcesError> {
         if self.is_coherent() {
             Ok(())
         } else {
@@ -721,12 +716,11 @@ impl CEStructure {
                 self.num_thin_links,
                 first_link_info.unwrap(),
             )
-            .with_context(&self.context)
-            .into())
+            .with_context(&self.context))
         }
     }
 
-    pub fn solve(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn solve(&mut self) -> Result<(), AcesError> {
         if let Err(err) = self.check_coherence() {
             self.resolution = Resolution::Incoherent;
 

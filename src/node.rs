@@ -1,4 +1,4 @@
-use std::{fmt, error::Error};
+use std::fmt;
 use crate::{ID, Context, ExclusivelyContextual, InContext, Atomic, AcesError, AcesErrorKind, sat};
 
 /// An identifier of a single node used in c-e structures.
@@ -32,19 +32,21 @@ impl NodeID {
 }
 
 impl From<ID> for NodeID {
+    #[inline]
     fn from(id: ID) -> Self {
         NodeID(id)
     }
 }
 
 impl From<NodeID> for ID {
+    #[inline]
     fn from(id: NodeID) -> Self {
         id.0
     }
 }
 
 impl ExclusivelyContextual for NodeID {
-    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
         let name = ctx
             .get_node_name(*self)
             .ok_or_else(|| AcesError::from(AcesErrorKind::NodeMissingForID(*self)))?;

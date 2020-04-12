@@ -171,12 +171,14 @@ impl AcesErrorKind {
 }
 
 impl From<num::ParseIntError> for AcesErrorKind {
+    #[inline]
     fn from(kind: num::ParseIntError) -> Self {
         AcesErrorKind::ParseIntError(kind)
     }
 }
 
 impl From<num::ParseFloatError> for AcesErrorKind {
+    #[inline]
     fn from(kind: num::ParseFloatError) -> Self {
         AcesErrorKind::ParseFloatError(kind)
     }
@@ -189,6 +191,7 @@ pub struct AcesError {
 }
 
 impl From<AcesErrorKind> for AcesError {
+    #[inline]
     fn from(kind: AcesErrorKind) -> Self {
         AcesError { context: None, kind }
     }

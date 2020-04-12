@@ -2,11 +2,10 @@ use std::{
     cmp, fmt,
     collections::BTreeMap,
     sync::{Arc, Mutex},
-    error::Error,
 };
 use crate::{
     PartialContent, Port, Link, Harc, Fork, Join, Face, ID, NodeID, AtomID, PortID, LinkID, ForkID,
-    JoinID, Semantics, Capacity, Weight,
+    JoinID, Semantics, Capacity, Weight, AcesError,
     name::NameSpace,
     atom::{AtomSpace, Atom},
     sat, solver, runner, vis,
@@ -452,7 +451,7 @@ impl PartialOrd for Context {
 ///
 /// See [`InContext`] for more details.
 pub trait Contextual: Sized {
-    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>>;
+    fn format(&self, ctx: &ContextHandle) -> Result<String, AcesError>;
 
     #[inline]
     fn with(&self, ctx: &ContextHandle) -> InContext<Self> {
@@ -468,18 +467,18 @@ pub trait Contextual: Sized {
 /// A version of the [`Contextual`] trait to be used for fine-grained
 /// access to [`Context`].
 pub trait ExclusivelyContextual: Sized {
-    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>>;
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError>;
 }
 
 impl<T: ExclusivelyContextual> Contextual for T {
     #[inline]
-    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, AcesError> {
         self.format_locked(&ctx.lock().unwrap())
     }
 }
 
 impl<T: ExclusivelyContextual> Contextual for Vec<T> {
-    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, AcesError> {
         let mut elts = self.iter();
 
         if let Some(elt) = elts.next() {

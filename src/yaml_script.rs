@@ -5,14 +5,15 @@ use std::{
     error::Error,
 };
 use regex::Regex;
-use yaml_rust::{Yaml, YamlLoader};
+use yaml_rust::{Yaml, YamlLoader, ScanError};
 use crate::{
     ContextHandle, Face, NodeID, Content, PartialContent, ContentFormat,
     content::{PolyForContent, MonoForContent},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum YamlScriptError {
+    LexingFailure(ScanError),
     Empty,
     Multiple,
     NotADict,
@@ -33,6 +34,7 @@ impl fmt::Display for YamlScriptError {
         use YamlScriptError::*;
 
         match self {
+            LexingFailure(err) => write!(f, "Lexing failed: {}", err),
             Empty => write!(f, "YAML description is empty"),
             Multiple => write!(f, "Multiple YAML descriptions"),
             NotADict => write!(f, "Bad YAML description (not a dictionary)"),
@@ -55,13 +57,20 @@ impl fmt::Display for YamlScriptError {
 
 impl Error for YamlScriptError {}
 
+impl From<ScanError> for YamlScriptError {
+    #[inline]
+    fn from(err: ScanError) -> Self {
+        YamlScriptError::LexingFailure(err)
+    }
+}
+
 fn do_share_name<S: AsRef<str>>(
     ctx: &ContextHandle,
     name: S,
     single_word_only: bool,
-) -> Result<NodeID, Box<dyn Error>> {
+) -> Result<NodeID, YamlScriptError> {
     if single_word_only && name.as_ref().contains(char::is_whitespace) {
-        Err(YamlScriptError::ShortPolyWithWords.into())
+        Err(YamlScriptError::ShortPolyWithWords)
     } else {
         Ok(ctx.lock().unwrap().share_node_name(name))
     }
@@ -71,9 +80,9 @@ fn post_process_port_description<S: AsRef<str>>(
     ctx: &ContextHandle,
     description: S,
     single_word_only: bool,
-) -> Result<Vec<NodeID>, Box<dyn Error>> {
+) -> Result<Vec<NodeID>, YamlScriptError> {
     if description.as_ref().contains(',') {
-        let result: Result<Vec<NodeID>, Box<dyn Error>> = description
+        let result: Result<Vec<NodeID>, YamlScriptError> = description
             .as_ref()
             .split(',')
             .map(|s| do_share_name(ctx, s.trim(), single_word_only))
@@ -94,7 +103,7 @@ fn do_parse_port_description<S: AsRef<str>>(
     ctx: &ContextHandle,
     description: S,
     single_word_only: bool,
-) -> Result<Option<PortParsed>, Box<dyn Error>> {
+) -> Result<Option<PortParsed>, YamlScriptError> {
     lazy_static! {
         // Node name (untrimmed, unseparated) is any nonempty string not ending in '>' or '<'.
         // Removal of leading and trailing whitespace is done in post processing,
@@ -127,7 +136,7 @@ fn parse_link_description<S: AsRef<str> + Copy>(
     description: S,
     valid_face: Face,
     single_word_only: bool,
-) -> Result<(NodeID, bool), Box<dyn Error>> {
+) -> Result<(NodeID, bool), YamlScriptError> {
     let link_with_colink = do_parse_port_description(ctx, description, single_word_only)?;
 
     if let Some((ids, face)) = link_with_colink {
@@ -135,10 +144,10 @@ fn parse_link_description<S: AsRef<str> + Copy>(
             if ids.len() == 1 {
                 Ok((ids[0], true))
             } else {
-                Err(YamlScriptError::LinkList.into())
+                Err(YamlScriptError::LinkList)
             }
         } else {
-            Err(YamlScriptError::LinkReversed.into())
+            Err(YamlScriptError::LinkReversed)
         }
     } else {
         let id = do_share_name(ctx, description, single_word_only)?;
@@ -173,7 +182,7 @@ impl YamlContent {
         ids: &[NodeID],
         face: Face,
         poly_yaml: &Yaml,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), YamlScriptError> {
         assert!(!ids.is_empty());
 
         let mut poly_content = PolyForContent::new();
@@ -244,19 +253,19 @@ impl YamlContent {
                                         }
                                     }
                                 } else {
-                                    return Err(YamlScriptError::LinkInvalid.into())
+                                    return Err(YamlScriptError::LinkInvalid)
                                 }
                             }
                             poly_content.add_mono(mono_content.into_content());
                         }
-                        _ => return Err(YamlScriptError::MonoInvalid.into()),
+                        _ => return Err(YamlScriptError::MonoInvalid),
                     }
                 }
                 if is_flat {
-                    return Err(YamlScriptError::PolyAmbiguous.into())
+                    return Err(YamlScriptError::PolyAmbiguous)
                 }
             }
-            _ => return Err(YamlScriptError::PolyInvalid.into()),
+            _ => return Err(YamlScriptError::PolyInvalid),
         }
 
         if face == Face::Tx {
@@ -271,7 +280,7 @@ impl YamlContent {
         Ok(())
     }
 
-    fn add_entry(&mut self, key: &Yaml, value: &Yaml) -> Result<(), Box<dyn Error>> {
+    fn add_entry(&mut self, key: &Yaml, value: &Yaml) -> Result<(), YamlScriptError> {
         if let Some(key) = key.as_str() {
             let key = key.trim();
             let port_parsed = parse_port_description(self.content.get_context(), key);
@@ -285,10 +294,10 @@ impl YamlContent {
 
                         Ok(())
                     } else {
-                        Err(YamlScriptError::NameDup.into())
+                        Err(YamlScriptError::NameDup)
                     }
                 } else {
-                    Err(YamlScriptError::NameNotString.into())
+                    Err(YamlScriptError::NameNotString)
                 }
             } else {
                 // FIXME handle duplicates
@@ -297,11 +306,11 @@ impl YamlContent {
                 Ok(())
             }
         } else {
-            Err(YamlScriptError::KeyNotString.into())
+            Err(YamlScriptError::KeyNotString)
         }
     }
 
-    fn with_yaml(mut self, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
+    fn with_yaml(mut self, yaml: &Yaml) -> Result<Self, YamlScriptError> {
         if let Yaml::Hash(ref dict) = yaml {
             for (key, value) in dict {
                 self.add_entry(key, value)?;
@@ -309,26 +318,26 @@ impl YamlContent {
 
             Ok(self)
         } else {
-            Err(YamlScriptError::NotADict.into())
+            Err(YamlScriptError::NotADict)
         }
     }
 
-    pub(crate) fn with_str<S: AsRef<str>>(self, script: S) -> Result<Self, Box<dyn Error>> {
+    pub(crate) fn with_str<S: AsRef<str>>(self, script: S) -> Result<Self, YamlScriptError> {
         let docs = YamlLoader::load_from_str(script.as_ref())?;
 
         if docs.is_empty() {
-            Err(YamlScriptError::Empty.into())
+            Err(YamlScriptError::Empty)
         } else if docs.len() == 1 {
             self.with_yaml(&docs[0])
         } else {
-            Err(YamlScriptError::Multiple.into())
+            Err(YamlScriptError::Multiple)
         }
     }
 
     pub(crate) fn from_str<S: AsRef<str>>(
         ctx: &ContextHandle,
         script: S,
-    ) -> Result<Self, Box<dyn Error>> {
+    ) -> Result<Self, YamlScriptError> {
         Self::new(ctx).with_str(script)
     }
 }
@@ -390,6 +399,6 @@ impl ContentFormat for YamlFormat {
         ctx: &ContextHandle,
         script: &str,
     ) -> Result<Box<dyn Content>, Box<dyn Error>> {
-        YamlContent::from_str(ctx, script).map(|c| c.into())
+        YamlContent::from_str(ctx, script).map(Into::into).map_err(Into::into)
     }
 }

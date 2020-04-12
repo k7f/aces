@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeSet, BTreeMap},
     mem, fmt,
-    error::Error,
 };
 use varisat::{Var, Lit, ExtendFormula, solver::SolverError};
 use crate::{
@@ -137,7 +136,7 @@ impl Assumptions {
 }
 
 impl Contextual for Assumptions {
-    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, AcesError> {
         self.literals.format(ctx)
     }
 }

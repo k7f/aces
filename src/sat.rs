@@ -3,7 +3,6 @@ use std::{
     convert::TryInto,
     ops, fmt,
     sync::Arc,
-    error::Error,
 };
 use varisat::{Var, Lit, CnfFormula, ExtendFormula};
 use crate::{
@@ -54,7 +53,7 @@ impl CEVar for Var {
 }
 
 impl ExclusivelyContextual for Var {
-    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
         let atom_id = self.into_atom_id();
 
         if let Some(atom) = ctx.get_atom(atom_id) {
@@ -65,10 +64,10 @@ impl ExclusivelyContextual for Var {
                 Atom::Link(link) => Ok(format!("{}:{}", atom_id, link.format_locked(ctx)?)),
                 Atom::Fork(fork) => Ok(format!("{}:{}", atom_id, fork.format_locked(ctx)?)),
                 Atom::Join(join) => Ok(format!("{}:{}", atom_id, join.format_locked(ctx)?)),
-                Atom::Bottom => Err(AcesError::from(AcesErrorKind::BottomAtomAccess).into()),
+                Atom::Bottom => Err(AcesError::from(AcesErrorKind::BottomAtomAccess)),
             }
         } else {
-            Err(AcesError::from(AcesErrorKind::AtomMissingForID(atom_id)).into())
+            Err(AcesError::from(AcesErrorKind::AtomMissingForID(atom_id)))
         }
     }
 }
@@ -78,7 +77,7 @@ impl ExclusivelyContextual for Var {
 pub struct Variable(pub(crate) Var);
 
 impl Contextual for Variable {
-    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, AcesError> {
         self.0.format(ctx)
     }
 }
@@ -100,7 +99,7 @@ impl CELit for Lit {
 }
 
 impl ExclusivelyContextual for Lit {
-    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
         if self.is_negative() {
             Ok(format!("~{}", self.var().format_locked(ctx)?))
         } else {
@@ -133,18 +132,21 @@ impl Literal {
 }
 
 impl From<Lit> for Literal {
+    #[inline]
     fn from(lit: Lit) -> Self {
         Literal(lit)
     }
 }
 
 impl From<Literal> for Lit {
+    #[inline]
     fn from(lit: Literal) -> Self {
         lit.0
     }
 }
 
 impl From<&Literal> for Lit {
+    #[inline]
     fn from(lit: &Literal) -> Self {
         lit.0
     }
@@ -167,7 +169,7 @@ impl ops::BitXor<bool> for Literal {
 }
 
 impl Contextual for Literal {
-    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, AcesError> {
         self.0.format(ctx)
     }
 }
@@ -279,7 +281,7 @@ impl Clause {
 }
 
 impl Contextual for Clause {
-    fn format(&self, ctx: &ContextHandle) -> Result<String, Box<dyn Error>> {
+    fn format(&self, ctx: &ContextHandle) -> Result<String, AcesError> {
         self.lits.format(ctx)
     }
 }

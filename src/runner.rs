@@ -94,7 +94,7 @@ impl Runner {
             // FIXME implement firing under parallel semantics
             debug!("Firing under parallel semantics isn't implemented yet");
 
-            return Ok(StopCondition::UnimplementedFeature("parallel semantics".into()))
+            return Ok(StopCondition::UnimplementedFeature("firing under parallel semantics".into()))
         }
 
         for num_steps in 0..self.max_steps {

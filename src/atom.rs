@@ -1,7 +1,6 @@
 use std::{
     fmt, hash,
     collections::{BTreeMap, BTreeSet, HashMap},
-    error::Error,
 };
 use crate::{
     Face, ID, NodeID, Context, Contextual, ExclusivelyContextual, InContext, AcesError,
@@ -49,7 +48,7 @@ impl From<PortID> for AtomID {
 }
 
 impl ExclusivelyContextual for PortID {
-    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
         let port = ctx
             .get_port(*self)
             .ok_or_else(|| AcesError::from(AcesErrorKind::PortMissingForID(*self)))?;
@@ -88,7 +87,7 @@ impl From<LinkID> for AtomID {
 }
 
 impl ExclusivelyContextual for LinkID {
-    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
         let link = ctx
             .get_link(*self)
             .ok_or_else(|| AcesError::from(AcesErrorKind::LinkMissingForID(*self)))?;
@@ -127,7 +126,7 @@ impl From<ForkID> for AtomID {
 }
 
 impl ExclusivelyContextual for ForkID {
-    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
         let fork = ctx
             .get_fork(*self)
             .ok_or_else(|| AcesError::from(AcesErrorKind::ForkMissingForID(*self)))?;
@@ -166,7 +165,7 @@ impl From<JoinID> for AtomID {
 }
 
 impl ExclusivelyContextual for JoinID {
-    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
         let join = ctx
             .get_join(*self)
             .ok_or_else(|| AcesError::from(AcesErrorKind::JoinMissingForID(*self)))?;
@@ -525,7 +524,7 @@ impl hash::Hash for Port {
 }
 
 impl ExclusivelyContextual for Port {
-    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
         let node_name = ctx
             .get_node_name(self.get_node_id())
             .ok_or_else(|| AcesError::from(AcesErrorKind::NodeMissingForPort(self.get_face())))?;
@@ -618,7 +617,7 @@ impl hash::Hash for Link {
 }
 
 impl ExclusivelyContextual for Link {
-    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
         let tx_node_name = ctx
             .get_node_name(self.get_tx_node_id())
             .ok_or_else(|| AcesError::from(AcesErrorKind::NodeMissingForLink(Face::Tx)))?;
@@ -793,7 +792,7 @@ impl hash::Hash for Harc {
 }
 
 impl ExclusivelyContextual for Harc {
-    fn format_locked(&self, ctx: &Context) -> Result<String, Box<dyn Error>> {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
         let host_name = ctx.get_node_name(self.get_host_id()).ok_or(match self.face {
             Face::Tx => AcesError::from(AcesErrorKind::NodeMissingForFork(Face::Tx)),
             Face::Rx => AcesError::from(AcesErrorKind::NodeMissingForJoin(Face::Rx)),
