@@ -292,6 +292,7 @@ impl Context {
         self.capacities.insert(node_id, cap)
     }
 
+    #[inline]
     pub fn get_capacity(&self, node_id: NodeID) -> Capacity {
         self.capacities.get(&node_id).copied().unwrap_or_else(Capacity::one)
     }
@@ -331,6 +332,7 @@ impl Context {
         self.weights.insert(atom_id, weight)
     }
 
+    #[inline]
     pub fn set_inhibitor_by_name<S, I>(
         &mut self,
         face: Face,
@@ -345,6 +347,22 @@ impl Context {
         self.set_weight_by_name(face, host_name, suit_names, Weight::omega())
     }
 
+    #[inline]
+    pub fn set_holder_by_name<S, I>(
+        &mut self,
+        face: Face,
+        host_name: S,
+        suit_names: I,
+    ) -> Option<Weight>
+    where
+        S: AsRef<str>,
+        I: IntoIterator,
+        I::Item: AsRef<str>,
+    {
+        self.set_weight_by_name(face, host_name, suit_names, Weight::zero())
+    }
+
+    #[inline]
     pub fn get_weight(&self, atom_id: AtomID) -> Weight {
         self.weights.get(&atom_id).copied().unwrap_or_else(Weight::one)
     }
