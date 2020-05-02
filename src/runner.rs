@@ -6,8 +6,9 @@ use crate::{
 
 #[derive(Clone, Default, Debug)]
 pub(crate) struct Props {
-    pub(crate) semantics: Option<Semantics>,
-    pub(crate) max_steps: Option<usize>,
+    pub(crate) semantics:  Option<Semantics>,
+    pub(crate) max_steps:  Option<usize>,
+    pub(crate) num_passes: Option<usize>,
 }
 
 impl Props {
@@ -27,11 +28,13 @@ pub enum StopCondition {
 #[derive(Debug)]
 pub struct Runner {
     context:         ContextHandle,
+    rng:             Option<rand::rngs::ThreadRng>,
     initial_state:   State,
     current_state:   State,
     goal:            Option<Goal>,
     semantics:       Semantics,
     max_steps:       usize,
+    num_passes:      Option<usize>,
     firing_sequence: FiringSequence,
 }
 
@@ -46,6 +49,8 @@ impl Runner {
         if let Some(v) = ctx.get_max_steps() {
             self.max_steps = v;
         }
+
+        self.num_passes = ctx.get_num_passes();
     }
 
     pub fn new<S, I>(ctx: &ContextHandle, triggers: I) -> Self
@@ -54,20 +59,24 @@ impl Runner {
         I: IntoIterator<Item = (S, Multiplicity)>,
     {
         let context = ctx.clone();
+        let rng = None;
         let initial_state = State::from_triggers_saturated(&context, triggers);
         let current_state = initial_state.clone();
         let goal = None;
         let semantics = Semantics::default();
         let max_steps = 1;
+        let num_passes = None;
         let firing_sequence = FiringSequence::new();
 
         let mut runner = Runner {
             context,
+            rng,
             initial_state,
             current_state,
             goal,
             semantics,
             max_steps,
+            num_passes,
             firing_sequence,
         };
         runner.update_props();
@@ -85,17 +94,27 @@ impl Runner {
         Ok(self)
     }
 
+    pub fn restart(&mut self) {
+        self.current_state = self.initial_state.clone();
+        self.firing_sequence.clear();
+    }
+
     pub fn go(&mut self, fset: &FiringSet) -> Result<StopCondition, AcesError> {
-        let mut rng = rand::thread_rng();
-
+        self.rng = Some(rand::thread_rng());
         self.update_props();
+        self.resume(fset)
+    }
 
+    pub fn resume(&mut self, fset: &FiringSet) -> Result<StopCondition, AcesError> {
         if self.semantics == Semantics::Parallel {
             // FIXME implement firing under parallel semantics
             debug!("Firing under parallel semantics isn't implemented yet");
 
             return Ok(StopCondition::UnimplementedFeature("firing under parallel semantics".into()))
         }
+
+        let mut rng = self.rng.unwrap_or_else(rand::thread_rng);
+        self.rng = Some(rng);
 
         for num_steps in 0..self.max_steps {
             if let Some(node_id) = self.goal_is_reached() {
@@ -151,6 +170,11 @@ impl Runner {
     #[inline]
     pub fn get_max_steps(&self) -> usize {
         self.max_steps
+    }
+
+    #[inline]
+    pub fn get_num_passes(&self) -> Option<usize> {
+        self.num_passes
     }
 
     #[inline]

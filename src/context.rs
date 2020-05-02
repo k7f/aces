@@ -403,6 +403,14 @@ impl Context {
         self.runner_props.max_steps
     }
 
+    pub fn set_num_passes(&mut self, num_passes: usize) {
+        self.runner_props.num_passes = Some(num_passes);
+    }
+
+    pub fn get_num_passes(&self) -> Option<usize> {
+        self.runner_props.num_passes
+    }
+
     // Vis props
 
     pub fn set_title<S: AsRef<str>>(&mut self, title: S) {

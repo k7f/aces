@@ -5,7 +5,7 @@ use crate::{
     AcesErrorKind,
 };
 
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct FiringComponent {
     pre_set:  BTreeMap<NodeID, Weight>,
     post_set: BTreeMap<NodeID, (Weight, Capacity)>,
@@ -128,9 +128,17 @@ impl Contextual for FiringComponent {
         } else {
             result.push('{');
 
-            for node_id in self.pre_set.keys() {
+            for (node_id, weight) in self.pre_set.iter() {
                 result.push(' ');
-                result.push_str(node_id.format(ctx)?.as_str());
+
+                if weight.is_omega() {
+                    // FIXME red
+                    result.push('(');
+                    result.push_str(node_id.format(ctx)?.as_str());
+                    result.push(')');
+                } else {
+                    result.push_str(node_id.format(ctx)?.as_str());
+                }
             }
 
             result.push_str(" } => {");
@@ -151,7 +159,7 @@ impl Contextual for FiringComponent {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct FiringSet {
     fcs: Vec<FiringComponent>,
 }
@@ -191,6 +199,11 @@ pub struct FiringSequence {
 impl FiringSequence {
     pub fn new() -> Self {
         Default::default()
+    }
+
+    #[inline]
+    pub fn clear(&mut self) {
+        self.fcs.clear()
     }
 
     #[inline]
