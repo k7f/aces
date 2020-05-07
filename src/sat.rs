@@ -316,26 +316,26 @@ impl Formula {
         }
     }
 
-    /// Adds an _antiport_ rule to this `Formula`.
+    /// Adds an _anti_port_ rule to this `Formula`.
     ///
     /// This clause constrains nodes to a single part of a firing
     /// component, source or sink, so that the induced graph of any
     /// firing component is bipartite.  The `Formula` should contain
     /// one such clause for each internal node of the c-e structure
     /// under analysis.
-    pub fn add_antiport(&mut self, port_id: PortID) -> Result<(), AcesError> {
-        let (port_lit, antiport_lit) = {
-            if let Some(antiport_id) = self.context.lock().unwrap().get_antiport_id(port_id) {
+    pub fn add_anti_port(&mut self, port_id: PortID) -> Result<(), AcesError> {
+        let (port_lit, anti_port_lit) = {
+            if let Some(anti_port_id) = self.context.lock().unwrap().get_anti_port_id(port_id) {
                 (
                     Lit::from_atom_id(port_id.into(), true),
-                    Lit::from_atom_id(antiport_id.into(), true),
+                    Lit::from_atom_id(anti_port_id.into(), true),
                 )
             } else {
                 return Ok(()) // this isn't an internal node
             }
         };
 
-        let clause = Clause::from_pair(port_lit, antiport_lit, "internal node");
+        let clause = Clause::from_pair(port_lit, anti_port_lit, "internal node");
         self.add_clause(clause)
     }
 
@@ -392,25 +392,25 @@ impl Formula {
         Ok(())
     }
 
-    /// Adds an _antiharc_ rule to this formula.
+    /// Adds an _anti_harc_ rule to this formula.
     ///
     /// This set of clauses constrains nodes to a single part of a
     /// firing component, source or sink, so that the induced graph of
     /// any firing component is bipartite.  The `Formula` should
     /// contain one clause for each fork-join pair of each internal
     /// node of the c-e structure under analysis.
-    pub fn add_antiharcs(
+    pub fn add_anti_harcs(
         &mut self,
         harc_ids: &[AtomID],
-        antiharc_ids: &[AtomID],
+        anti_harc_ids: &[AtomID],
     ) -> Result<(), AcesError> {
         for &harc_id in harc_ids.iter() {
             let harc_lit = Lit::from_atom_id(harc_id, true);
 
-            for &antiharc_id in antiharc_ids.iter() {
-                let antiharc_lit = Lit::from_atom_id(antiharc_id, true);
+            for &anti_harc_id in anti_harc_ids.iter() {
+                let anti_harc_lit = Lit::from_atom_id(anti_harc_id, true);
 
-                let clause = Clause::from_pair(harc_lit, antiharc_lit, "antiharc");
+                let clause = Clause::from_pair(harc_lit, anti_harc_lit, "anti_harc");
                 self.add_clause(clause)?;
             }
         }
@@ -418,17 +418,17 @@ impl Formula {
         Ok(())
     }
 
-    /// Adds a _sideharc_ rule to this formula.
+    /// Adds a _branch_harc_ rule to this formula.
     ///
     /// This rule enforces monomiality of firing components.
-    pub fn add_sideharcs(&mut self, sideharc_ids: &[AtomID]) -> Result<(), AcesError> {
-        for (pos, &harc_id) in sideharc_ids.iter().enumerate() {
+    pub fn add_branch_harcs(&mut self, branch_harc_ids: &[AtomID]) -> Result<(), AcesError> {
+        for (pos, &harc_id) in branch_harc_ids.iter().enumerate() {
             let harc_lit = Lit::from_atom_id(harc_id, true);
 
-            for &sideharc_id in sideharc_ids[pos + 1..].iter() {
-                let sideharc_lit = Lit::from_atom_id(sideharc_id, true);
+            for &branch_harc_id in branch_harc_ids[pos + 1..].iter() {
+                let branch_harc_lit = Lit::from_atom_id(branch_harc_id, true);
 
-                let clause = Clause::from_pair(harc_lit, sideharc_lit, "sideharc");
+                let clause = Clause::from_pair(harc_lit, branch_harc_lit, "branch_harc");
                 self.add_clause(clause)?;
             }
         }

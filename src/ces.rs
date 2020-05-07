@@ -570,7 +570,7 @@ impl CEStructure {
 
         for (&pid, poly) in self.causes.iter() {
             formula.add_polynomial(pid, poly)?;
-            formula.add_antiport(pid)?;
+            formula.add_anti_port(pid)?;
         }
 
         for (&pid, poly) in self.effects.iter() {
@@ -635,14 +635,14 @@ impl CEStructure {
 
         for (node_id, fork_atom_ids) in self.forks.iter() {
             if let Some(join_atom_ids) = self.joins.get(node_id) {
-                formula.add_antiharcs(fork_atom_ids.as_slice(), join_atom_ids.as_slice())?;
+                formula.add_anti_harcs(fork_atom_ids.as_slice(), join_atom_ids.as_slice())?;
             }
 
-            formula.add_sideharcs(fork_atom_ids.as_slice())?;
+            formula.add_branch_harcs(fork_atom_ids.as_slice())?;
         }
 
         for (_, join_atom_ids) in self.joins.iter() {
-            formula.add_sideharcs(join_atom_ids.as_slice())?;
+            formula.add_branch_harcs(join_atom_ids.as_slice())?;
         }
 
         for (&join_id, cofork_ids) in self.co_forks.iter() {

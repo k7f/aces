@@ -382,7 +382,7 @@ impl AtomSpace {
         }
     }
 
-    pub fn get_antiport_id(&self, pid: PortID) -> Option<PortID> {
+    pub fn get_anti_port_id(&self, pid: PortID) -> Option<PortID> {
         if let Some(port) = self.get_port(pid) {
             if let Some(&(tx_id, rx_id)) = self.internal_nodes.get(&port.node_id) {
                 match port.face {
@@ -727,6 +727,7 @@ impl Harc {
         Harc::new_unchecked(Face::Rx, host_id, suit_ids)
     }
 
+    #[inline]
     pub fn get_atom_id(&self) -> AtomID {
         match self.face {
             Face::Tx => self.atom_id.expect("Attempt to access an uninitialized fork"),
@@ -734,6 +735,7 @@ impl Harc {
         }
     }
 
+    #[inline]
     pub fn get_fork_id(&self) -> Option<ForkID> {
         match self.face {
             Face::Tx => Some(ForkID(self.get_atom_id())),
@@ -741,6 +743,7 @@ impl Harc {
         }
     }
 
+    #[inline]
     pub fn get_join_id(&self) -> Option<JoinID> {
         match self.face {
             Face::Tx => None,
@@ -748,10 +751,17 @@ impl Harc {
         }
     }
 
+    #[inline]
+    pub fn get_face(&self) -> Face {
+        self.face
+    }
+
+    #[inline]
     pub fn get_host_id(&self) -> NodeID {
         self.host_id
     }
 
+    #[inline]
     pub fn get_suit_ids(&self) -> &[NodeID] {
         self.suit_ids.as_slice()
     }

@@ -69,20 +69,21 @@ impl TryFrom<Solution> for FiringComponent {
     #[allow(clippy::map_entry)]
     fn try_from(sol: Solution) -> Result<Self, Self::Error> {
         let ctx = sol.get_context().lock().unwrap();
+        let pre_nodes = sol.get_pre_set();
+        let post_nodes = sol.get_post_set();
         let mut pre_set = BTreeMap::new();
         let mut post_set = BTreeMap::new();
 
         'outer_forks: for &fork_id in sol.get_fork_set() {
-            let weight = ctx.get_weight(fork_id.get());
-            let fork = ctx
-                .get_fork(fork_id)
-                .ok_or_else(|| AcesError::from(AcesErrorKind::ForkMissingForID(fork_id)))?;
+            let weight = ctx.get_weight(fork_id.get(), pre_nodes, post_nodes)?;
+            let fork =
+                ctx.get_fork(fork_id).ok_or_else(|| AcesErrorKind::ForkMissingForID(fork_id))?;
             let tx_node_id = fork.get_host_id();
 
-            for &node_id in sol.get_pre_set().iter() {
+            for &node_id in pre_nodes {
                 if node_id == tx_node_id {
                     if pre_set.contains_key(&node_id) {
-                        return Err(AcesError::from(AcesErrorKind::FiringNodeDuplicated(Face::Tx)))
+                        return Err(AcesErrorKind::FiringNodeDuplicated(Face::Tx, node_id).into())
                     } else {
                         pre_set.insert(node_id, weight);
                         continue 'outer_forks
@@ -90,20 +91,20 @@ impl TryFrom<Solution> for FiringComponent {
                 }
             }
 
-            return Err(AcesError::from(AcesErrorKind::FiringNodeMissing(Face::Tx)))
+            return Err(AcesErrorKind::FiringNodeMissing(Face::Tx, tx_node_id).into())
         }
 
         'outer_joins: for &join_id in sol.get_join_set() {
-            let weight = ctx.get_weight(join_id.get());
+            let weight = ctx.get_weight(join_id.get(), pre_nodes, post_nodes)?;
             let join = ctx
                 .get_join(join_id)
                 .ok_or_else(|| AcesError::from(AcesErrorKind::JoinMissingForID(join_id)))?;
             let rx_node_id = join.get_host_id();
 
-            for &node_id in sol.get_post_set().iter() {
+            for &node_id in post_nodes {
                 if node_id == rx_node_id {
                     if post_set.contains_key(&node_id) {
-                        return Err(AcesError::from(AcesErrorKind::FiringNodeDuplicated(Face::Rx)))
+                        return Err(AcesErrorKind::FiringNodeDuplicated(Face::Rx, node_id).into())
                     } else {
                         let capacity = ctx.get_capacity(node_id);
                         post_set.insert(node_id, (weight, capacity));
@@ -112,7 +113,7 @@ impl TryFrom<Solution> for FiringComponent {
                 }
             }
 
-            return Err(AcesError::from(AcesErrorKind::FiringNodeMissing(Face::Rx)))
+            return Err(AcesErrorKind::FiringNodeMissing(Face::Rx, rx_node_id).into())
         }
 
         Ok(FiringComponent { pre_set, post_set })
@@ -120,6 +121,9 @@ impl TryFrom<Solution> for FiringComponent {
 }
 
 impl Contextual for FiringComponent {
+    // FIXME add definition of
+    //fn format_styled(&self, ctx: &ContextHandle) -> Result<String, AcesError> {
+
     fn format(&self, ctx: &ContextHandle) -> Result<String, AcesError> {
         let mut result = String::new();
 
@@ -132,10 +136,15 @@ impl Contextual for FiringComponent {
                 result.push(' ');
 
                 if weight.is_omega() {
-                    // FIXME red
                     result.push('(');
                     result.push_str(node_id.format(ctx)?.as_str());
                     result.push(')');
+                } else if weight.is_zero() {
+                    result.push_str(format!("[={}]", node_id.format(ctx)?.as_str()).as_str());
+                } else if weight.is_multiple() {
+                    result.push_str(
+                        format!("[{}:{}]", node_id.format(ctx)?.as_str(), weight).as_str(),
+                    );
                 } else {
                     result.push_str(node_id.format(ctx)?.as_str());
                 }
@@ -147,9 +156,43 @@ impl Contextual for FiringComponent {
         if self.post_set.is_empty() {
             result.push('}');
         } else {
-            for node_id in self.post_set.keys() {
+            for (node_id, (weight, capacity)) in self.post_set.iter() {
                 result.push(' ');
-                result.push_str(node_id.format(ctx)?.as_str());
+
+                if weight.is_omega() {
+                    result.push('(');
+                    result.push_str(node_id.format(ctx)?.as_str());
+                    if capacity.is_multiple() {
+                        result.push_str(format!("#{})", capacity).as_str());
+                    } else {
+                        result.push(')');
+                    }
+                } else if weight.is_multiple() {
+                    if capacity.is_multiple() {
+                        result.push_str(
+                            format!("[{}:{}#{}]", weight, node_id.format(ctx)?.as_str(), capacity)
+                                .as_str(),
+                        );
+                    } else {
+                        result.push_str(
+                            format!("[{}:{}]", weight, node_id.format(ctx)?.as_str()).as_str(),
+                        );
+                    }
+                } else if weight.is_zero() {
+                    if capacity.is_multiple() {
+                        result.push_str(
+                            format!("[={}#{}]", node_id.format(ctx)?.as_str(), capacity).as_str(),
+                        );
+                    } else {
+                        result.push_str(format!("[={}]", node_id.format(ctx)?.as_str()).as_str());
+                    }
+                } else if capacity.is_multiple() {
+                    result.push_str(
+                        format!("[{}#{}]", node_id.format(ctx)?.as_str(), capacity).as_str(),
+                    );
+                } else {
+                    result.push_str(node_id.format(ctx)?.as_str());
+                }
             }
 
             result.push_str(" }");

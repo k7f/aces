@@ -34,7 +34,7 @@ pub use yaml_script::YamlFormat;
 pub use node::{NodeID, Face};
 pub use atom::{Port, Link, Harc, Fork, Join, AtomID, PortID, LinkID, ForkID, JoinID, Atomic};
 pub use polynomial::{Polynomial, Monomials};
-pub use multiset::{Multiplicity, Capacity, Weight};
+pub use multiset::{Multiplicity, Capacity, Weight, HyperWeight, FlowWeight};
 pub use ces::CEStructure;
 pub use solver::{Solver, Solution};
 pub use firing::{FiringComponent, FiringSet, FiringSequence};

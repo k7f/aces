@@ -24,8 +24,9 @@ pub enum AcesErrorKind {
     NodeMissingForLink(Face),
     NodeMissingForFork(Face),
     NodeMissingForJoin(Face),
-    FiringNodeMissing(Face),
-    FiringNodeDuplicated(Face),
+    FiringNodeMissing(Face, NodeID),
+    FiringNodeDuplicated(Face, NodeID),
+    FiringOverlap,
     IncoherentStructure(String, u32, (Face, String, String)),
 
     LeakedInhibitor(NodeID, Multiplicity),
@@ -89,16 +90,19 @@ impl fmt::Display for AcesErrorKind {
                 "Missing {} node for join",
                 if *face == Face::Tx { "sending" } else { "receiving" }
             ),
-            FiringNodeMissing(face) => write!(
+            FiringNodeMissing(face, node_id) => write!(
                 f,
-                "Missing {} node in firing component",
-                if *face == Face::Tx { "sending" } else { "receiving" }
+                "Missing {} node {:?} in firing component",
+                if *face == Face::Tx { "sending" } else { "receiving" },
+                node_id
             ),
-            FiringNodeDuplicated(face) => write!(
+            FiringNodeDuplicated(face, node_id) => write!(
                 f,
-                "Duplicated {} node in firing component",
-                if *face == Face::Tx { "sending" } else { "receiving" }
+                "Duplicated {} node {:?} in firing component",
+                if *face == Face::Tx { "sending" } else { "receiving" },
+                node_id
             ),
+            FiringOverlap => write!(f, "Attempt to create a non-disjoint firing component"),
             IncoherentStructure(ces_name, num_thin_links, (face, tx_name, rx_name)) => {
                 if *num_thin_links == 1 {
                     write!(
@@ -209,6 +213,18 @@ impl fmt::Display for AcesError {
                 HarcNotAJoinMismatch(fork_id) => {
                     write!(f, "Expected join, but harc is a fork {}", fork_id.with(ctx))
                 }
+                FiringNodeMissing(face, node_id) => write!(
+                    f,
+                    "Missing {} node \"{}\" in firing component",
+                    if face == Face::Tx { "sending" } else { "receiving" },
+                    node_id.with(ctx),
+                ),
+                FiringNodeDuplicated(face, node_id) => write!(
+                    f,
+                    "Duplicated {} node \"{}\" in firing component",
+                    if face == Face::Tx { "sending" } else { "receiving" },
+                    node_id.with(ctx),
+                ),
                 LeakedInhibitor(node_id, tokens_before) => write!(
                     f,
                     "Leaked inhibitor at node \"{}\" firing from {} tokens",

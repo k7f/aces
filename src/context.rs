@@ -1,11 +1,12 @@
 use std::{
     cmp, fmt,
-    collections::BTreeMap,
+    collections::{btree_map, BTreeMap, BTreeSet},
+    iter::FromIterator,
     sync::{Arc, Mutex},
 };
 use crate::{
     PartialContent, Port, Link, Harc, Fork, Join, Face, ID, NodeID, AtomID, PortID, LinkID, ForkID,
-    JoinID, Semantics, Capacity, Weight, AcesError,
+    JoinID, Semantics, Capacity, Weight, FlowWeight, AcesError, AcesErrorKind,
     name::NameSpace,
     atom::{AtomSpace, Atom},
     sat, solver, runner, vis,
@@ -31,8 +32,9 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 ///
 /// This is an umbrella type which, currently, includes a collection
 /// of [`Atom`]s, two symbol tables (one for structure names, and
-/// another for node names), node capacities, harc weights, and
-/// [`PartialContent`] of any c-e structure created in this `Context`.
+/// another for node names), node capacities, hyper weights, flow
+/// weights, and [`PartialContent`] of any c-e structure created in
+/// this `Context`.
 ///
 /// For usage, see [`ContextHandle`] type, [`Contextual`] trait and
 /// [`InContext`] struct.
@@ -40,17 +42,18 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 /// [`Atom`]: crate::atom::Atom
 #[derive(Debug)]
 pub struct Context {
-    magic_id:     u64, // group ID
-    name_id:      ID,  // given name
-    globals:      NameSpace,
-    nodes:        NameSpace,
-    atoms:        AtomSpace,
-    content:      BTreeMap<ID, PartialContent>,
-    capacities:   BTreeMap<NodeID, Capacity>,
-    weights:      BTreeMap<AtomID, Weight>,
-    solver_props: solver::Props,
-    runner_props: runner::Props,
-    vis_props:    vis::Props,
+    magic_id:      u64, // group ID
+    name_id:       ID,  // given name
+    globals:       NameSpace,
+    nodes:         NameSpace,
+    atoms:         AtomSpace,
+    content:       BTreeMap<ID, PartialContent>,
+    capacities:    BTreeMap<NodeID, Capacity>,
+    hyper_weights: BTreeMap<AtomID, Weight>,
+    flow_weights:  BTreeMap<NodeID, Vec<FlowWeight>>,
+    solver_props:  solver::Props,
+    runner_props:  runner::Props,
+    vis_props:     vis::Props,
 }
 
 impl Context {
@@ -73,7 +76,8 @@ impl Context {
             atoms: Default::default(),
             content: Default::default(),
             capacities: Default::default(),
-            weights: Default::default(),
+            hyper_weights: Default::default(),
+            flow_weights: Default::default(),
             solver_props: Default::default(),
             runner_props: Default::default(),
             vis_props: Default::default(),
@@ -92,7 +96,8 @@ impl Context {
         // Fields unchanged: magic_id, name_id, globals, nodes, atoms.
         self.content.clear();
         self.capacities.clear();
-        self.weights.clear();
+        self.hyper_weights.clear();
+        self.flow_weights.clear();
         self.solver_props.clear();
         self.runner_props.clear();
         self.vis_props.clear();
@@ -118,7 +123,8 @@ impl Context {
             let atoms = parent.atoms.clone();
             let content = parent.content.clone();
             let capacities = parent.capacities.clone();
-            let weights = parent.weights.clone();
+            let hyper_weights = parent.hyper_weights.clone();
+            let flow_weights = parent.flow_weights.clone();
             let solver_props = parent.solver_props.clone();
             let runner_props = parent.runner_props.clone();
             let vis_props = parent.vis_props.clone();
@@ -131,7 +137,8 @@ impl Context {
                 atoms,
                 content,
                 capacities,
-                weights,
+                hyper_weights,
+                flow_weights,
                 solver_props,
                 runner_props,
                 vis_props,
@@ -256,8 +263,8 @@ impl Context {
     }
 
     #[inline]
-    pub fn get_antiport_id(&self, port_id: PortID) -> Option<PortID> {
-        self.atoms.get_antiport_id(port_id)
+    pub fn get_anti_port_id(&self, port_id: PortID) -> Option<PortID> {
+        self.atoms.get_anti_port_id(port_id)
     }
 
     // Content
@@ -299,7 +306,7 @@ impl Context {
 
     // Weights
 
-    pub fn set_weight_by_name<S, I>(
+    pub fn set_hyper_weight_by_names<S, I>(
         &mut self,
         face: Face,
         host_name: S,
@@ -329,11 +336,73 @@ impl Context {
             }
         };
 
-        self.weights.insert(atom_id, weight)
+        self.hyper_weights.insert(atom_id, weight)
+    }
+
+    pub fn set_flow_weight_by_names<S, I, J>(
+        &mut self,
+        face: Face,
+        host_name: S,
+        pre_set_names: I,
+        post_set_names: J,
+        weight: Weight,
+    ) -> Result<Option<Weight>, AcesError>
+    where
+        S: AsRef<str>,
+        I: IntoIterator,
+        I::Item: AsRef<str>,
+        J: IntoIterator,
+        J::Item: AsRef<str>,
+    {
+        let host_id = self.share_node_name(host_name.as_ref());
+        let pre_set = BTreeSet::from_iter(
+            pre_set_names.into_iter().map(|n| self.share_node_name(n.as_ref())),
+        );
+        let post_set = BTreeSet::from_iter(
+            post_set_names.into_iter().map(|n| self.share_node_name(n.as_ref())),
+        );
+
+        if match face {
+            Face::Tx => &pre_set,
+            Face::Rx => &post_set,
+        }
+        .contains(&host_id)
+        {
+            if pre_set.is_disjoint(&post_set) {
+                let pre_set = Vec::from_iter(pre_set.into_iter());
+                let post_set = Vec::from_iter(post_set.into_iter());
+
+                match self.flow_weights.entry(host_id) {
+                    btree_map::Entry::Occupied(entry) => {
+                        let weights = entry.into_mut();
+                        let new_value = FlowWeight::new(pre_set, post_set, weight);
+
+                        match weights.binary_search(&new_value) {
+                            Ok(_) => Ok(Some(weight)),
+                            Err(pos) => {
+                                weights.insert(pos, new_value);
+
+                                // FIXME compare pre-sets and post-sets, and return Some if equal
+                                Ok(None)
+                            }
+                        }
+                    }
+                    btree_map::Entry::Vacant(entry) => {
+                        entry.insert(vec![FlowWeight::new(pre_set, post_set, weight)]);
+
+                        Ok(None)
+                    }
+                }
+            } else {
+                Err(AcesErrorKind::FiringNodeMissing(face, host_id).into())
+            }
+        } else {
+            Err(AcesErrorKind::FiringNodeMissing(face, host_id).into())
+        }
     }
 
     #[inline]
-    pub fn set_inhibitor_by_name<S, I>(
+    pub fn set_hyper_inhibitor_by_names<S, I>(
         &mut self,
         face: Face,
         host_name: S,
@@ -344,11 +413,11 @@ impl Context {
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        self.set_weight_by_name(face, host_name, suit_names, Weight::omega())
+        self.set_hyper_weight_by_names(face, host_name, suit_names, Weight::omega())
     }
 
     #[inline]
-    pub fn set_holder_by_name<S, I>(
+    pub fn set_hyper_holder_by_names<S, I>(
         &mut self,
         face: Face,
         host_name: S,
@@ -359,12 +428,44 @@ impl Context {
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        self.set_weight_by_name(face, host_name, suit_names, Weight::zero())
+        self.set_hyper_weight_by_names(face, host_name, suit_names, Weight::zero())
     }
 
-    #[inline]
-    pub fn get_weight(&self, atom_id: AtomID) -> Weight {
-        self.weights.get(&atom_id).copied().unwrap_or_else(Weight::one)
+    pub fn get_weight(
+        &self,
+        atom_id: AtomID,
+        pre_nodes: &[NodeID],
+        post_nodes: &[NodeID],
+    ) -> Result<Weight, AcesError> {
+        if let Some(weight) = self.hyper_weights.get(&atom_id) {
+            Ok(*weight)
+        } else if let Some(harc) = self.get_harc(atom_id) {
+            let node_id = harc.get_host_id();
+            let mut test_weight =
+                FlowWeight::new(pre_nodes.into(), post_nodes.into(), Weight::zero());
+
+            if let Some(weights) = self.flow_weights.get(&node_id) {
+                match weights.binary_search(&test_weight) {
+                    Ok(_) => Ok(test_weight.weight),
+                    Err(pos) => {
+                        if let Some(flow_weight) = weights.get(pos) {
+                            test_weight.weight = flow_weight.weight;
+                            if test_weight == *flow_weight {
+                                Ok(test_weight.weight)
+                            } else {
+                                Ok(Weight::one())
+                            }
+                        } else {
+                            Ok(Weight::one())
+                        }
+                    }
+                }
+            } else {
+                Ok(Weight::one())
+            }
+        } else {
+            Err(AcesErrorKind::HarcMissingForID(atom_id).into())
+        }
     }
 
     // Solver props

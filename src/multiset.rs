@@ -2,7 +2,7 @@ use std::{
     str::FromStr,
     fmt::{self, Write},
 };
-use crate::{AcesError, AcesErrorKind};
+use crate::{NodeID, AtomID, AcesError, AcesErrorKind};
 
 /// A scalar type common for node capacity, harc weight and state.
 ///
@@ -53,6 +53,11 @@ impl Multiplicity {
     #[inline]
     pub fn is_positive(self) -> bool {
         self.0 > 0
+    }
+
+    #[inline]
+    pub fn is_multiple(self) -> bool {
+        self.0 > 1
     }
 
     pub fn checked_add(self, other: Self) -> Option<Self> {
@@ -164,17 +169,76 @@ impl FromStr for Multiplicity {
 /// capacities.
 pub type Capacity = Multiplicity;
 
-/// Multiplicity of a harc (a monomial when attached to a node).
+/// Multiplicity of node in a firing component.
 ///
-/// Weight of a monomial occurring in effects of a node indicates the
-/// number of tokens to take out of that node if a corresponding
-/// transaction fires.  Weight of a monomial occurring in causes of a
-/// node indicates the number of tokens to put into that node if a
-/// corresponding transaction fires.  Accordingly, the weights imply
-/// constraints a state must satisfy for a transaction to fire: a
-/// minimal number of tokens to be supplied by pre-set nodes, so that
-/// token transfer may happen, and a maximal number of tokens in
-/// post-set nodes, so that node capacities aren't exceeded.  The
-/// _&omega;_ weight attached to effects of a node indicates that the
-/// presence of any token in that node inhibits firing.
+/// A finite weight of node occurring in the pre-set of a transaction
+/// indicates the number of tokens to take out of that node if a
+/// transaction fires.  A finite weight of a node occurring in the
+/// post-set of a transaction indicates the number of tokens to put
+/// into that node if a transaction fires.
+///
+/// The finite positive weights imply constraints a state must satisfy
+/// for a transaction to fire: a minimal number of tokens to be
+/// supplied by pre-set nodes, so that token transfer may happen, and
+/// a maximal number of tokens in post-set nodes, so that node
+/// capacities aren't exceeded.
+///
+/// If weight zero is attached to a pre-set node, then tokens aren't
+/// taken out when a transaction fires.  However, a transaction never
+/// fires, unless there is a token in that node.  Another special case
+/// is the _&omega;_ weight attached to a pre-set node, which
+/// indicates that the presence of a token in that node inhibits
+/// firing.
 pub type Weight = Multiplicity;
+
+/// Generic weight of monomial causes or effects of a node.
+///
+/// `HyperWeight`s represent the weight labeling used in standard
+/// notation for polynomials.  Conceptually, they are attached to arcs
+/// of a BF-hypergraph (hyperarcs _aka_ harcs), and inherited by all
+/// corresponding arcs of the induced flow relation.
+///
+/// See [`FlowWeight`] for implementation details.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct HyperWeight {
+    pub(crate) harc_id: AtomID,
+    pub(crate) weight:  Weight,
+}
+
+impl HyperWeight {
+    #[inline]
+    pub fn new(harc_id: AtomID, weight: Weight) -> Self {
+        HyperWeight { harc_id, weight }
+    }
+}
+
+/// Explicit weight attached to an arc of a flow relation.
+///
+/// Flow relation is a bijective digraph of nodes and transitions.
+/// This type represents a pair _(transition, weight)_ as a triple
+/// _(pre-set, post-set, weight)_.
+///
+/// The implementation stores generic weights in the [`Context`]
+/// variable [`hyper_weights`] _and_ stores directly specified weights
+/// of individual arcs in the [`Context`] variable [`flow_weights`],
+/// which maps nodes to sets of `FlowWeight`s.
+///
+/// Note that, in general, hyperarc nodesets are contained in (not
+/// equal to) pre-sets or post-sets of corresponding transitions.
+///
+/// [`Context`]: crate::Context
+/// [`hyper_weights`]: crate::Context::hyper_weights
+/// [`flow_weights`]: crate::Context::flow_weights
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct FlowWeight {
+    pub(crate) pre_set:  Vec<NodeID>,
+    pub(crate) post_set: Vec<NodeID>,
+    pub(crate) weight:   Weight,
+}
+
+impl FlowWeight {
+    #[inline]
+    pub fn new(pre_set: Vec<NodeID>, post_set: Vec<NodeID>, weight: Weight) -> Self {
+        FlowWeight { pre_set, post_set, weight }
+    }
+}
