@@ -1,7 +1,7 @@
 use std::{slice, iter, cmp, ops, fmt, collections::BTreeSet};
 use bit_vec::BitVec;
 use crate::{
-    Face, NodeID, Port, Link, LinkID, ContextHandle, Contextual, ExclusivelyContextual,
+    Face, NodeId, Port, Link, LinkId, ContextHandle, Contextual, ExclusivelyContextual,
     InContextMut, Atomic, AcesError, AcesErrorKind, sat,
 };
 
@@ -38,20 +38,20 @@ pub struct Polynomial<T: Atomic + fmt::Debug> {
     dock:    Option<Face>,
 }
 
-impl Polynomial<LinkID> {
+impl Polynomial<LinkId> {
     /// Creates a polynomial from a sequence of sequences of
-    /// [`NodeID`]s and in a [`Context`] given by a [`ContextHandle`].
+    /// [`NodeId`]s and in a [`Context`] given by a [`ContextHandle`].
     ///
     /// [`Context`]: crate::Context
     pub fn from_nodes_in_context<'a, I>(
         ctx: &ContextHandle,
         face: Face,
-        node_id: NodeID,
+        node_id: NodeId,
         poly_ids: I,
     ) -> Self
     where
         I: IntoIterator + 'a,
-        I::Item: IntoIterator<Item = &'a NodeID>,
+        I::Item: IntoIterator<Item = &'a NodeId>,
     {
         let mut result = Self::new_docked(face);
         let mut port = Port::new(face, node_id);
@@ -459,7 +459,7 @@ impl<T: Atomic + fmt::Debug> PartialOrd for Polynomial<T> {
     }
 }
 
-impl Contextual for Polynomial<LinkID> {
+impl Contextual for Polynomial<LinkId> {
     fn format(&self, ctx: &ContextHandle) -> Result<String, AcesError> {
         let mut result = String::new();
 
@@ -485,7 +485,7 @@ impl Contextual for Polynomial<LinkID> {
                     let ctx = ctx.lock().unwrap();
                     let link = ctx
                         .get_link(id)
-                        .ok_or_else(|| AcesError::from(AcesErrorKind::LinkMissingForID(id)))?;
+                        .ok_or_else(|| AcesError::from(AcesErrorKind::LinkMissingForId(id)))?;
 
                     match face {
                         Face::Tx => link.get_rx_node_id().format_locked(&ctx),
@@ -503,7 +503,7 @@ impl Contextual for Polynomial<LinkID> {
     }
 }
 
-impl<'a> InContextMut<'a, Polynomial<LinkID>> {
+impl<'a> InContextMut<'a, Polynomial<LinkId>> {
     pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, AcesError> {
         if self.same_context(other) {
             self.get_thing_mut().add_polynomial(other.get_thing())
@@ -513,7 +513,7 @@ impl<'a> InContextMut<'a, Polynomial<LinkID>> {
     }
 }
 
-impl<'a> ops::AddAssign<&Self> for InContextMut<'a, Polynomial<LinkID>> {
+impl<'a> ops::AddAssign<&Self> for InContextMut<'a, Polynomial<LinkId>> {
     fn add_assign(&mut self, other: &Self) {
         self.add_polynomial(other).unwrap();
     }

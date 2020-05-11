@@ -31,8 +31,8 @@ pub use content::{
     CompilableAsContent, CompilableAsDependency,
 };
 pub use yaml_script::YamlFormat;
-pub use node::{NodeID, Face};
-pub use atom::{Port, Link, Harc, Fork, Join, AtomID, PortID, LinkID, ForkID, JoinID, Atomic};
+pub use node::{NodeId, Face};
+pub use atom::{Port, Link, Harc, Fork, Join, AtomId, PortId, LinkId, ForkId, JoinId, Atomic};
 pub use polynomial::{Polynomial, Monomials};
 pub use multiset::{Multiplicity, Capacity, Weight, HyperWeight, FlowWeight};
 pub use ces::CEStructure;
@@ -47,6 +47,6 @@ use std::num::NonZeroUsize;
 /// A generic one-based serial identifier.
 ///
 /// Used as a common internal type backing the conversion between
-/// vector indices and specific identifiers, such as [`NodeID`],
-/// [`PortID`], [`LinkID`], [`ForkID`], and [`JoinID`].
-pub(crate) type ID = NonZeroUsize;
+/// vector indices and specific identifiers, such as [`NodeId`],
+/// [`PortId`], [`LinkId`], [`ForkId`], and [`JoinId`].
+pub(crate) type AnyId = NonZeroUsize;

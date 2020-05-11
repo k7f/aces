@@ -10,7 +10,7 @@ use std::{
 use log::Level::{Debug, Trace};
 use crate::{
     ContextHandle, Contextual, ExclusivelyContextual, ContentFormat, InteractiveFormat, Port, Harc,
-    Face, AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Polynomial, FiringSet, Content, sat,
+    Face, AtomId, NodeId, PortId, LinkId, ForkId, JoinId, Polynomial, FiringSet, Content, sat,
     sat::Resolution, Solver, AcesError, AcesErrorKind,
 };
 
@@ -38,16 +38,16 @@ pub struct CEStructure {
     origin:         Rc<dyn ContentFormat>,
     content:        Vec<Box<dyn Content>>,
     resolution:     Resolution,
-    causes:         BTreeMap<PortID, Polynomial<LinkID>>,
-    effects:        BTreeMap<PortID, Polynomial<LinkID>>,
-    carrier:        BTreeSet<NodeID>,
-    links:          BTreeMap<LinkID, LinkState>,
+    causes:         BTreeMap<PortId, Polynomial<LinkId>>,
+    effects:        BTreeMap<PortId, Polynomial<LinkId>>,
+    carrier:        BTreeSet<NodeId>,
+    links:          BTreeMap<LinkId, LinkState>,
     num_thin_links: u32,
-    forks:          BTreeMap<NodeID, Vec<AtomID>>,
-    joins:          BTreeMap<NodeID, Vec<AtomID>>,
+    forks:          BTreeMap<NodeId, Vec<AtomId>>,
+    joins:          BTreeMap<NodeId, Vec<AtomId>>,
     // FIXME define `struct Coharcs`, grouped on demand (cf. `group_coharcs`)
-    co_forks:       BTreeMap<AtomID, Vec<AtomID>>, // Joins -> 2^Forks
-    co_joins:       BTreeMap<AtomID, Vec<AtomID>>, // Forks -> 2^Joins
+    co_forks:       BTreeMap<AtomId, Vec<AtomId>>, // Joins -> 2^Forks
+    co_joins:       BTreeMap<AtomId, Vec<AtomId>>, // Forks -> 2^Joins
 }
 
 impl CEStructure {
@@ -89,7 +89,7 @@ impl CEStructure {
         CEStructure::new(ctx, Rc::new(InteractiveFormat::new()))
     }
 
-    fn add_harc_to_host(&mut self, harc_id: AtomID, face: Face, node_id: NodeID) {
+    fn add_harc_to_host(&mut self, harc_id: AtomId, face: Face, node_id: NodeId) {
         let harc_entry = match face {
             Face::Tx => self.forks.entry(node_id),
             Face::Rx => self.joins.entry(node_id),
@@ -109,7 +109,7 @@ impl CEStructure {
         }
     }
 
-    fn add_harc_to_suit(&mut self, harc_id: AtomID, face: Face, co_harc_ids: &[AtomID]) {
+    fn add_harc_to_suit(&mut self, harc_id: AtomId, face: Face, co_harc_ids: &[AtomId]) {
         for &co_harc_id in co_harc_ids.iter() {
             let harc_entry = match face {
                 Face::Tx => self.co_forks.entry(co_harc_id),
@@ -121,15 +121,15 @@ impl CEStructure {
                     Face::Tx => {
                         trace!(
                             "Old join's co_forks[{}] -> {}",
-                            JoinID(co_harc_id).with(&self.context),
-                            ForkID(harc_id).with(&self.context),
+                            JoinId(co_harc_id).with(&self.context),
+                            ForkId(harc_id).with(&self.context),
                         );
                     }
                     Face::Rx => {
                         trace!(
                             "Old fork's co_joins[{}] -> {}",
-                            ForkID(co_harc_id).with(&self.context),
-                            JoinID(harc_id).with(&self.context)
+                            ForkId(co_harc_id).with(&self.context),
+                            JoinId(harc_id).with(&self.context)
                         );
                     }
                 }
@@ -153,14 +153,14 @@ impl CEStructure {
     fn create_harcs(
         &mut self,
         face: Face,
-        node_id: NodeID,
-        poly: &Polynomial<LinkID>,
+        node_id: NodeId,
+        poly: &Polynomial<LinkId>,
     ) -> Result<(), AcesError> {
         for mono in poly.get_monomials() {
             let mut fat_co_node_ids = Vec::new();
 
-            // Link sequence `mono` is ordered by link ID, reorder
-            // first by conode ID.
+            // Link sequence `mono` is ordered by `LinkId`, reorder
+            // first by conode's `NodeId`.
             let mut co_node_map = BTreeMap::new();
 
             for lid in mono {
@@ -170,7 +170,7 @@ impl CEStructure {
                     if let Some(link) = ctx.get_link(lid) {
                         co_node_map.insert(link.get_node_id(!face), link_state);
                     } else {
-                        return Err(AcesErrorKind::LinkMissingForID(lid).with_context(&self.context))
+                        return Err(AcesErrorKind::LinkMissingForId(lid).with_context(&self.context))
                     }
                 } else {
                     return Err(AcesErrorKind::UnlistedAtomicInMonomial.with_context(&self.context))
@@ -213,7 +213,7 @@ impl CEStructure {
                 }
             }
 
-            let harc_id: AtomID = match face {
+            let harc_id: AtomId = match face {
                 Face::Tx => {
                     let mut fork = Harc::new_fork_unchecked(node_id, co_node_map.keys().copied());
                     self.context.lock().unwrap().share_fork(&mut fork).into()
@@ -234,14 +234,14 @@ impl CEStructure {
                         Face::Tx => {
                             trace!(
                                 "New fork's co_joins[{}] -> {:?}",
-                                ForkID(harc_id).with(&self.context),
+                                ForkId(harc_id).with(&self.context),
                                 co_harcs
                             );
                         }
                         Face::Rx => {
                             trace!(
                                 "New join's co_forks[{}] -> {:?}",
-                                JoinID(harc_id).with(&self.context),
+                                JoinId(harc_id).with(&self.context),
                                 co_harcs
                             );
                         }
@@ -259,7 +259,7 @@ impl CEStructure {
     }
 
     /// Constructs new [`Polynomial`] from a sequence of sequences of
-    /// [`NodeID`]s and adds it to causes or effects of a node of this
+    /// [`NodeId`]s and adds it to causes or effects of a node of this
     /// `CEStructure`.
     ///
     /// The only direct callers of this are methods [`add_causes()`]
@@ -270,12 +270,12 @@ impl CEStructure {
     fn add_causes_or_effects<'a, I>(
         &mut self,
         face: Face,
-        node_id: NodeID,
+        node_id: NodeId,
         poly_ids: I,
     ) -> Result<(), AcesError>
     where
         I: IntoIterator + 'a,
-        I::Item: IntoIterator<Item = &'a NodeID>,
+        I::Item: IntoIterator<Item = &'a NodeId>,
     {
         let poly = Polynomial::from_nodes_in_context(&self.context, face, node_id, poly_ids);
 
@@ -322,33 +322,33 @@ impl CEStructure {
     }
 
     /// Constructs new [`Polynomial`] from a sequence of sequences of
-    /// [`NodeID`]s and adds it to causes of a node of this
+    /// [`NodeId`]s and adds it to causes of a node of this
     /// `CEStructure`.
     ///
     /// This method is incremental: new polynomial is added to old
     /// polynomial that is already attached to the `node_id` as node's
     /// causes (there is always some polynomial attached, if not
     /// explicitly, then implicitly, as the default _&theta;_).
-    pub fn add_causes<'a, I>(&mut self, node_id: NodeID, poly_ids: I) -> Result<(), AcesError>
+    pub fn add_causes<'a, I>(&mut self, node_id: NodeId, poly_ids: I) -> Result<(), AcesError>
     where
         I: IntoIterator + 'a,
-        I::Item: IntoIterator<Item = &'a NodeID>,
+        I::Item: IntoIterator<Item = &'a NodeId>,
     {
         self.add_causes_or_effects(Face::Rx, node_id, poly_ids)
     }
 
     /// Constructs new [`Polynomial`] from a sequence of sequences of
-    /// [`NodeID`]s and adds it to effects of a node of this
+    /// [`NodeId`]s and adds it to effects of a node of this
     /// `CEStructure`.
     ///
     /// This method is incremental: new polynomial is added to old
     /// polynomial that is already attached to the `node_id` as node's
     /// effects (there is always some polynomial attached, if not
     /// explicitly, then implicitly, as the default _&theta;_).
-    pub fn add_effects<'a, I>(&mut self, node_id: NodeID, poly_ids: I) -> Result<(), AcesError>
+    pub fn add_effects<'a, I>(&mut self, node_id: NodeId, poly_ids: I) -> Result<(), AcesError>
     where
         I: IntoIterator + 'a,
-        I::Item: IntoIterator<Item = &'a NodeID>,
+        I::Item: IntoIterator<Item = &'a NodeId>,
     {
         self.add_causes_or_effects(Face::Tx, node_id, poly_ids)
     }
@@ -586,11 +586,11 @@ impl CEStructure {
 
     /// Given a flat list of co-harcs, groups them by their host
     /// nodes (i.e. by suit members of the considered harc), and
-    /// returns a vector of vectors of [`AtomID`]s.
+    /// returns a vector of vectors of [`AtomId`]s.
     ///
     /// The result, if interpreted in terms of SAT encoding, is a
     /// conjunction of exclusive choices of co-harcs.
-    fn group_coharcs(&self, coharc_ids: &[AtomID]) -> Result<Vec<Vec<AtomID>>, AcesError> {
+    fn group_coharcs(&self, coharc_ids: &[AtomId]) -> Result<Vec<Vec<AtomId>>, AcesError> {
         if coharc_ids.len() < 2 {
             if coharc_ids.is_empty() {
                 Err(AcesErrorKind::IncoherencyLeak.with_context(&self.context))
@@ -598,12 +598,12 @@ impl CEStructure {
                 Ok(vec![coharc_ids.to_vec()])
             }
         } else {
-            let mut cohost_map: BTreeMap<NodeID, Vec<AtomID>> = BTreeMap::new();
+            let mut cohost_map: BTreeMap<NodeId, Vec<AtomId>> = BTreeMap::new();
 
             for &coharc_id in coharc_ids.iter() {
                 let ctx = self.context.lock().unwrap();
                 let coharc = ctx.get_harc(coharc_id).ok_or_else(|| {
-                    AcesErrorKind::HarcMissingForID(coharc_id).with_context(&self.context)
+                    AcesErrorKind::HarcMissingForId(coharc_id).with_context(&self.context)
                 })?;
                 let cohost_id = coharc.get_host_id();
 
@@ -673,7 +673,7 @@ impl CEStructure {
 
     fn get_thin_link_names(
         &self,
-        link_id: LinkID,
+        link_id: LinkId,
         missing_face: Face,
     ) -> Result<(String, String), AcesError> {
         let ctx = self.context.lock().unwrap();
@@ -684,7 +684,7 @@ impl CEStructure {
 
             Ok((node_id.format_locked(&ctx)?, conode_id.format_locked(&ctx)?))
         } else {
-            Err(AcesErrorKind::LinkMissingForID(link_id).with_context(&self.context))
+            Err(AcesErrorKind::LinkMissingForId(link_id).with_context(&self.context))
         }
     }
 

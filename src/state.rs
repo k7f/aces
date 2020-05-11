@@ -4,12 +4,12 @@ use std::{
     fmt,
 };
 use log::Level::{Debug, Trace};
-use crate::{ContextHandle, Contextual, Multiplicity, NodeID, FiringSet, AcesError, AcesErrorKind};
+use crate::{ContextHandle, Contextual, Multiplicity, NodeId, FiringSet, AcesError, AcesErrorKind};
 
 #[derive(Clone, Debug)]
 pub struct State {
     context: ContextHandle,
-    tokens:  BTreeMap<NodeID, Multiplicity>,
+    tokens:  BTreeMap<NodeId, Multiplicity>,
 }
 
 impl State {
@@ -77,11 +77,11 @@ impl State {
         self.tokens.clear()
     }
 
-    pub fn get(&self, node_id: NodeID) -> Multiplicity {
+    pub fn get(&self, node_id: NodeId) -> Multiplicity {
         self.tokens.get(&node_id).copied().unwrap_or_else(Multiplicity::zero)
     }
 
-    pub fn set_unchecked(&mut self, node_id: NodeID, num_tokens: Multiplicity) {
+    pub fn set_unchecked(&mut self, node_id: NodeId, num_tokens: Multiplicity) {
         match self.tokens.entry(node_id) {
             btree_map::Entry::Vacant(entry) => {
                 if num_tokens.is_positive() {
@@ -103,7 +103,7 @@ impl State {
     /// [`FiringComponent::fire()`]: crate::FiringComponent::fire()
     pub(crate) fn decrease(
         &mut self,
-        node_id: NodeID,
+        node_id: NodeId,
         num_tokens: Multiplicity,
     ) -> Result<(), AcesError> {
         if num_tokens.is_positive() {
@@ -146,7 +146,7 @@ impl State {
     /// [`FiringComponent::fire()`]: crate::FiringComponent::fire()
     pub(crate) fn increase(
         &mut self,
-        node_id: NodeID,
+        node_id: NodeId,
         num_tokens: Multiplicity,
     ) -> Result<(), AcesError> {
         if num_tokens.is_positive() {
@@ -230,8 +230,8 @@ impl State {
         }
     }
 
-    /// Returns ID of the activated firing component taken from the
-    /// given [`FiringSet`].
+    /// Returns an index of the activated firing component taken from
+    /// a given [`FiringSet`].
     pub fn transition<R: rand::RngCore>(
         &mut self,
         fset: &FiringSet,
@@ -272,7 +272,7 @@ impl fmt::Display for State {
 
 #[derive(Debug)]
 pub struct Goal {
-    targets: BTreeMap<NodeID, Multiplicity>,
+    targets: BTreeMap<NodeId, Multiplicity>,
 }
 
 impl Goal {
@@ -308,7 +308,7 @@ impl Goal {
         }
     }
 
-    pub fn is_reached(&self, state: &State) -> Option<NodeID> {
+    pub fn is_reached(&self, state: &State) -> Option<NodeId> {
         for (&node_id, &target_tokens) in self.targets.iter() {
             let tokens = state.get(node_id);
 

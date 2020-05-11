@@ -5,9 +5,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 use crate::{
-    PartialContent, Port, Link, Harc, Fork, Join, Face, ID, NodeID, AtomID, PortID, LinkID, ForkID,
-    JoinID, Semantics, Capacity, Weight, FlowWeight, AcesError, AcesErrorKind,
-    name::NameSpace,
+    PartialContent, Port, Link, Harc, Fork, Join, Face, NodeId, AtomId, PortId, LinkId, ForkId,
+    JoinId, Semantics, Capacity, Weight, FlowWeight, AcesError, AcesErrorKind,
+    node::{NodeSet, NodeSetId},
+    name::{NameSpace, NameId},
     atom::{AtomSpace, Atom},
     sat, solver, runner, vis,
 };
@@ -42,15 +43,15 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 /// [`Atom`]: crate::atom::Atom
 #[derive(Debug)]
 pub struct Context {
-    magic_id:      u64, // group ID
-    name_id:       ID,  // given name
+    magic_id:      u64,    // group identifier
+    name_id:       NameId, // given name
     globals:       NameSpace,
     nodes:         NameSpace,
     atoms:         AtomSpace,
-    content:       BTreeMap<ID, PartialContent>,
-    capacities:    BTreeMap<NodeID, Capacity>,
-    hyper_weights: BTreeMap<AtomID, Weight>,
-    flow_weights:  BTreeMap<NodeID, Vec<FlowWeight>>,
+    content:       BTreeMap<NameId, PartialContent>,
+    capacities:    BTreeMap<NodeId, Capacity>,
+    hyper_weights: BTreeMap<AtomId, Weight>,
+    flow_weights:  BTreeMap<NodeId, Vec<FlowWeight>>,
     solver_props:  solver::Props,
     runner_props:  runner::Props,
     vis_props:     vis::Props,
@@ -91,7 +92,7 @@ impl Context {
     ///
     /// This method preserves the collection of [`Atom`]s, the two
     /// symbol tables, and the `Context`'s own given name and group
-    /// ID.
+    /// identifier.
     pub fn reset(&mut self) {
         // Fields unchanged: magic_id, name_id, globals, nodes, atoms.
         self.content.clear();
@@ -114,8 +115,8 @@ impl Context {
 
             let magic_id = parent.magic_id;
 
-            // ID of child name in parent and child is the same (but
-            // not in further ancestors).  See `partial_cmp`.
+            // NameId of child name in parent and child is the same
+            // (but not in further ancestors).  See `partial_cmp`.
             let name_id = parent.globals.share_name(name);
 
             let globals = parent.globals.clone();
@@ -149,11 +150,11 @@ impl Context {
     }
 
     pub fn is_toplevel(&self) -> bool {
-        self.name_id == unsafe { ID::new_unchecked(1) }
+        self.name_id == unsafe { NameId::new_unchecked(1) }
     }
 
     pub fn is_derived(&self) -> bool {
-        self.name_id > unsafe { ID::new_unchecked(1) }
+        self.name_id > unsafe { NameId::new_unchecked(1) }
     }
 
     pub fn get_name(&self) -> &str {
@@ -165,105 +166,115 @@ impl Context {
     // FIXME support node iteration (define a generic NameSpace iterator)
 
     #[inline]
-    pub fn share_node_name<S: AsRef<str>>(&mut self, node_name: S) -> NodeID {
-        NodeID(self.nodes.share_name(node_name))
+    pub fn share_node_name<S: AsRef<str>>(&mut self, node_name: S) -> NodeId {
+        NodeId(self.nodes.share_name(node_name))
     }
 
     #[inline]
-    pub fn get_node_name(&self, node_id: NodeID) -> Option<&str> {
+    pub fn get_node_name(&self, node_id: NodeId) -> Option<&str> {
         self.nodes.get_name(node_id.get())
     }
 
     #[inline]
-    pub fn get_node_id<S: AsRef<str>>(&self, node_name: S) -> Option<NodeID> {
-        self.nodes.get_id(node_name).map(NodeID)
+    pub fn get_node_id<S: AsRef<str>>(&self, node_name: S) -> Option<NodeId> {
+        self.nodes.get_id(node_name).map(NodeId)
     }
 
     // Atoms
 
     #[inline]
-    pub(crate) fn get_atom(&self, atom_id: AtomID) -> Option<&Atom> {
+    pub(crate) fn get_atom(&self, atom_id: AtomId) -> Option<&Atom> {
         self.atoms.get_atom(atom_id)
     }
 
     #[allow(dead_code)]
     #[inline]
-    pub(crate) fn get_atom_id(&self, atom: &Atom) -> Option<AtomID> {
+    pub(crate) fn get_atom_id(&self, atom: &Atom) -> Option<AtomId> {
         self.atoms.get_atom_id(atom)
     }
 
     #[inline]
-    pub fn is_port(&self, atom_id: AtomID) -> bool {
+    pub fn is_port(&self, atom_id: AtomId) -> bool {
         self.atoms.is_port(atom_id)
     }
 
     #[inline]
-    pub fn is_link(&self, atom_id: AtomID) -> bool {
+    pub fn is_link(&self, atom_id: AtomId) -> bool {
         self.atoms.is_link(atom_id)
     }
 
     #[inline]
-    pub fn is_harc(&self, atom_id: AtomID) -> bool {
+    pub fn is_harc(&self, atom_id: AtomId) -> bool {
         self.atoms.is_harc(atom_id)
     }
 
     #[inline]
-    pub fn is_fork(&self, atom_id: AtomID) -> bool {
+    pub fn is_fork(&self, atom_id: AtomId) -> bool {
         self.atoms.is_fork(atom_id)
     }
 
     #[inline]
-    pub fn is_join(&self, atom_id: AtomID) -> bool {
+    pub fn is_join(&self, atom_id: AtomId) -> bool {
         self.atoms.is_join(atom_id)
     }
 
     #[inline]
-    pub fn share_port(&mut self, port: &mut Port) -> PortID {
+    pub fn share_port(&mut self, port: &mut Port) -> PortId {
         self.atoms.share_port(port)
     }
 
     #[inline]
-    pub fn share_link(&mut self, link: &mut Link) -> LinkID {
+    pub fn share_link(&mut self, link: &mut Link) -> LinkId {
         self.atoms.share_link(link)
     }
 
     #[inline]
-    pub fn share_fork(&mut self, fork: &mut Fork) -> ForkID {
+    pub fn share_fork(&mut self, fork: &mut Fork) -> ForkId {
         self.atoms.share_fork(fork)
     }
 
     #[inline]
-    pub fn share_join(&mut self, join: &mut Join) -> JoinID {
+    pub fn share_join(&mut self, join: &mut Join) -> JoinId {
         self.atoms.share_join(join)
     }
 
     #[inline]
-    pub fn get_port(&self, port_id: PortID) -> Option<&Port> {
+    pub fn share_node_set(&mut self, mono: &mut NodeSet) -> NodeSetId {
+        self.atoms.share_node_set(mono)
+    }
+
+    #[inline]
+    pub fn get_port(&self, port_id: PortId) -> Option<&Port> {
         self.atoms.get_port(port_id)
     }
 
     #[inline]
-    pub fn get_link(&self, link_id: LinkID) -> Option<&Link> {
+    pub fn get_link(&self, link_id: LinkId) -> Option<&Link> {
         self.atoms.get_link(link_id)
     }
 
     #[inline]
-    pub fn get_harc(&self, atom_id: AtomID) -> Option<&Harc> {
+    pub fn get_harc(&self, atom_id: AtomId) -> Option<&Harc> {
         self.atoms.get_harc(atom_id)
     }
 
     #[inline]
-    pub fn get_fork(&self, fork_id: ForkID) -> Option<&Fork> {
+    pub fn get_fork(&self, fork_id: ForkId) -> Option<&Fork> {
         self.atoms.get_fork(fork_id)
     }
 
     #[inline]
-    pub fn get_join(&self, join_id: JoinID) -> Option<&Join> {
+    pub fn get_join(&self, join_id: JoinId) -> Option<&Join> {
         self.atoms.get_join(join_id)
     }
 
     #[inline]
-    pub fn get_anti_port_id(&self, port_id: PortID) -> Option<PortID> {
+    pub fn get_node_set(&self, mono_id: NodeSetId) -> Option<&NodeSet> {
+        self.atoms.get_node_set(mono_id)
+    }
+
+    #[inline]
+    pub fn get_anti_port_id(&self, port_id: PortId) -> Option<PortId> {
         self.atoms.get_anti_port_id(port_id)
     }
 
@@ -300,7 +311,7 @@ impl Context {
     }
 
     #[inline]
-    pub fn get_capacity(&self, node_id: NodeID) -> Capacity {
+    pub fn get_capacity(&self, node_id: NodeId) -> Capacity {
         self.capacities.get(&node_id).copied().unwrap_or_else(Capacity::one)
     }
 
@@ -369,18 +380,20 @@ impl Context {
         .contains(&host_id)
         {
             if pre_set.is_disjoint(&post_set) {
-                let pre_set = Vec::from_iter(pre_set.into_iter());
-                let post_set = Vec::from_iter(post_set.into_iter());
+                let mut pre_set = NodeSet::new_unchecked(pre_set);
+                let pre_set_id = self.share_node_set(&mut pre_set);
+                let mut post_set = NodeSet::new_unchecked(post_set);
+                let post_set_id = self.share_node_set(&mut post_set);
 
                 match self.flow_weights.entry(host_id) {
                     btree_map::Entry::Occupied(entry) => {
                         let weights = entry.into_mut();
-                        let new_value = FlowWeight::new(pre_set, post_set, weight);
+                        let new_weight = FlowWeight::new(pre_set_id, post_set_id, weight);
 
-                        match weights.binary_search(&new_value) {
+                        match weights.binary_search(&new_weight) {
                             Ok(_) => Ok(Some(weight)),
                             Err(pos) => {
-                                weights.insert(pos, new_value);
+                                weights.insert(pos, new_weight);
 
                                 // FIXME compare pre-sets and post-sets, and return Some if equal
                                 Ok(None)
@@ -388,13 +401,15 @@ impl Context {
                         }
                     }
                     btree_map::Entry::Vacant(entry) => {
-                        entry.insert(vec![FlowWeight::new(pre_set, post_set, weight)]);
+                        let new_weight = FlowWeight::new(pre_set_id, post_set_id, weight);
+
+                        entry.insert(vec![new_weight]);
 
                         Ok(None)
                     }
                 }
             } else {
-                Err(AcesErrorKind::FiringNodeMissing(face, host_id).into())
+                Err(AcesErrorKind::FiringOverlap.into())
             }
         } else {
             Err(AcesErrorKind::FiringNodeMissing(face, host_id).into())
@@ -432,17 +447,16 @@ impl Context {
     }
 
     pub fn get_weight(
-        &self,
-        atom_id: AtomID,
-        pre_nodes: &[NodeID],
-        post_nodes: &[NodeID],
+        &mut self,
+        atom_id: AtomId,
+        pre_set_id: NodeSetId,
+        post_set_id: NodeSetId,
     ) -> Result<Weight, AcesError> {
         if let Some(weight) = self.hyper_weights.get(&atom_id) {
             Ok(*weight)
         } else if let Some(harc) = self.get_harc(atom_id) {
             let node_id = harc.get_host_id();
-            let mut test_weight =
-                FlowWeight::new(pre_nodes.into(), post_nodes.into(), Weight::zero());
+            let mut test_weight = FlowWeight::new(pre_set_id, post_set_id, Weight::zero());
 
             if let Some(weights) = self.flow_weights.get(&node_id) {
                 match weights.binary_search(&test_weight) {
@@ -464,7 +478,7 @@ impl Context {
                 Ok(Weight::one())
             }
         } else {
-            Err(AcesErrorKind::HarcMissingForID(atom_id).into())
+            Err(AcesErrorKind::HarcMissingForId(atom_id).into())
         }
     }
 
@@ -522,11 +536,11 @@ impl Context {
         self.vis_props.title.as_deref()
     }
 
-    pub fn set_label<S: AsRef<str>>(&mut self, node_id: NodeID, label: S) {
+    pub fn set_label<S: AsRef<str>>(&mut self, node_id: NodeId, label: S) {
         self.vis_props.labels.insert(node_id, label.as_ref().to_owned());
     }
 
-    pub fn get_label(&self, node_id: NodeID) -> Option<&str> {
+    pub fn get_label(&self, node_id: NodeId) -> Option<&str> {
         self.vis_props.labels.get(&node_id).map(|t| t.as_str())
     }
 }
@@ -544,12 +558,13 @@ impl PartialOrd for Context {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         if self.magic_id == other.magic_id {
             if other.globals.get_id(self.get_name()) == Some(self.name_id) {
-                // Since ID of self's name in self and other is the
-                // same, self is either an ancestor of other, or
-                // a direct child of other, or equals the other.
+                // Since NameId of self's name in self and other is
+                // the same, self is either an ancestor of other, or a
+                // direct child of other, or equals the other.
                 Some(other.name_id.cmp(&self.name_id))
             } else if self.globals.get_id(other.get_name()) == Some(other.name_id) {
-                // ID of other's name in self and other is the same...
+                // NameId of other's name in self and other is the
+                // same...
                 match other.name_id.cmp(&self.name_id) {
                     // ...other is an ancestor of self,
                     cmp::Ordering::Less => Some(cmp::Ordering::Less),
@@ -720,7 +735,7 @@ impl<'a, D: Contextual> fmt::Display for InContextMut<'a, D> {
 mod tests {
     use super::*;
 
-    fn new_port(ctx: &ContextHandle, face: Face, host_name: &str) -> (Port, PortID) {
+    fn new_port(ctx: &ContextHandle, face: Face, host_name: &str) -> (Port, PortId) {
         let mut ctx = ctx.lock().unwrap();
         let node_id = ctx.share_node_name(host_name);
         let mut port = Port::new(face, node_id);

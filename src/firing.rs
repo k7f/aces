@@ -1,14 +1,14 @@
 use std::{slice, collections::BTreeMap, convert::TryFrom};
 use rand::{RngCore, Rng};
 use crate::{
-    ContextHandle, Contextual, Face, NodeID, Capacity, Weight, Solution, State, AcesError,
-    AcesErrorKind,
+    ContextHandle, Contextual, Face, NodeId, Capacity, Weight, Solution, State, AcesError,
+    AcesErrorKind, node::NodeSet,
 };
 
 #[derive(Clone, Default, Debug)]
 pub struct FiringComponent {
-    pre_set:  BTreeMap<NodeID, Weight>,
-    post_set: BTreeMap<NodeID, (Weight, Capacity)>,
+    pre_set:  BTreeMap<NodeId, Weight>,
+    post_set: BTreeMap<NodeId, (Weight, Capacity)>,
 }
 
 impl FiringComponent {
@@ -68,16 +68,17 @@ impl TryFrom<Solution> for FiringComponent {
 
     #[allow(clippy::map_entry)]
     fn try_from(sol: Solution) -> Result<Self, Self::Error> {
-        let ctx = sol.get_context().lock().unwrap();
+        let mut ctx = sol.get_context().lock().unwrap();
         let pre_nodes = sol.get_pre_set();
         let post_nodes = sol.get_post_set();
         let mut pre_set = BTreeMap::new();
         let mut post_set = BTreeMap::new();
+        let mut forks = BTreeMap::new();
+        let mut joins = BTreeMap::new();
 
         'outer_forks: for &fork_id in sol.get_fork_set() {
-            let weight = ctx.get_weight(fork_id.get(), pre_nodes, post_nodes)?;
             let fork =
-                ctx.get_fork(fork_id).ok_or_else(|| AcesErrorKind::ForkMissingForID(fork_id))?;
+                ctx.get_fork(fork_id).ok_or_else(|| AcesErrorKind::ForkMissingForId(fork_id))?;
             let tx_node_id = fork.get_host_id();
 
             for &node_id in pre_nodes {
@@ -85,7 +86,8 @@ impl TryFrom<Solution> for FiringComponent {
                     if pre_set.contains_key(&node_id) {
                         return Err(AcesErrorKind::FiringNodeDuplicated(Face::Tx, node_id).into())
                     } else {
-                        pre_set.insert(node_id, weight);
+                        pre_set.insert(node_id, Weight::one());
+                        forks.insert(node_id, fork_id);
                         continue 'outer_forks
                     }
                 }
@@ -95,10 +97,9 @@ impl TryFrom<Solution> for FiringComponent {
         }
 
         'outer_joins: for &join_id in sol.get_join_set() {
-            let weight = ctx.get_weight(join_id.get(), pre_nodes, post_nodes)?;
             let join = ctx
                 .get_join(join_id)
-                .ok_or_else(|| AcesError::from(AcesErrorKind::JoinMissingForID(join_id)))?;
+                .ok_or_else(|| AcesError::from(AcesErrorKind::JoinMissingForId(join_id)))?;
             let rx_node_id = join.get_host_id();
 
             for &node_id in post_nodes {
@@ -107,13 +108,29 @@ impl TryFrom<Solution> for FiringComponent {
                         return Err(AcesErrorKind::FiringNodeDuplicated(Face::Rx, node_id).into())
                     } else {
                         let capacity = ctx.get_capacity(node_id);
-                        post_set.insert(node_id, (weight, capacity));
+                        post_set.insert(node_id, (Weight::one(), capacity));
+                        joins.insert(node_id, join_id);
                         continue 'outer_joins
                     }
                 }
             }
 
             return Err(AcesErrorKind::FiringNodeMissing(Face::Rx, rx_node_id).into())
+        }
+
+        let mut node_set = NodeSet::new_unchecked(pre_set.keys().copied());
+        let pre_set_id = ctx.share_node_set(&mut node_set);
+        let mut node_set = NodeSet::new_unchecked(post_set.keys().copied());
+        let post_set_id = ctx.share_node_set(&mut node_set);
+
+        for (node_id, fork_id) in forks {
+            let weight = ctx.get_weight(fork_id.get(), pre_set_id, post_set_id)?;
+            pre_set.entry(node_id).and_modify(|v| *v = weight);
+        }
+
+        for (node_id, join_id) in joins {
+            let weight = ctx.get_weight(join_id.get(), pre_set_id, post_set_id)?;
+            post_set.entry(node_id).and_modify(|v| v.0 = weight);
         }
 
         Ok(FiringComponent { pre_set, post_set })

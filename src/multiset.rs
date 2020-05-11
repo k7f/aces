@@ -2,7 +2,7 @@ use std::{
     str::FromStr,
     fmt::{self, Write},
 };
-use crate::{NodeID, AtomID, AcesError, AcesErrorKind};
+use crate::{AtomId, Context, ExclusivelyContextual, AcesError, AcesErrorKind, node::NodeSetId};
 
 /// A scalar type common for node capacity, harc weight and state.
 ///
@@ -196,49 +196,60 @@ pub type Weight = Multiplicity;
 /// `HyperWeight`s represent the weight labeling used in standard
 /// notation for polynomials.  Conceptually, they are attached to arcs
 /// of a BF-hypergraph (hyperarcs _aka_ harcs), and inherited by all
-/// corresponding arcs of the induced flow relation.
+/// corresponding arcs of the induced flow relation.  Note that, in
+/// general, hyperarc nodesets are contained in (not equal to)
+/// pre-sets or post-sets of corresponding transitions.
 ///
-/// See [`FlowWeight`] for implementation details.
+/// The implementation stores generic weights in the variable
+/// [`Context::hyper_weights`] which maps harcs to [`Weight`]s.  See
+/// also [`FlowWeight`].
+///
+/// [`Context::hyper_weights`]: crate::Context::hyper_weights
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct HyperWeight {
-    pub(crate) harc_id: AtomID,
+    pub(crate) harc_id: AtomId,
     pub(crate) weight:  Weight,
 }
 
 impl HyperWeight {
     #[inline]
-    pub fn new(harc_id: AtomID, weight: Weight) -> Self {
+    pub fn new(harc_id: AtomId, weight: Weight) -> Self {
         HyperWeight { harc_id, weight }
     }
 }
 
 /// Explicit weight attached to an arc of a flow relation.
 ///
-/// Flow relation is a bijective digraph of nodes and transitions.
+/// Flow relation is a bipartite digraph of nodes and transitions.
 /// This type represents a pair _(transition, weight)_ as a triple
 /// _(pre-set, post-set, weight)_.
 ///
-/// The implementation stores generic weights in the [`Context`]
-/// variable [`hyper_weights`] _and_ stores directly specified weights
-/// of individual arcs in the [`Context`] variable [`flow_weights`],
-/// which maps nodes to sets of `FlowWeight`s.
+/// The implementation stores directly specified weights of individual
+/// arcs in the variable [`Context::flow_weights`] which maps nodes to
+/// sets of `FlowWeight`s.  See also [`HyperWeight`].
 ///
-/// Note that, in general, hyperarc nodesets are contained in (not
-/// equal to) pre-sets or post-sets of corresponding transitions.
-///
-/// [`Context`]: crate::Context
-/// [`hyper_weights`]: crate::Context::hyper_weights
-/// [`flow_weights`]: crate::Context::flow_weights
+/// [`Context::flow_weights`]: crate::Context::flow_weights
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct FlowWeight {
-    pub(crate) pre_set:  Vec<NodeID>,
-    pub(crate) post_set: Vec<NodeID>,
+    pub(crate) pre_set:  NodeSetId,
+    pub(crate) post_set: NodeSetId,
     pub(crate) weight:   Weight,
 }
 
 impl FlowWeight {
     #[inline]
-    pub fn new(pre_set: Vec<NodeID>, post_set: Vec<NodeID>, weight: Weight) -> Self {
+    pub fn new(pre_set: NodeSetId, post_set: NodeSetId, weight: Weight) -> Self {
         FlowWeight { pre_set, post_set, weight }
+    }
+}
+
+impl ExclusivelyContextual for FlowWeight {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
+        Ok(format!(
+            "{}:{}->{}",
+            self.weight,
+            self.pre_set.format_locked(ctx)?,
+            self.pre_set.format_locked(ctx)?
+        ))
     }
 }

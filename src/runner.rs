@@ -1,6 +1,6 @@
 use log::Level::Debug;
 use crate::{
-    ContextHandle, NodeID, Multiplicity, State, Goal, Semantics, FiringSet, FiringSequence,
+    ContextHandle, NodeId, Multiplicity, State, Goal, Semantics, FiringSet, FiringSequence,
     AcesError,
 };
 
@@ -19,7 +19,7 @@ impl Props {
 
 #[derive(Debug)]
 pub enum StopCondition {
-    GoalReached(NodeID, usize),
+    GoalReached(NodeId, usize),
     Stalemate(usize),
     Pause(usize),
     UnimplementedFeature(String),
@@ -182,7 +182,7 @@ impl Runner {
         &self.firing_sequence
     }
 
-    pub fn goal_is_reached(&self) -> Option<NodeID> {
+    pub fn goal_is_reached(&self) -> Option<NodeId> {
         self.goal.as_ref().and_then(|goal| goal.is_reached(&self.current_state))
     }
 }

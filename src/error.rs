@@ -1,22 +1,23 @@
 use std::{num, fmt, error::Error};
 use crate::{
-    ContextHandle, Contextual, Face, AtomID, NodeID, PortID, LinkID, ForkID, JoinID, Multiplicity,
-    Capacity,
+    ContextHandle, Contextual, Face, NodeId, AtomId, PortId, LinkId, ForkId, JoinId, Multiplicity,
+    Capacity, node::NodeSetId,
 };
 
 #[derive(Clone, Debug)]
 pub enum AcesErrorKind {
     ContextMismatch,
     PolynomialFaceMismatch,
-    HarcNotAForkMismatch(JoinID),
-    HarcNotAJoinMismatch(ForkID),
-    NodeMissingForID(NodeID),
-    AtomMissingForID(AtomID),
-    PortMissingForID(PortID),
-    LinkMissingForID(LinkID),
-    HarcMissingForID(AtomID),
-    ForkMissingForID(ForkID),
-    JoinMissingForID(JoinID),
+    HarcNotAForkMismatch(JoinId),
+    HarcNotAJoinMismatch(ForkId),
+    NodeMissingForId(NodeId),
+    AtomMissingForId(AtomId),
+    PortMissingForId(PortId),
+    LinkMissingForId(LinkId),
+    HarcMissingForId(AtomId),
+    ForkMissingForId(ForkId),
+    JoinMissingForId(JoinId),
+    NodeSetMissingForId(NodeSetId),
     BottomAtomAccess,
     AtomicsNotOrdered,
 
@@ -24,15 +25,15 @@ pub enum AcesErrorKind {
     NodeMissingForLink(Face),
     NodeMissingForFork(Face),
     NodeMissingForJoin(Face),
-    FiringNodeMissing(Face, NodeID),
-    FiringNodeDuplicated(Face, NodeID),
+    FiringNodeMissing(Face, NodeId),
+    FiringNodeDuplicated(Face, NodeId),
     FiringOverlap,
     IncoherentStructure(String, u32, (Face, String, String)),
 
-    LeakedInhibitor(NodeID, Multiplicity),
-    StateUnderflow(NodeID, Multiplicity, Multiplicity),
-    StateOverflow(NodeID, Multiplicity, Multiplicity),
-    CapacityOverflow(NodeID, Capacity, Multiplicity),
+    LeakedInhibitor(NodeId, Multiplicity),
+    StateUnderflow(NodeId, Multiplicity, Multiplicity),
+    StateOverflow(NodeId, Multiplicity, Multiplicity),
+    CapacityOverflow(NodeId, Capacity, Multiplicity),
     MultiplicityOverflow(String),
     ParseIntError(num::ParseIntError),
     ParseFloatError(num::ParseFloatError),
@@ -41,6 +42,7 @@ pub enum AcesErrorKind {
     EmptyClauseRejectedBySolver(String),
     EmptyCausesOfInternalNode(String),
     EmptyEffectsOfInternalNode(String),
+    NodeSetUsedAsSATLiteral(NodeSetId),
 
     UnlistedAtomicInMonomial,
     IncoherencyLeak,
@@ -60,13 +62,14 @@ impl fmt::Display for AcesErrorKind {
             }
             HarcNotAForkMismatch(join_id) => write!(f, "Expected fork, but harc is {:?}", join_id),
             HarcNotAJoinMismatch(fork_id) => write!(f, "Expected join, but harc is {:?}", fork_id),
-            NodeMissingForID(node_id) => write!(f, "There is no node with {:?}", node_id),
-            AtomMissingForID(atom_id) => write!(f, "There is no atom with {:?}", atom_id),
-            PortMissingForID(port_id) => write!(f, "There is no port with {:?}", port_id),
-            LinkMissingForID(link_id) => write!(f, "There is no link with {:?}", link_id),
-            HarcMissingForID(harc_id) => write!(f, "There is no harc with {:?}", harc_id),
-            ForkMissingForID(fork_id) => write!(f, "There is no fork with {:?}", fork_id),
-            JoinMissingForID(join_id) => write!(f, "There is no join with {:?}", join_id),
+            NodeMissingForId(node_id) => write!(f, "There is no node with {:?}", node_id),
+            AtomMissingForId(atom_id) => write!(f, "There is no atom with {:?}", atom_id),
+            PortMissingForId(port_id) => write!(f, "There is no port with {:?}", port_id),
+            LinkMissingForId(link_id) => write!(f, "There is no link with {:?}", link_id),
+            HarcMissingForId(harc_id) => write!(f, "There is no harc with {:?}", harc_id),
+            ForkMissingForId(fork_id) => write!(f, "There is no fork with {:?}", fork_id),
+            JoinMissingForId(join_id) => write!(f, "There is no join with {:?}", join_id),
+            NodeSetMissingForId(mono_id) => write!(f, "There is no node set with {:?}", mono_id),
             BottomAtomAccess => write!(f, "Attempt to access the bottom atom"),
             AtomicsNotOrdered => write!(f, "Atomics have to be given in strictly increasing order"),
 
@@ -158,6 +161,7 @@ impl fmt::Display for AcesErrorKind {
             EmptyEffectsOfInternalNode(name) => {
                 write!(f, "Empty effect polynomial of internal node '{}'", name)
             }
+            NodeSetUsedAsSATLiteral(mono_id) => write!(f, "{:?} used as SAT literal", mono_id),
 
             UnlistedAtomicInMonomial => write!(f, "Monomial contains an unlisted atomic"),
             IncoherencyLeak => write!(f, "Unexpected incoherence of a c-e structure"),

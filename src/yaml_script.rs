@@ -7,7 +7,7 @@ use std::{
 use regex::Regex;
 use yaml_rust::{Yaml, YamlLoader, ScanError};
 use crate::{
-    ContextHandle, Face, NodeID, Content, PartialContent, ContentFormat,
+    ContextHandle, Face, NodeId, Content, PartialContent, ContentFormat,
     content::{PolyForContent, MonoForContent},
 };
 
@@ -68,7 +68,7 @@ fn do_share_name<S: AsRef<str>>(
     ctx: &ContextHandle,
     name: S,
     single_word_only: bool,
-) -> Result<NodeID, YamlScriptError> {
+) -> Result<NodeId, YamlScriptError> {
     if single_word_only && name.as_ref().contains(char::is_whitespace) {
         Err(YamlScriptError::ShortPolyWithWords)
     } else {
@@ -80,9 +80,9 @@ fn post_process_port_description<S: AsRef<str>>(
     ctx: &ContextHandle,
     description: S,
     single_word_only: bool,
-) -> Result<Vec<NodeID>, YamlScriptError> {
+) -> Result<Vec<NodeId>, YamlScriptError> {
     if description.as_ref().contains(',') {
-        let result: Result<Vec<NodeID>, YamlScriptError> = description
+        let result: Result<Vec<NodeId>, YamlScriptError> = description
             .as_ref()
             .split(',')
             .map(|s| do_share_name(ctx, s.trim(), single_word_only))
@@ -97,7 +97,7 @@ fn post_process_port_description<S: AsRef<str>>(
     }
 }
 
-type PortParsed = (Vec<NodeID>, Face);
+type PortParsed = (Vec<NodeId>, Face);
 
 fn do_parse_port_description<S: AsRef<str>>(
     ctx: &ContextHandle,
@@ -136,7 +136,7 @@ fn parse_link_description<S: AsRef<str> + Copy>(
     description: S,
     valid_face: Face,
     single_word_only: bool,
-) -> Result<(NodeID, bool), YamlScriptError> {
+) -> Result<(NodeId, bool), YamlScriptError> {
     let link_with_colink = do_parse_port_description(ctx, description, single_word_only)?;
 
     if let Some((ids, face)) = link_with_colink {
@@ -179,7 +179,7 @@ impl YamlContent {
 
     fn add_ports(
         &mut self,
-        ids: &[NodeID],
+        ids: &[NodeId],
         face: Face,
         poly_yaml: &Yaml,
     ) -> Result<(), YamlScriptError> {
@@ -355,15 +355,15 @@ impl Content for YamlContent {
         }
     }
 
-    fn get_carrier_ids(&mut self) -> Vec<NodeID> {
+    fn get_carrier_ids(&mut self) -> Vec<NodeId> {
         self.content.get_carrier_ids()
     }
 
-    fn get_causes_by_id(&self, id: NodeID) -> Option<&Vec<Vec<NodeID>>> {
+    fn get_causes_by_id(&self, id: NodeId) -> Option<&Vec<Vec<NodeId>>> {
         self.content.get_causes_by_id(id)
     }
 
-    fn get_effects_by_id(&self, id: NodeID) -> Option<&Vec<Vec<NodeID>>> {
+    fn get_effects_by_id(&self, id: NodeId) -> Option<&Vec<Vec<NodeId>>> {
         self.content.get_effects_by_id(id)
     }
 }

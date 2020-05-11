@@ -4,7 +4,7 @@ use std::{
 };
 use varisat::{Var, Lit, ExtendFormula, solver::SolverError};
 use crate::{
-    ContextHandle, Contextual, NodeID, AtomID, ForkID, JoinID, Harc, AcesError, AcesErrorKind,
+    ContextHandle, Contextual, NodeId, AtomId, ForkId, JoinId, Harc, AcesError, AcesErrorKind,
     atom::Atom,
     sat::{CEVar, CELit, Encoding, Search, Clause, Formula},
 };
@@ -172,13 +172,13 @@ impl<'a> Solver<'a> {
         self.engine.close_proof()
     }
 
-    pub fn block_atom_id(&mut self, atom_id: AtomID) {
+    pub fn block_atom_id(&mut self, atom_id: AtomId) {
         let var = Var::from_atom_id(atom_id);
 
         self.assumptions.block_variable(var);
     }
 
-    pub fn unblock_atom_id(&mut self, atom_id: AtomID) -> bool {
+    pub fn unblock_atom_id(&mut self, atom_id: AtomId) -> bool {
         let var = Var::from_atom_id(atom_id);
 
         self.assumptions.unblock_variable(var)
@@ -492,10 +492,10 @@ impl Iterator for Solver<'_> {
 pub struct Solution {
     context:  ContextHandle,
     model:    Vec<Lit>,
-    pre_set:  Vec<NodeID>,
-    post_set: Vec<NodeID>,
-    fork_set: Vec<ForkID>,
-    join_set: Vec<JoinID>,
+    pre_set:  Vec<NodeId>,
+    post_set: Vec<NodeId>,
+    fork_set: Vec<ForkId>,
+    join_set: Vec<JoinId>,
 }
 
 impl Solution {
@@ -516,12 +516,12 @@ impl Solution {
     ) -> Result<Self, AcesError> {
         let mut solution = Self::new(ctx);
 
-        let mut pre_set: BTreeSet<NodeID> = BTreeSet::new();
-        let mut post_set: BTreeSet<NodeID> = BTreeSet::new();
-        let mut fork_map: BTreeMap<NodeID, BTreeSet<NodeID>> = BTreeMap::new();
-        let mut join_map: BTreeMap<NodeID, BTreeSet<NodeID>> = BTreeMap::new();
-        let mut fork_set: BTreeSet<ForkID> = BTreeSet::new();
-        let mut join_set: BTreeSet<JoinID> = BTreeSet::new();
+        let mut pre_set: BTreeSet<NodeId> = BTreeSet::new();
+        let mut post_set: BTreeSet<NodeId> = BTreeSet::new();
+        let mut fork_map: BTreeMap<NodeId, BTreeSet<NodeId>> = BTreeMap::new();
+        let mut join_map: BTreeMap<NodeId, BTreeSet<NodeId>> = BTreeMap::new();
+        let mut fork_set: BTreeSet<ForkId> = BTreeSet::new();
+        let mut join_set: BTreeSet<JoinId> = BTreeSet::new();
 
         for lit in model {
             solution.model.push(lit);
@@ -573,6 +573,14 @@ impl Solution {
                                 unreachable!()
                             }
                         }
+                        Atom::Mono(mono) => {
+                            if let Some(mono_id) = mono.get_id() {
+                                return Err(AcesErrorKind::NodeSetUsedAsSATLiteral(mono_id)
+                                    .with_context(&solution.context))
+                            } else {
+                                unreachable!()
+                            }
+                        }
                         Atom::Bottom => {
                             return Err(
                                 AcesErrorKind::BottomAtomAccess.with_context(&solution.context)
@@ -581,7 +589,7 @@ impl Solution {
                     }
                 } else {
                     return Err(
-                        AcesErrorKind::AtomMissingForID(atom_id).with_context(&solution.context)
+                        AcesErrorKind::AtomMissingForId(atom_id).with_context(&solution.context)
                     )
                 }
             }
@@ -613,19 +621,19 @@ impl Solution {
         self.model.as_slice()
     }
 
-    pub fn get_pre_set(&self) -> &[NodeID] {
+    pub fn get_pre_set(&self) -> &[NodeId] {
         self.pre_set.as_slice()
     }
 
-    pub fn get_post_set(&self) -> &[NodeID] {
+    pub fn get_post_set(&self) -> &[NodeId] {
         self.post_set.as_slice()
     }
 
-    pub fn get_fork_set(&self) -> &[ForkID] {
+    pub fn get_fork_set(&self) -> &[ForkId] {
         self.fork_set.as_slice()
     }
 
-    pub fn get_join_set(&self) -> &[JoinID] {
+    pub fn get_join_set(&self) -> &[JoinId] {
         self.join_set.as_slice()
     }
 }

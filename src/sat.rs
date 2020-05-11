@@ -6,8 +6,8 @@ use std::{
 };
 use varisat::{Var, Lit, CnfFormula, ExtendFormula};
 use crate::{
-    Atomic, Context, ContextHandle, Contextual, ExclusivelyContextual, Polynomial, AtomID, PortID,
-    LinkID, atom::Atom, FiringSet, AcesError, AcesErrorKind,
+    Atomic, Context, ContextHandle, Contextual, ExclusivelyContextual, Polynomial, AtomId, PortId,
+    LinkId, atom::Atom, FiringSet, AcesError, AcesErrorKind,
 };
 
 #[derive(Debug)]
@@ -37,18 +37,18 @@ pub enum Search {
 }
 
 pub(crate) trait CEVar {
-    fn from_atom_id(atom_id: AtomID) -> Self;
-    fn into_atom_id(self) -> AtomID;
+    fn from_atom_id(atom_id: AtomId) -> Self;
+    fn into_atom_id(self) -> AtomId;
 }
 
 impl CEVar for Var {
-    fn from_atom_id(atom_id: AtomID) -> Self {
+    fn from_atom_id(atom_id: AtomId) -> Self {
         Var::from_dimacs(atom_id.get().try_into().unwrap())
     }
 
-    fn into_atom_id(self) -> AtomID {
+    fn into_atom_id(self) -> AtomId {
         let var = self.to_dimacs();
-        unsafe { AtomID::new_unchecked(var.try_into().unwrap()) }
+        unsafe { AtomId::new_unchecked(var.try_into().unwrap()) }
     }
 }
 
@@ -64,10 +64,11 @@ impl ExclusivelyContextual for Var {
                 Atom::Link(link) => Ok(format!("{}:{}", atom_id, link.format_locked(ctx)?)),
                 Atom::Fork(fork) => Ok(format!("{}:{}", atom_id, fork.format_locked(ctx)?)),
                 Atom::Join(join) => Ok(format!("{}:{}", atom_id, join.format_locked(ctx)?)),
+                Atom::Mono(mono) => Ok(format!("{}:{}", atom_id, mono.format_locked(ctx)?)),
                 Atom::Bottom => Err(AcesError::from(AcesErrorKind::BottomAtomAccess)),
             }
         } else {
-            Err(AcesError::from(AcesErrorKind::AtomMissingForID(atom_id)))
+            Err(AcesError::from(AcesErrorKind::AtomMissingForId(atom_id)))
         }
     }
 }
@@ -83,18 +84,18 @@ impl Contextual for Variable {
 }
 
 pub(crate) trait CELit {
-    fn from_atom_id(atom_id: AtomID, negated: bool) -> Self;
-    fn into_atom_id(self) -> (AtomID, bool);
+    fn from_atom_id(atom_id: AtomId, negated: bool) -> Self;
+    fn into_atom_id(self) -> (AtomId, bool);
 }
 
 impl CELit for Lit {
-    fn from_atom_id(atom_id: AtomID, negated: bool) -> Self {
+    fn from_atom_id(atom_id: AtomId, negated: bool) -> Self {
         Self::from_var(Var::from_atom_id(atom_id), !negated)
     }
 
-    fn into_atom_id(self) -> (AtomID, bool) {
+    fn into_atom_id(self) -> (AtomId, bool) {
         let lit = self.to_dimacs();
-        unsafe { (AtomID::new_unchecked(lit.abs().try_into().unwrap()), lit < 0) }
+        unsafe { (AtomId::new_unchecked(lit.abs().try_into().unwrap()), lit < 0) }
     }
 }
 
@@ -113,12 +114,12 @@ impl ExclusivelyContextual for Lit {
 pub struct Literal(pub(crate) Lit);
 
 impl Literal {
-    pub(crate) fn from_atom_id(atom_id: AtomID, negated: bool) -> Self {
+    pub(crate) fn from_atom_id(atom_id: AtomId, negated: bool) -> Self {
         Self(Lit::from_atom_id(atom_id, negated))
     }
 
     #[allow(dead_code)]
-    pub(crate) fn into_atom_id(self) -> (AtomID, bool) {
+    pub(crate) fn into_atom_id(self) -> (AtomId, bool) {
         self.0.into_atom_id()
     }
 
@@ -323,7 +324,7 @@ impl Formula {
     /// firing component is bipartite.  The `Formula` should contain
     /// one such clause for each internal node of the c-e structure
     /// under analysis.
-    pub fn add_anti_port(&mut self, port_id: PortID) -> Result<(), AcesError> {
+    pub fn add_anti_port(&mut self, port_id: PortId) -> Result<(), AcesError> {
         let (port_lit, anti_port_lit) = {
             if let Some(anti_port_id) = self.context.lock().unwrap().get_anti_port_id(port_id) {
                 (
@@ -349,7 +350,7 @@ impl Formula {
     ///
     /// Returns an error if `link_id` doesn't identify any `Link` in
     /// the `Context` of this `Formula`.
-    pub fn add_link_coherence(&mut self, link_id: LinkID) -> Result<(), AcesError> {
+    pub fn add_link_coherence(&mut self, link_id: LinkId) -> Result<(), AcesError> {
         let link_lit = Lit::from_atom_id(link_id.into(), true);
 
         let (tx_port_lit, rx_port_lit) = {
@@ -364,7 +365,7 @@ impl Formula {
                     Lit::from_atom_id(rx_port_id.into(), false),
                 )
             } else {
-                return Err(AcesErrorKind::LinkMissingForID(link_id).with_context(&self.context))
+                return Err(AcesErrorKind::LinkMissingForId(link_id).with_context(&self.context))
             }
         };
 
@@ -378,8 +379,8 @@ impl Formula {
     /// Adds a _polynomial_ rule to this formula.
     pub fn add_polynomial(
         &mut self,
-        port_id: PortID,
-        poly: &Polynomial<LinkID>,
+        port_id: PortId,
+        poly: &Polynomial<LinkId>,
     ) -> Result<(), AcesError> {
         if !poly.is_empty() {
             let port_lit = port_id.into_sat_literal(true);
@@ -401,8 +402,8 @@ impl Formula {
     /// node of the c-e structure under analysis.
     pub fn add_anti_harcs(
         &mut self,
-        harc_ids: &[AtomID],
-        anti_harc_ids: &[AtomID],
+        harc_ids: &[AtomId],
+        anti_harc_ids: &[AtomId],
     ) -> Result<(), AcesError> {
         for &harc_id in harc_ids.iter() {
             let harc_lit = Lit::from_atom_id(harc_id, true);
@@ -421,7 +422,7 @@ impl Formula {
     /// Adds a _branch_harc_ rule to this formula.
     ///
     /// This rule enforces monomiality of firing components.
-    pub fn add_branch_harcs(&mut self, branch_harc_ids: &[AtomID]) -> Result<(), AcesError> {
+    pub fn add_branch_harcs(&mut self, branch_harc_ids: &[AtomId]) -> Result<(), AcesError> {
         for (pos, &harc_id) in branch_harc_ids.iter().enumerate() {
             let harc_lit = Lit::from_atom_id(harc_id, true);
 
@@ -438,8 +439,8 @@ impl Formula {
 
     pub fn add_coharcs(
         &mut self,
-        harc_id: AtomID,
-        coharc_ids: Vec<Vec<AtomID>>,
+        harc_id: AtomId,
+        coharc_ids: Vec<Vec<AtomId>>,
     ) -> Result<(), AcesError> {
         let harc_lit = Lit::from_atom_id(harc_id, true);
 
@@ -528,10 +529,10 @@ impl fmt::Display for Formula {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Context, Harc, ForkID, JoinID};
+    use crate::{Context, Harc, ForkId, JoinId};
     use super::*;
 
-    fn new_fork_id(ctx: &ContextHandle, host_name: &str, suit_names: &[&str]) -> ForkID {
+    fn new_fork_id(ctx: &ContextHandle, host_name: &str, suit_names: &[&str]) -> ForkId {
         let mut ctx = ctx.lock().unwrap();
         let host_id = ctx.share_node_name(host_name);
         let suit_ids = suit_names.iter().map(|n| ctx.share_node_name(n));
@@ -539,7 +540,7 @@ mod tests {
         ctx.share_fork(&mut fork)
     }
 
-    fn new_join_id(ctx: &ContextHandle, host_name: &str, suit_names: &[&str]) -> JoinID {
+    fn new_join_id(ctx: &ContextHandle, host_name: &str, suit_names: &[&str]) -> JoinId {
         let mut ctx = ctx.lock().unwrap();
         let host_id = ctx.share_node_name(host_name);
         let suit_ids = suit_names.iter().map(|n| ctx.share_node_name(n));
