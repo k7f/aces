@@ -239,6 +239,24 @@ impl Context {
     }
 
     #[inline]
+    pub(crate) fn share_fork_from_host_and_suit(
+        &mut self,
+        host_id: NodeId,
+        suit: NodeSet,
+    ) -> ForkId {
+        self.atoms.share_fork_from_host_and_suit(host_id, suit)
+    }
+
+    #[inline]
+    pub(crate) fn share_join_from_host_and_suit(
+        &mut self,
+        host_id: NodeId,
+        suit: NodeSet,
+    ) -> JoinId {
+        self.atoms.share_join_from_host_and_suit(host_id, suit)
+    }
+
+    #[inline]
     pub fn share_node_set(&mut self, mono: &mut NodeSet) -> NodeSetId {
         self.atoms.share_node_set(mono)
     }
@@ -331,25 +349,24 @@ impl Context {
     {
         let host_id = self.share_node_name(host_name.as_ref());
         let suit_ids = suit_names.into_iter().map(|n| self.share_node_name(n.as_ref()));
+        let suit = NodeSet::new(suit_ids);
 
         let atom_id = match face {
-            Face::Tx => {
-                let mut fork = Harc::new_fork(host_id, suit_ids);
-                let fork_id = self.share_fork(&mut fork);
-
-                fork_id.get()
-            }
-            Face::Rx => {
-                let mut join = Harc::new_join(host_id, suit_ids);
-                let join_id = self.share_join(&mut join);
-
-                join_id.get()
-            }
+            Face::Tx => self.share_fork_from_host_and_suit(host_id, suit).get(),
+            Face::Rx => self.share_join_from_host_and_suit(host_id, suit).get(),
         };
 
         self.hyper_weights.insert(atom_id, weight)
     }
 
+    /// Attach a given `weight` to a node specified by `host_name` and
+    /// a transition specified by `pre_set_names` and
+    /// `post_set_names`.
+    ///
+    /// On success, return either the given weight, if it has already
+    /// been attached to the same node and transition, or the lowest
+    /// weight that has already been attached to the same node and
+    /// transition, or `None` if no weight has been attached so far.
     pub fn set_flow_weight_by_names<S, I, J>(
         &mut self,
         face: Face,
@@ -395,7 +412,24 @@ impl Context {
                             Err(pos) => {
                                 weights.insert(pos, new_weight);
 
-                                // FIXME compare pre-sets and post-sets, and return Some if equal
+                                if pos > 0 {
+                                    if let Some(old_weight) = weights.get(pos - 1) {
+                                        if old_weight.pre_set == pre_set_id
+                                            && old_weight.post_set == post_set_id
+                                        {
+                                            return Ok(Some(old_weight.weight))
+                                        }
+                                    }
+                                }
+
+                                if let Some(old_weight) = weights.get(pos + 1) {
+                                    if old_weight.pre_set == pre_set_id
+                                        && old_weight.post_set == post_set_id
+                                    {
+                                        return Ok(Some(old_weight.weight))
+                                    }
+                                }
+
                                 Ok(None)
                             }
                         }

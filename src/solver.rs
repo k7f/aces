@@ -596,13 +596,15 @@ impl Solution {
         }
 
         fork_set.extend(fork_map.into_iter().map(|(host, suit)| {
-            let mut fork = Harc::new_fork_unchecked(host, suit);
-            solution.context.lock().unwrap().share_fork(&mut fork)
+            Harc::new_fork_unchecked(&solution.context, host, suit)
+            // let mut fork = Harc::new_fork_unchecked(host, suit);
+            // solution.context.lock().unwrap().share_fork(&mut fork)
         }));
 
         join_set.extend(join_map.into_iter().map(|(host, suit)| {
-            let mut join = Harc::new_join_unchecked(host, suit);
-            solution.context.lock().unwrap().share_join(&mut join)
+            Harc::new_join_unchecked(&solution.context, host, suit)
+            // let mut join = Harc::new_join_unchecked(host, suit);
+            // solution.context.lock().unwrap().share_join(&mut join)
         }));
 
         solution.pre_set.extend(pre_set.into_iter());

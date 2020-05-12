@@ -1,10 +1,10 @@
 use std::{
     fmt, hash,
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, HashMap},
 };
 use crate::{
-    Face, AnyId, NodeId, Context, Contextual, ExclusivelyContextual, InContext, AcesError,
-    AcesErrorKind, sat,
+    Face, AnyId, NodeId, Context, ContextHandle, Contextual, ExclusivelyContextual, InContext,
+    AcesError, AcesErrorKind, sat,
     node::{NodeSet, NodeSetId},
 };
 
@@ -289,6 +289,28 @@ impl AtomSpace {
         join.atom_id = Some(atom_id);
 
         JoinId(atom_id)
+    }
+
+    pub(crate) fn share_fork_from_host_and_suit(
+        &mut self,
+        host_id: NodeId,
+        mut suit: NodeSet,
+    ) -> ForkId {
+        let suit_id = self.share_node_set(&mut suit);
+        let mut fork = Harc::new(Face::Tx, host_id, suit_id);
+
+        self.share_fork(&mut fork)
+    }
+
+    pub(crate) fn share_join_from_host_and_suit(
+        &mut self,
+        host_id: NodeId,
+        mut suit: NodeSet,
+    ) -> JoinId {
+        let suit_id = self.share_node_set(&mut suit);
+        let mut join = Harc::new(Face::Rx, host_id, suit_id);
+
+        self.share_join(&mut join)
     }
 
     #[inline]
@@ -670,61 +692,39 @@ impl ExclusivelyContextual for Link {
 /// effects.
 #[derive(Clone, Eq)]
 pub struct Harc {
-    atom_id:  Option<AtomId>,
-    face:     Face,
-    host_id:  NodeId,
-    suit_ids: Vec<NodeId>,
+    atom_id: Option<AtomId>,
+    face:    Face,
+    host_id: NodeId,
+    suit_id: NodeSetId,
 }
 
 impl Harc {
-    fn new_unchecked(face: Face, host_id: NodeId, suit_ids: Vec<NodeId>) -> Self {
-        if cfg!(debug_assertions) {
-            let mut sit = suit_ids.iter();
-
-            if let Some(nid) = sit.next() {
-                let mut prev_nid = *nid;
-
-                for &nid in sit {
-                    assert!(prev_nid < nid, "Unordered suit");
-                    prev_nid = nid;
-                }
-            } else {
-                panic!("Empty suit")
-            }
-        }
-        Harc { atom_id: None, face, host_id, suit_ids }
+    pub(crate) fn new(face: Face, host_id: NodeId, suit_id: NodeSetId) -> Self {
+        Harc { atom_id: None, face, host_id, suit_id }
     }
 
     /// [`Fork`]'s constructor.
     ///
     /// See also  [`Harc::new_fork_unchecked()`].
-    pub fn new_fork<I>(host_id: NodeId, suit_ids: I) -> Self
+    pub fn new_fork<I>(ctx: &ContextHandle, host_id: NodeId, suit_ids: I) -> ForkId
     where
         I: IntoIterator<Item = NodeId>,
     {
-        let suit_ids: BTreeSet<_> = suit_ids.into_iter().collect();
-
-        if suit_ids.is_empty() {
-            // FIXME
-        }
-
-        Self::new_fork_unchecked(host_id, suit_ids)
+        let suit = NodeSet::new(suit_ids);
+        trace!("New fork: {:?} -> {:?}", host_id, suit);
+        ctx.lock().unwrap().share_fork_from_host_and_suit(host_id, suit)
     }
 
     /// [`Join`]'s constructor.
     ///
     /// See also  [`Harc::new_join_unchecked()`].
-    pub fn new_join<I>(host_id: NodeId, suit_ids: I) -> Self
+    pub fn new_join<I>(ctx: &ContextHandle, host_id: NodeId, suit_ids: I) -> JoinId
     where
         I: IntoIterator<Item = NodeId>,
     {
-        let suit_ids: BTreeSet<_> = suit_ids.into_iter().collect();
-
-        if suit_ids.is_empty() {
-            // FIXME
-        }
-
-        Self::new_join_unchecked(host_id, suit_ids)
+        let suit = NodeSet::new(suit_ids);
+        trace!("New join: {:?} <- {:?}", host_id, suit);
+        ctx.lock().unwrap().share_join_from_host_and_suit(host_id, suit)
     }
 
     /// A more efficient variant of [`Harc::new_fork()`].
@@ -734,13 +734,14 @@ impl Harc {
     /// caller fails to provide an ordered suit, the library may panic
     /// in some other call (the constructor itself panics immediately
     /// in debug mode).
-    pub fn new_fork_unchecked<I>(host_id: NodeId, suit_ids: I) -> Self
+    #[inline]
+    pub fn new_fork_unchecked<I>(ctx: &ContextHandle, host_id: NodeId, suit_ids: I) -> ForkId
     where
         I: IntoIterator<Item = NodeId>,
     {
-        let suit_ids: Vec<_> = suit_ids.into_iter().collect();
-        trace!("New fork: {:?} -> {:?}", host_id, suit_ids);
-        Harc::new_unchecked(Face::Tx, host_id, suit_ids)
+        let suit = NodeSet::new_unchecked(suit_ids);
+        trace!("New fork: {:?} -> {:?}", host_id, suit);
+        ctx.lock().unwrap().share_fork_from_host_and_suit(host_id, suit)
     }
 
     /// A more efficient variant of [`Harc::new_join()`].
@@ -750,13 +751,14 @@ impl Harc {
     /// caller fails to provide an ordered suit, the library may panic
     /// in some other call (the constructor itself panics immediately
     /// in debug mode).
-    pub fn new_join_unchecked<I>(host_id: NodeId, suit_ids: I) -> Self
+    #[inline]
+    pub fn new_join_unchecked<I>(ctx: &ContextHandle, host_id: NodeId, suit_ids: I) -> JoinId
     where
         I: IntoIterator<Item = NodeId>,
     {
-        let suit_ids: Vec<_> = suit_ids.into_iter().collect();
-        trace!("New join: {:?} <- {:?}", host_id, suit_ids);
-        Harc::new_unchecked(Face::Rx, host_id, suit_ids)
+        let suit = NodeSet::new_unchecked(suit_ids);
+        trace!("New join: {:?} <- {:?}", host_id, suit);
+        ctx.lock().unwrap().share_join_from_host_and_suit(host_id, suit)
     }
 
     #[inline]
@@ -794,8 +796,8 @@ impl Harc {
     }
 
     #[inline]
-    pub fn get_suit_ids(&self) -> &[NodeId] {
-        self.suit_ids.as_slice()
+    pub fn get_suit_id(&self) -> NodeSetId {
+        self.suit_id
     }
 }
 
@@ -812,8 +814,8 @@ impl fmt::Debug for Harc {
         self.atom_id.fmt(f)?;
         write!(f, ", host_id: ")?;
         self.host_id.fmt(f)?;
-        write!(f, ", suit_ids: ")?;
-        self.suit_ids.fmt(f)?;
+        write!(f, ", suit_id: ")?;
+        self.suit_id.fmt(f)?;
         write!(f, " }}")
     }
 }
@@ -821,7 +823,7 @@ impl fmt::Debug for Harc {
 impl PartialEq for Harc {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.face == other.face && self.host_id == other.host_id && self.suit_ids == other.suit_ids
+        self.face == other.face && self.host_id == other.host_id && self.suit_id == other.suit_id
     }
 }
 
@@ -830,7 +832,7 @@ impl hash::Hash for Harc {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.face.hash(state);
         self.host_id.hash(state);
-        self.suit_ids.hash(state);
+        self.suit_id.hash(state);
     }
 }
 
@@ -841,8 +843,12 @@ impl ExclusivelyContextual for Harc {
             Face::Rx => AcesError::from(AcesErrorKind::NodeMissingForJoin(Face::Rx)),
         })?;
 
-        let suit_names: Result<Vec<_>, AcesError> = self
-            .suit_ids
+        let suit = ctx
+            .get_node_set(self.suit_id)
+            .ok_or_else(|| AcesError::from(AcesErrorKind::NodeSetMissingForId(self.suit_id)))?;
+
+        let suit_names: Result<Vec<_>, AcesError> = suit
+            .get_node_ids()
             .iter()
             .map(|&node_id| {
                 ctx.get_node_name(node_id).ok_or(match self.face {
@@ -935,10 +941,11 @@ mod tests {
         Port::new(Face::Tx, NodeId(unsafe { AnyId::new_unchecked(id) }))
     }
 
-    fn new_fork(host_id: usize, suit_size: usize) -> Fork {
+    fn new_fork(atoms: &mut AtomSpace, host_id: usize, suit_size: usize) -> ForkId {
         let suit_ids = (host_id + 1..=host_id + suit_size)
             .map(|id| NodeId(unsafe { AnyId::new_unchecked(id) }));
-        Harc::new_fork(NodeId(unsafe { AnyId::new_unchecked(host_id) }), suit_ids)
+        let suit = NodeSet::new(suit_ids);
+        atoms.share_fork_from_host_and_suit(NodeId(unsafe { AnyId::new_unchecked(host_id) }), suit)
     }
 
     fn new_node_set(first_id: usize, size: usize) -> NodeSet {
@@ -983,11 +990,9 @@ mod tests {
     #[test]
     fn test_fork_resharing() {
         let mut atoms = AtomSpace::default();
-        let a1 = Atom::Fork(new_fork(1, 2));
-        let a1_id = atoms.do_share_atom(a1);
-        let a2 = Atom::Fork(new_fork(1, 2));
-        let a2_id = atoms.do_share_atom(a2);
-        assert_eq!(a1_id, a2_id);
+        let f1_id = new_fork(&mut atoms, 1, 2);
+        let f2_id = new_fork(&mut atoms, 1, 2);
+        assert_eq!(f1_id, f2_id);
     }
 
     #[test]

@@ -200,7 +200,12 @@ impl CEStructure {
                             Face::Tx => ctx.get_join(sid.into()),
                             Face::Rx => ctx.get_fork(sid.into()),
                         } {
-                            if harc.get_suit_ids().binary_search(&node_id).is_ok() {
+                            let suit_id = harc.get_suit_id();
+                            let suit = ctx.get_node_set(suit_id).ok_or_else(|| {
+                                AcesError::from(AcesErrorKind::NodeSetMissingForId(suit_id))
+                            })?;
+
+                            if suit.get_node_ids().binary_search(&node_id).is_ok() {
                                 co_harcs.push(sid);
                             }
                         }
@@ -215,12 +220,18 @@ impl CEStructure {
 
             let harc_id: AtomId = match face {
                 Face::Tx => {
-                    let mut fork = Harc::new_fork_unchecked(node_id, co_node_map.keys().copied());
-                    self.context.lock().unwrap().share_fork(&mut fork).into()
+                    Harc::new_fork_unchecked(&self.context, node_id, co_node_map.keys().copied())
+                        .into()
+                    // let ctx = self.context.lock().unwrap();
+                    // let mut fork = Harc::new_fork_unchecked(ctx, node_id, co_node_map.keys().copied());
+                    // ctx.share_fork(&mut fork).into()
                 }
                 Face::Rx => {
-                    let mut join = Harc::new_join_unchecked(node_id, co_node_map.keys().copied());
-                    self.context.lock().unwrap().share_join(&mut join).into()
+                    Harc::new_join_unchecked(&self.context, node_id, co_node_map.keys().copied())
+                        .into()
+                    // let ctx = self.context.lock().unwrap();
+                    // let mut join = Harc::new_join_unchecked(ctx, node_id, co_node_map.keys().copied());
+                    // ctx.share_join(&mut join).into()
                 }
             };
 
