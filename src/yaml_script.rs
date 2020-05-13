@@ -343,26 +343,32 @@ impl YamlContent {
 }
 
 impl Content for YamlContent {
+    #[inline]
     fn get_script(&self) -> Option<&str> {
         None // FIXME
     }
 
+    #[inline]
     fn get_name(&self) -> Option<&str> {
-        if let Some(ref name) = self.name {
-            Some(name.as_ref())
-        } else {
-            None
-        }
+        self.name.as_deref()
     }
 
+    #[inline]
+    fn is_module(&self) -> bool {
+        false
+    }
+
+    #[inline]
     fn get_carrier_ids(&mut self) -> Vec<NodeId> {
         self.content.get_carrier_ids()
     }
 
+    #[inline]
     fn get_causes_by_id(&self, id: NodeId) -> Option<&Vec<Vec<NodeId>>> {
         self.content.get_causes_by_id(id)
     }
 
+    #[inline]
     fn get_effects_by_id(&self, id: NodeId) -> Option<&Vec<Vec<NodeId>>> {
         self.content.get_effects_by_id(id)
     }
@@ -398,6 +404,7 @@ impl ContentFormat for YamlFormat {
         &self,
         ctx: &ContextHandle,
         script: &str,
+        _root_name: Option<&str>,
     ) -> Result<Box<dyn Content>, Box<dyn Error>> {
         YamlContent::from_str(ctx, script).map(Into::into).map_err(Into::into)
     }

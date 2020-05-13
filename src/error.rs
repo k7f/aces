@@ -38,6 +38,8 @@ pub enum AcesErrorKind {
     ParseIntError(num::ParseIntError),
     ParseFloatError(num::ParseFloatError),
 
+    ModuleSolving,
+    EmptySolving,
     EmptyClauseRejectedByFormula(String),
     EmptyClauseRejectedBySolver(String),
     EmptyCausesOfInternalNode(String),
@@ -149,6 +151,8 @@ impl fmt::Display for AcesErrorKind {
             ParseIntError(err) => err.fmt(f),
             ParseFloatError(err) => err.fmt(f),
 
+            ModuleSolving => write!(f, "Attempt to solve a module"),
+            EmptySolving => write!(f, "Attempt to solve an empty structure"),
             EmptyClauseRejectedByFormula(name) => {
                 write!(f, "Empty {} clause rejected by formula", name)
             }

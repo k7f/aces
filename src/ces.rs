@@ -432,7 +432,7 @@ impl CEStructure {
 
         for format in formats {
             if format.script_is_acceptable(script) {
-                let content = format.script_to_content(&self.context, script)?;
+                let content = format.script_to_content(&self.context, script, Some("Main"))?;
 
                 return self.add_from_content(content).map(|_| format.clone()).map_err(Into::into)
             }
@@ -556,12 +556,14 @@ impl CEStructure {
         &self.context
     }
 
+    #[inline]
     pub fn get_name(&self) -> Option<&str> {
-        if let Some(content) = self.content.first() {
-            content.get_name()
-        } else {
-            None
-        }
+        self.content.iter().find_map(|c| c.get_name())
+    }
+
+    #[inline]
+    pub fn is_module(&self) -> bool {
+        self.content.iter().all(|c| c.is_module())
     }
 
     /// Returns link coherence status indicating whether this object
@@ -572,6 +574,7 @@ impl CEStructure {
     /// not in both.  Internally, there is a thin links counter
     /// associated with each `CEStructure` object.  This counter is
     /// updated whenever a polynomial is added to the structure.
+    #[inline]
     pub fn is_coherent(&self) -> bool {
         self.num_thin_links == 0
     }
@@ -732,7 +735,11 @@ impl CEStructure {
     }
 
     pub fn solve(&mut self) -> Result<(), AcesError> {
-        if let Err(err) = self.check_coherence() {
+        if self.is_module() {
+            Err(AcesErrorKind::ModuleSolving.with_context(&self.context))
+        } else if self.carrier.is_empty() {
+            Err(AcesErrorKind::EmptySolving.with_context(&self.context))
+        } else if let Err(err) = self.check_coherence() {
             self.resolution = Resolution::Incoherent;
 
             Err(err)

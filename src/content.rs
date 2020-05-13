@@ -39,6 +39,7 @@ pub trait ContentFormat: fmt::Debug {
         &self,
         cxt: &ContextHandle,
         script: &str,
+        root_name: Option<&str>,
     ) -> Result<Box<dyn Content>, Box<dyn Error>>;
 }
 
@@ -64,6 +65,7 @@ impl ContentFormat for InteractiveFormat {
         &self,
         _cxt: &ContextHandle,
         _script: &str,
+        _root_name: Option<&str>,
     ) -> Result<Box<dyn Content>, Box<dyn Error>> {
         panic!("Attempt to bypass a script acceptance test.")
     }
@@ -87,6 +89,7 @@ pub trait Content: fmt::Debug {
     /// YAML-formatted string or _Ascesis_ source.
     fn get_script(&self) -> Option<&str>;
     fn get_name(&self) -> Option<&str>;
+    fn is_module(&self) -> bool;
     fn get_carrier_ids(&mut self) -> Vec<NodeId>;
     fn get_causes_by_id(&self, id: NodeId) -> Option<&Vec<Vec<NodeId>>>;
     fn get_effects_by_id(&self, id: NodeId) -> Option<&Vec<Vec<NodeId>>>;
@@ -98,6 +101,10 @@ impl Content for String {
     }
 
     fn get_name(&self) -> Option<&str> {
+        panic!("Attempt to access a phantom content.")
+    }
+
+    fn is_module(&self) -> bool {
         panic!("Attempt to access a phantom content.")
     }
 
@@ -330,12 +337,19 @@ impl MulAssign for PartialContent {
 }
 
 impl Content for PartialContent {
+    #[inline]
     fn get_script(&self) -> Option<&str> {
         None
     }
 
+    #[inline]
     fn get_name(&self) -> Option<&str> {
         None
+    }
+
+    #[inline]
+    fn is_module(&self) -> bool {
+        false
     }
 
     fn get_carrier_ids(&mut self) -> Vec<NodeId> {
@@ -343,10 +357,12 @@ impl Content for PartialContent {
         self.carrier.as_owned_content()
     }
 
+    #[inline]
     fn get_causes_by_id(&self, id: NodeId) -> Option<&Vec<Vec<NodeId>>> {
         self.causes.content.get(&id).map(|poly| poly.as_content())
     }
 
+    #[inline]
     fn get_effects_by_id(&self, id: NodeId) -> Option<&Vec<Vec<NodeId>>> {
         self.effects.content.get(&id).map(|poly| poly.as_content())
     }
