@@ -1,10 +1,60 @@
+//! A common representation of node capacities, weight labels and
+//! state.
+//!
+//! # Three types of weight labeling
+//!
+//! The implementation supports three different ways of
+//! weight-labeling of c-e structures.  The purpose of all three is to
+//! attach weights to arcs of core graphs, i.e. to monomial causes and
+//! effects of nodes in firing components.
+//!
+//! * Core-weight: individual weight label explicitly attached to an
+//!   arc of a specific [core graph](../index.html#core-graph).
+//!
+//! * Shell-weight: generic weight attached to an arc of a [shell
+//!   graph](../index.html#shell-graph).
+//!
+//! * Flow-weight: generic weight of monomial causes or effects of a
+//!   node.
+//!
+//!   Flow-weights represent the weight labeling used in the standard
+//!   notation for polynomials.  Implementation-wise, they are
+//!   attached to elements of a [flow set](../index.html#flow-set)
+//!   (forks and joins) and inherited by core-weights of all
+//!   corresponding arcs of the induced core graph.
+//!
+//!   Note that, in general, fork (join) suits are contained in, not
+//!   equal to, post-sets (pre-sets) of the corresponding [core
+//!   sets](../index.html#core-set).
+//!
+//! # Behavior
+//!
+//! A finite weight of a node _x_ occurring in the pre-set of a
+//! transaction _t_ indicates the number of tokens to take out of node
+//! _x_ if transaction _t_ fires.  A finite weight of a node _x_
+//! occurring in the post-set of a transaction _t_ indicates the
+//! number of tokens to put into node _x_ if transaction _t_ fires.
+//!
+//! The finite positive weights also imply constraints a state must
+//! satisfy for a transaction to fire: the minimal number of tokens to
+//! be supplied by pre-set nodes, so that token transfer may happen,
+//! and the maximal number of tokens in post-set nodes, so that node
+//! capacities aren't exceeded.
+//!
+//! If weight zero is attached to a pre-set node _x_ of a transaction
+//! _t_, then tokens aren't taken out of _x_ when _t_ fires.  However,
+//! transaction _t_ never fires, unless there is a token in node _x_.
+//! Another special case is the _&omega;_ (infinite) weight attached
+//! to a pre-set node, which indicates that the presence of a token in
+//! that node inhibits firing.
+
 use std::{
     str::FromStr,
     fmt::{self, Write},
 };
-use crate::{AtomId, Context, ExclusivelyContextual, AcesError, AcesErrorKind, node::NodeSetId};
+use crate::{FlowSetId, Context, ExclusivelyContextual, AcesError, AcesErrorKind, node::NodeSetId};
 
-/// A scalar type common for node capacity, harc weight and state.
+/// A scalar type common for node capacity, weight labels and state.
 ///
 /// Valid multiplicities are nonnegative integers or _&omega;_.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -169,87 +219,61 @@ impl FromStr for Multiplicity {
 /// capacities.
 pub type Capacity = Multiplicity;
 
-/// Multiplicity of node in a firing component.
+/// Multiplicity of a node's monomial cause or effect in a firing
+/// component.
 ///
-/// A finite weight of node occurring in the pre-set of a transaction
-/// indicates the number of tokens to take out of that node if a
-/// transaction fires.  A finite weight of a node occurring in the
-/// post-set of a transaction indicates the number of tokens to put
-/// into that node if a transaction fires.
+/// This type is used in the representation of the three types of
+/// weight labeling.  The implementation stores flow-weight labeling
+/// in the variable [`Context::flow_weights`] which maps harcs to
+/// [`Weight`]s.  See also [`CoreWeight`] and [`ShellWeight`] for the
+/// other two weight labelings.
 ///
-/// The finite positive weights imply constraints a state must satisfy
-/// for a transaction to fire: a minimal number of tokens to be
-/// supplied by pre-set nodes, so that token transfer may happen, and
-/// a maximal number of tokens in post-set nodes, so that node
-/// capacities aren't exceeded.
-///
-/// If weight zero is attached to a pre-set node, then tokens aren't
-/// taken out when a transaction fires.  However, a transaction never
-/// fires, unless there is a token in that node.  Another special case
-/// is the _&omega;_ weight attached to a pre-set node, which
-/// indicates that the presence of a token in that node inhibits
-/// firing.
+/// [`Context::flow_weights`]: crate::Context::flow_weights
 pub type Weight = Multiplicity;
 
-/// Generic weight of monomial causes or effects of a node.
+/// Explicit weight attached to an arc of a specific core graph.
 ///
-/// `HyperWeight`s represent the weight labeling used in standard
-/// notation for polynomials.  Conceptually, they are attached to arcs
-/// of a BF-hypergraph (hyperarcs _aka_ harcs), and inherited by all
-/// corresponding arcs of the induced flow relation.  Note that, in
-/// general, hyperarc nodesets are contained in (not equal to)
-/// pre-sets or post-sets of corresponding transitions.
+/// The implementation stores core-weight labeling in the variable
+/// [`Context::core_weights`] which maps nodes to sets of
+/// [`CoreWeight`]s.  See also [`ShellWeight`].
 ///
-/// The implementation stores generic weights in the variable
-/// [`Context::hyper_weights`] which maps harcs to [`Weight`]s.  See
-/// also [`FlowWeight`].
-///
-/// [`Context::hyper_weights`]: crate::Context::hyper_weights
+/// [`Context::core_weights`]: crate::Context::core_weights
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct HyperWeight {
-    pub(crate) harc_id: AtomId,
-    pub(crate) weight:  Weight,
+pub struct CoreWeight {
+    pub(crate) flow_set: FlowSetId,
+    pub(crate) weight:   Weight,
 }
 
-impl HyperWeight {
+impl CoreWeight {
     #[inline]
-    pub fn new(harc_id: AtomId, weight: Weight) -> Self {
-        HyperWeight { harc_id, weight }
+    pub fn new(flow_set: FlowSetId, weight: Weight) -> Self {
+        CoreWeight { flow_set, weight }
     }
 }
 
-/// Explicit weight attached to an arc of a flow relation.
+impl ExclusivelyContextual for CoreWeight {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
+        Ok(format!("{}:{}", self.weight, self.flow_set.format_locked(ctx)?,))
+    }
+}
+
+/// Generic weight attached to an arc of a shell graph.
 ///
-/// Flow relation is a bipartite digraph of nodes and transitions.
-/// This type represents a pair _(transition, weight)_ as a triple
-/// _(pre-set, post-set, weight)_.
+/// The implementation stores shell-weight labeling in the variable
+/// [`Context::shell_weights`] which maps nodes to sets of
+/// `ShellWeight`s.  See also [`CoreWeight`].
 ///
-/// The implementation stores directly specified weights of individual
-/// arcs in the variable [`Context::flow_weights`] which maps nodes to
-/// sets of `FlowWeight`s.  See also [`HyperWeight`].
-///
-/// [`Context::flow_weights`]: crate::Context::flow_weights
+/// [`Context::shell_weights`]: crate::Context::shell_weights
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct FlowWeight {
+pub struct ShellWeight {
     pub(crate) pre_set:  NodeSetId,
     pub(crate) post_set: NodeSetId,
     pub(crate) weight:   Weight,
 }
 
-impl FlowWeight {
+impl ShellWeight {
     #[inline]
     pub fn new(pre_set: NodeSetId, post_set: NodeSetId, weight: Weight) -> Self {
-        FlowWeight { pre_set, post_set, weight }
-    }
-}
-
-impl ExclusivelyContextual for FlowWeight {
-    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
-        Ok(format!(
-            "{}:{}->{}",
-            self.weight,
-            self.pre_set.format_locked(ctx)?,
-            self.pre_set.format_locked(ctx)?
-        ))
+        ShellWeight { pre_set, post_set, weight }
     }
 }

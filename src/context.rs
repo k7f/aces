@@ -5,8 +5,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 use crate::{
-    PartialContent, Port, Link, Harc, Fork, Join, Face, NodeId, AtomId, PortId, LinkId, ForkId,
-    JoinId, Semantics, Capacity, Weight, FlowWeight, AcesError, AcesErrorKind,
+    PartialContent, Port, Link, Harc, Fork, Join, FlowSet, Face, NodeId, AtomId, PortId, LinkId,
+    ForkId, JoinId, FlowSetId, Semantics, Capacity, Weight, CoreWeight, ShellWeight, AcesError,
+    AcesErrorKind,
     node::{NodeSet, NodeSetId},
     name::{NameSpace, NameId},
     atom::{AtomSpace, Atom},
@@ -33,9 +34,9 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 ///
 /// This is an umbrella type which, currently, includes a collection
 /// of [`Atom`]s, two symbol tables (one for structure names, and
-/// another for node names), node capacities, hyper weights, flow
-/// weights, and [`PartialContent`] of any c-e structure created in
-/// this `Context`.
+/// another for node names), node capacities, core weights, shell
+/// weights, flow weights, and [`PartialContent`] of any c-e structure
+/// created in this `Context`.
 ///
 /// For usage, see [`ContextHandle`] type, [`Contextual`] trait and
 /// [`InContext`] struct.
@@ -50,8 +51,17 @@ pub struct Context {
     atoms:         AtomSpace,
     content:       BTreeMap<NameId, PartialContent>,
     capacities:    BTreeMap<NodeId, Capacity>,
-    hyper_weights: BTreeMap<AtomId, Weight>,
-    flow_weights:  BTreeMap<NodeId, Vec<FlowWeight>>,
+    core_weights:  BTreeMap<NodeId, Vec<CoreWeight>>,
+    shell_weights: BTreeMap<NodeId, Vec<ShellWeight>>,
+    /// Generic weights of monomial causes or effects of a node.
+    ///
+    /// Flow-weights represent the weight labeling used in the standard
+    /// notation for polynomials.  Conceptually, they are attached to
+    /// elements of a flow set (harcs) and inherited by all corresponding
+    /// arcs of the induced core graph.  Note that, in general, fork
+    /// (join) suits are contained in, not equal to, post-sets (pre-sets)
+    /// of the corresponding core sets.
+    flow_weights:  BTreeMap<AtomId, Weight>,
     solver_props:  solver::Props,
     runner_props:  runner::Props,
     vis_props:     vis::Props,
@@ -77,7 +87,8 @@ impl Context {
             atoms: Default::default(),
             content: Default::default(),
             capacities: Default::default(),
-            hyper_weights: Default::default(),
+            core_weights: Default::default(),
+            shell_weights: Default::default(),
             flow_weights: Default::default(),
             solver_props: Default::default(),
             runner_props: Default::default(),
@@ -97,7 +108,8 @@ impl Context {
         // Fields unchanged: magic_id, name_id, globals, nodes, atoms.
         self.content.clear();
         self.capacities.clear();
-        self.hyper_weights.clear();
+        self.core_weights.clear();
+        self.shell_weights.clear();
         self.flow_weights.clear();
         self.solver_props.clear();
         self.runner_props.clear();
@@ -124,7 +136,8 @@ impl Context {
             let atoms = parent.atoms.clone();
             let content = parent.content.clone();
             let capacities = parent.capacities.clone();
-            let hyper_weights = parent.hyper_weights.clone();
+            let core_weights = parent.core_weights.clone();
+            let shell_weights = parent.shell_weights.clone();
             let flow_weights = parent.flow_weights.clone();
             let solver_props = parent.solver_props.clone();
             let runner_props = parent.runner_props.clone();
@@ -138,7 +151,8 @@ impl Context {
                 atoms,
                 content,
                 capacities,
-                hyper_weights,
+                core_weights,
+                shell_weights,
                 flow_weights,
                 solver_props,
                 runner_props,
@@ -257,8 +271,13 @@ impl Context {
     }
 
     #[inline]
-    pub fn share_node_set(&mut self, mono: &mut NodeSet) -> NodeSetId {
-        self.atoms.share_node_set(mono)
+    pub fn share_node_set(&mut self, suit: &mut NodeSet) -> NodeSetId {
+        self.atoms.share_node_set(suit)
+    }
+
+    #[inline]
+    pub fn share_flow_set(&mut self, flow: &mut FlowSet) -> FlowSetId {
+        self.atoms.share_flow_set(flow)
     }
 
     #[inline]
@@ -287,8 +306,13 @@ impl Context {
     }
 
     #[inline]
-    pub fn get_node_set(&self, mono_id: NodeSetId) -> Option<&NodeSet> {
-        self.atoms.get_node_set(mono_id)
+    pub fn get_node_set(&self, suit_id: NodeSetId) -> Option<&NodeSet> {
+        self.atoms.get_node_set(suit_id)
+    }
+
+    #[inline]
+    pub fn get_flow_set(&self, flow_set_id: FlowSetId) -> Option<&FlowSet> {
+        self.atoms.get_flow_set(flow_set_id)
     }
 
     #[inline]
@@ -335,7 +359,7 @@ impl Context {
 
     // Weights
 
-    pub fn set_hyper_weight_by_names<S, I>(
+    pub fn set_flow_weight_by_names<S, I>(
         &mut self,
         face: Face,
         host_name: S,
@@ -356,7 +380,7 @@ impl Context {
             Face::Rx => self.share_join_from_host_and_suit(host_id, suit).get(),
         };
 
-        self.hyper_weights.insert(atom_id, weight)
+        self.flow_weights.insert(atom_id, weight)
     }
 
     /// Attach a given `weight` to a node specified by `host_name` and
@@ -367,7 +391,7 @@ impl Context {
     /// been attached to the same node and transition, or the lowest
     /// weight that has already been attached to the same node and
     /// transition, or `None` if no weight has been attached so far.
-    pub fn set_flow_weight_by_names<S, I, J>(
+    pub fn set_shell_weight_by_names<S, I, J>(
         &mut self,
         face: Face,
         host_name: S,
@@ -402,10 +426,10 @@ impl Context {
                 let mut post_set = NodeSet::new_unchecked(post_set);
                 let post_set_id = self.share_node_set(&mut post_set);
 
-                match self.flow_weights.entry(host_id) {
+                match self.shell_weights.entry(host_id) {
                     btree_map::Entry::Occupied(entry) => {
                         let weights = entry.into_mut();
-                        let new_weight = FlowWeight::new(pre_set_id, post_set_id, weight);
+                        let new_weight = ShellWeight::new(pre_set_id, post_set_id, weight);
 
                         match weights.binary_search(&new_weight) {
                             Ok(_) => Ok(Some(weight)),
@@ -435,7 +459,7 @@ impl Context {
                         }
                     }
                     btree_map::Entry::Vacant(entry) => {
-                        let new_weight = FlowWeight::new(pre_set_id, post_set_id, weight);
+                        let new_weight = ShellWeight::new(pre_set_id, post_set_id, weight);
 
                         entry.insert(vec![new_weight]);
 
@@ -451,7 +475,7 @@ impl Context {
     }
 
     #[inline]
-    pub fn set_hyper_inhibitor_by_names<S, I>(
+    pub fn set_flow_inhibitor_by_names<S, I>(
         &mut self,
         face: Face,
         host_name: S,
@@ -462,11 +486,11 @@ impl Context {
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        self.set_hyper_weight_by_names(face, host_name, suit_names, Weight::omega())
+        self.set_flow_weight_by_names(face, host_name, suit_names, Weight::omega())
     }
 
     #[inline]
-    pub fn set_hyper_holder_by_names<S, I>(
+    pub fn set_flow_activator_by_names<S, I>(
         &mut self,
         face: Face,
         host_name: S,
@@ -477,7 +501,7 @@ impl Context {
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        self.set_hyper_weight_by_names(face, host_name, suit_names, Weight::zero())
+        self.set_flow_weight_by_names(face, host_name, suit_names, Weight::zero())
     }
 
     pub fn get_weight(
@@ -486,19 +510,19 @@ impl Context {
         pre_set_id: NodeSetId,
         post_set_id: NodeSetId,
     ) -> Result<Weight, AcesError> {
-        if let Some(weight) = self.hyper_weights.get(&atom_id) {
+        if let Some(weight) = self.flow_weights.get(&atom_id) {
             Ok(*weight)
         } else if let Some(harc) = self.get_harc(atom_id) {
             let node_id = harc.get_host_id();
-            let mut test_weight = FlowWeight::new(pre_set_id, post_set_id, Weight::zero());
+            let mut test_weight = ShellWeight::new(pre_set_id, post_set_id, Weight::zero());
 
-            if let Some(weights) = self.flow_weights.get(&node_id) {
+            if let Some(weights) = self.shell_weights.get(&node_id) {
                 match weights.binary_search(&test_weight) {
                     Ok(_) => Ok(test_weight.weight),
                     Err(pos) => {
-                        if let Some(flow_weight) = weights.get(pos) {
-                            test_weight.weight = flow_weight.weight;
-                            if test_weight == *flow_weight {
+                        if let Some(shell_weight) = weights.get(pos) {
+                            test_weight.weight = shell_weight.weight;
+                            if test_weight == *shell_weight {
                                 Ok(test_weight.weight)
                             } else {
                                 Ok(Weight::one())

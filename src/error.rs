@@ -1,7 +1,7 @@
 use std::{num, fmt, error::Error};
 use crate::{
-    ContextHandle, Contextual, Face, NodeId, AtomId, PortId, LinkId, ForkId, JoinId, Multiplicity,
-    Capacity, node::NodeSetId,
+    ContextHandle, Contextual, Face, NodeId, AtomId, PortId, LinkId, ForkId, JoinId, FlowSetId,
+    Multiplicity, Capacity, node::NodeSetId,
 };
 
 #[derive(Clone, Debug)]
@@ -18,6 +18,7 @@ pub enum AcesErrorKind {
     ForkMissingForId(ForkId),
     JoinMissingForId(JoinId),
     NodeSetMissingForId(NodeSetId),
+    FlowSetMissingForId(FlowSetId),
     BottomAtomAccess,
     AtomicsNotOrdered,
 
@@ -45,6 +46,7 @@ pub enum AcesErrorKind {
     EmptyCausesOfInternalNode(String),
     EmptyEffectsOfInternalNode(String),
     NodeSetUsedAsSATLiteral(NodeSetId),
+    FlowSetUsedAsSATLiteral(FlowSetId),
 
     UnlistedAtomicInMonomial,
     IncoherencyLeak,
@@ -71,7 +73,8 @@ impl fmt::Display for AcesErrorKind {
             HarcMissingForId(harc_id) => write!(f, "There is no harc with {:?}", harc_id),
             ForkMissingForId(fork_id) => write!(f, "There is no fork with {:?}", fork_id),
             JoinMissingForId(join_id) => write!(f, "There is no join with {:?}", join_id),
-            NodeSetMissingForId(mono_id) => write!(f, "There is no node set with {:?}", mono_id),
+            NodeSetMissingForId(suit_id) => write!(f, "There is no node set with {:?}", suit_id),
+            FlowSetMissingForId(flow_id) => write!(f, "There is no flow set with {:?}", flow_id),
             BottomAtomAccess => write!(f, "Attempt to access the bottom atom"),
             AtomicsNotOrdered => write!(f, "Atomics have to be given in strictly increasing order"),
 
@@ -165,7 +168,8 @@ impl fmt::Display for AcesErrorKind {
             EmptyEffectsOfInternalNode(name) => {
                 write!(f, "Empty effect polynomial of internal node '{}'", name)
             }
-            NodeSetUsedAsSATLiteral(mono_id) => write!(f, "{:?} used as SAT literal", mono_id),
+            NodeSetUsedAsSATLiteral(suit_id) => write!(f, "{:?} used as SAT literal", suit_id),
+            FlowSetUsedAsSATLiteral(flow_id) => write!(f, "{:?} used as SAT literal", flow_id),
 
             UnlistedAtomicInMonomial => write!(f, "Monomial contains an unlisted atomic"),
             IncoherencyLeak => write!(f, "Unexpected incoherence of a c-e structure"),

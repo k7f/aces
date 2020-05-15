@@ -1,6 +1,6 @@
 use std::{
     fmt, hash,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
 };
 use crate::{
     Face, AnyId, NodeId, Context, ContextHandle, Contextual, ExclusivelyContextual, InContext,
@@ -101,7 +101,7 @@ impl ExclusivelyContextual for LinkId {
 /// There is a trivial bijection between values of this type and
 /// numeric codes of DIMACS variables.  This mapping simplifies the
 /// construction of SAT queries and interpretation of solutions.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[repr(transparent)]
 pub struct ForkId(pub(crate) AtomId);
 
@@ -140,7 +140,7 @@ impl ExclusivelyContextual for ForkId {
 /// There is a trivial bijection between values of this type and
 /// numeric codes of DIMACS variables.  This mapping simplifies the
 /// construction of SAT queries and interpretation of solutions.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[repr(transparent)]
 pub struct JoinId(pub(crate) AtomId);
 
@@ -171,6 +171,41 @@ impl ExclusivelyContextual for JoinId {
             .get_join(*self)
             .ok_or_else(|| AcesError::from(AcesErrorKind::JoinMissingForId(*self)))?;
         join.format_locked(ctx)
+    }
+}
+
+/// An identifier of a [`FlowSet`], a type derived from [`AtomId`].
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[repr(transparent)]
+pub struct FlowSetId(pub(crate) AtomId);
+
+impl FlowSetId {
+    #[inline]
+    pub const fn get(self) -> AtomId {
+        self.0
+    }
+}
+
+impl From<AtomId> for FlowSetId {
+    #[inline]
+    fn from(id: AtomId) -> Self {
+        FlowSetId(id)
+    }
+}
+
+impl From<FlowSetId> for AtomId {
+    #[inline]
+    fn from(id: FlowSetId) -> Self {
+        id.0
+    }
+}
+
+impl ExclusivelyContextual for FlowSetId {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
+        let flow_set = ctx
+            .get_flow_set(*self)
+            .ok_or_else(|| AcesError::from(AcesErrorKind::FlowSetMissingForId(*self)))?;
+        flow_set.format_locked(ctx)
     }
 }
 
@@ -314,12 +349,21 @@ impl AtomSpace {
     }
 
     #[inline]
-    pub(crate) fn share_node_set(&mut self, mono: &mut NodeSet) -> NodeSetId {
-        let atom_id = self.do_share_atom(Atom::Mono(mono.clone()));
+    pub(crate) fn share_node_set(&mut self, suit: &mut NodeSet) -> NodeSetId {
+        let atom_id = self.do_share_atom(Atom::Suit(suit.clone()));
 
-        mono.atom_id = Some(atom_id);
+        suit.atom_id = Some(atom_id);
 
         NodeSetId(atom_id)
+    }
+
+    #[inline]
+    pub(crate) fn share_flow_set(&mut self, flow: &mut FlowSet) -> FlowSetId {
+        let atom_id = self.do_share_atom(Atom::Flow(flow.clone()));
+
+        flow.atom_id = Some(atom_id);
+
+        FlowSetId(atom_id)
     }
 
     #[inline]
@@ -418,15 +462,23 @@ impl AtomSpace {
     #[allow(dead_code)]
     pub(crate) fn is_node_set(&self, atom_id: AtomId) -> bool {
         match self.get_atom(atom_id) {
-            Some(Atom::Mono(_)) => true,
+            Some(Atom::Suit(_)) => true,
             _ => false,
         }
     }
 
     #[inline]
-    pub(crate) fn get_node_set(&self, mid: NodeSetId) -> Option<&NodeSet> {
-        match self.get_atom(mid.into()) {
-            Some(Atom::Mono(a)) => Some(a),
+    pub(crate) fn get_node_set(&self, sid: NodeSetId) -> Option<&NodeSet> {
+        match self.get_atom(sid.into()) {
+            Some(Atom::Suit(a)) => Some(a),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn get_flow_set(&self, fid: FlowSetId) -> Option<&FlowSet> {
+        match self.get_atom(fid.into()) {
+            Some(Atom::Flow(a)) => Some(a),
             _ => None,
         }
     }
@@ -464,7 +516,8 @@ pub(crate) enum Atom {
     Link(Link),
     Fork(Fork),
     Join(Join),
-    Mono(NodeSet),
+    Suit(NodeSet),
+    Flow(FlowSet),
     Bottom,
 }
 
@@ -478,7 +531,8 @@ impl Atom {
             Link(l) => &mut l.atom_id,
             Fork(f) => &mut f.atom_id,
             Join(j) => &mut j.atom_id,
-            Mono(m) => &mut m.atom_id,
+            Suit(s) => &mut s.atom_id,
+            Flow(f) => &mut f.atom_id,
             Bottom => panic!("Attempt to set identifier of the bottom atom"),
         };
 
@@ -498,7 +552,8 @@ impl Atom {
             Link(l) => l.atom_id,
             Fork(f) => f.atom_id,
             Join(j) => j.atom_id,
-            Mono(m) => m.atom_id,
+            Suit(s) => s.atom_id,
+            Flow(f) => f.atom_id,
             Bottom => panic!("Attempt to get identifier of the bottom atom"),
         }
     }
@@ -515,7 +570,8 @@ impl PartialEq for Atom {
             Link(l) => if let Link(o) = other { l == o } else { false },
             Fork(f) => if let Fork(o) = other { f == o } else { false },
             Join(j) => if let Join(o) = other { j == o } else { false },
-            Mono(m) => if let Mono(o) = other { m == o } else { false },
+            Suit(s) => if let Suit(o) = other { s == o } else { false },
+            Flow(f) => if let Flow(o) = other { f == o } else { false },
             Bottom => panic!("Attempt to access the bottom atom"),
         }
     }
@@ -530,7 +586,8 @@ impl hash::Hash for Atom {
             Link(l) => l.hash(state),
             Fork(f) => f.hash(state),
             Join(j) => j.hash(state),
-            Mono(m) => m.hash(state),
+            Suit(s) => s.hash(state),
+            Flow(f) => f.hash(state),
             Bottom => panic!("Attempt to access the bottom atom"),
         }
     }
@@ -683,13 +740,12 @@ impl ExclusivelyContextual for Link {
     }
 }
 
-/// A common type of one-to-many and many-to-one arcs of the
-/// BF-hypergraph representation of c-e structures.
+/// A common type of one-to-many and many-to-one arcs of the BF-graph
+/// representation of c-e structures.
 ///
 /// A hyperarc represents a monomial attached to a node.  There are
-/// two possible interpretations of a `Harc`: a [`Join`] is a B-arc
-/// which represents causes and a [`Fork`] is an F-arc representing
-/// effects.
+/// two variants of a `Harc`: a [`Join`] is a B-arc which represents
+/// causes and a [`Fork`] is an F-arc representing effects.
 #[derive(Clone, Eq)]
 pub struct Harc {
     atom_id: Option<AtomId>,
@@ -933,6 +989,145 @@ impl Atomic for JoinId {
     }
 }
 
+/// A set of forks and joins.
+///
+/// Represented as two ordered and deduplicated `Vec`s, one of
+/// [`ForkId`]s, and another of [`JoinId`]s.
+#[derive(Clone, Eq, Debug)]
+pub struct FlowSet {
+    pub(crate) atom_id:  Option<AtomId>,
+    pub(crate) fork_ids: Vec<ForkId>,
+    pub(crate) join_ids: Vec<JoinId>,
+}
+
+impl FlowSet {
+    /// [`FlowSet`] constructor.
+    ///
+    /// See also  [`FlowSet::new_unchecked()`].
+    pub fn new<I, J>(fork_ids: I, join_ids: J) -> Self
+    where
+        I: IntoIterator<Item = ForkId>,
+        J: IntoIterator<Item = JoinId>,
+    {
+        let fork_ids: BTreeSet<_> = fork_ids.into_iter().collect();
+        let join_ids: BTreeSet<_> = join_ids.into_iter().collect();
+
+        if fork_ids.is_empty() {
+            // FIXME
+        }
+
+        if join_ids.is_empty() {
+            // FIXME
+        }
+
+        Self::new_unchecked(fork_ids, join_ids)
+    }
+
+    /// A more efficient variant of [`FlowSet::new()`].
+    ///
+    /// Note: new [`FlowSet`] is created under the assumption that
+    /// `fork_ids` and `join_ids` are nonempty and listed in ascending
+    /// order.  If the caller fails to provide ordered sets of forks
+    /// and joins, the library may panic in some other call (the
+    /// constructor itself panics immediately in debug mode).
+    pub fn new_unchecked<I, J>(fork_ids: I, join_ids: J) -> Self
+    where
+        I: IntoIterator<Item = ForkId>,
+        J: IntoIterator<Item = JoinId>,
+    {
+        let fork_ids: Vec<_> = fork_ids.into_iter().collect();
+        let join_ids: Vec<_> = join_ids.into_iter().collect();
+        trace!("New flow set: {:?}->{:?}", fork_ids, join_ids);
+
+        if cfg!(debug_assertions) {
+            let mut fiter = fork_ids.iter();
+
+            if let Some(fid) = fiter.next() {
+                let mut prev_fid = *fid;
+
+                for &fid in fiter {
+                    assert!(prev_fid < fid, "Unordered set of forks");
+                    prev_fid = fid;
+                }
+            } else {
+                panic!("Empty set of forks")
+            }
+
+            let mut jiter = join_ids.iter();
+
+            if let Some(jid) = jiter.next() {
+                let mut prev_jid = *jid;
+
+                for &jid in jiter {
+                    assert!(prev_jid < jid, "Unordered set of joins");
+                    prev_jid = jid;
+                }
+            } else {
+                panic!("Empty set of joins")
+            }
+        }
+
+        FlowSet { atom_id: None, fork_ids, join_ids }
+    }
+
+    #[inline]
+    pub fn get_atom_id(&self) -> AtomId {
+        self.atom_id.expect("Attempt to access an uninitialized flow set")
+    }
+
+    #[inline]
+    pub fn get_id(&self) -> Option<FlowSetId> {
+        self.atom_id.map(FlowSetId)
+    }
+
+    #[inline]
+    pub fn get_fork_ids(&self) -> &[ForkId] {
+        self.fork_ids.as_slice()
+    }
+
+    #[inline]
+    pub fn get_join_ids(&self) -> &[JoinId] {
+        self.join_ids.as_slice()
+    }
+}
+
+impl PartialEq for FlowSet {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.fork_ids == other.fork_ids && self.join_ids == other.join_ids
+    }
+}
+
+impl hash::Hash for FlowSet {
+    #[inline]
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.fork_ids.hash(state);
+        self.join_ids.hash(state);
+    }
+}
+
+impl ExclusivelyContextual for FlowSet {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
+        let forks: Result<Vec<_>, AcesError> = self
+            .fork_ids
+            .iter()
+            .map(|&fork_id| {
+                ctx.get_fork(fork_id).ok_or_else(|| AcesErrorKind::ForkMissingForId(fork_id).into())
+            })
+            .collect();
+
+        let joins: Result<Vec<_>, AcesError> = self
+            .join_ids
+            .iter()
+            .map(|&join_id| {
+                ctx.get_join(join_id).ok_or_else(|| AcesErrorKind::JoinMissingForId(join_id).into())
+            })
+            .collect();
+
+        Ok(format!("({:?}->{:?})", forks?, joins?))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -996,12 +1191,12 @@ mod tests {
     }
 
     #[test]
-    fn test_mono_resharing() {
+    fn test_suit_resharing() {
         let mut atoms = AtomSpace::default();
-        let m1 = Atom::Mono(new_node_set(1, 5));
-        let m1_id = atoms.do_share_atom(m1);
-        let m2 = Atom::Mono(new_node_set(1, 5));
-        let m2_id = atoms.do_share_atom(m2);
-        assert_eq!(m1_id, m2_id);
+        let s1 = Atom::Suit(new_node_set(1, 5));
+        let s1_id = atoms.do_share_atom(s1);
+        let s2 = Atom::Suit(new_node_set(1, 5));
+        let s2_id = atoms.do_share_atom(s2);
+        assert_eq!(s1_id, s2_id);
     }
 }

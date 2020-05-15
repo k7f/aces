@@ -64,7 +64,8 @@ impl ExclusivelyContextual for Var {
                 Atom::Link(link) => Ok(format!("{}:{}", atom_id, link.format_locked(ctx)?)),
                 Atom::Fork(fork) => Ok(format!("{}:{}", atom_id, fork.format_locked(ctx)?)),
                 Atom::Join(join) => Ok(format!("{}:{}", atom_id, join.format_locked(ctx)?)),
-                Atom::Mono(mono) => Ok(format!("{}:{}", atom_id, mono.format_locked(ctx)?)),
+                Atom::Suit(suit) => Ok(format!("{}:{}", atom_id, suit.format_locked(ctx)?)),
+                Atom::Flow(flow) => Ok(format!("{}:{}", atom_id, flow.format_locked(ctx)?)),
                 Atom::Bottom => Err(AcesError::from(AcesErrorKind::BottomAtomAccess)),
             }
         } else {

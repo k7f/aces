@@ -573,9 +573,17 @@ impl Solution {
                                 unreachable!()
                             }
                         }
-                        Atom::Mono(mono) => {
-                            if let Some(mono_id) = mono.get_id() {
-                                return Err(AcesErrorKind::NodeSetUsedAsSATLiteral(mono_id)
+                        Atom::Suit(suit) => {
+                            if let Some(suit_id) = suit.get_id() {
+                                return Err(AcesErrorKind::NodeSetUsedAsSATLiteral(suit_id)
+                                    .with_context(&solution.context))
+                            } else {
+                                unreachable!()
+                            }
+                        }
+                        Atom::Flow(flow) => {
+                            if let Some(flow_id) = flow.get_id() {
+                                return Err(AcesErrorKind::FlowSetUsedAsSATLiteral(flow_id)
                                     .with_context(&solution.context))
                             } else {
                                 unreachable!()

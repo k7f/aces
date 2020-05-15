@@ -92,6 +92,7 @@ impl fmt::Display for Face {
     }
 }
 
+/// An identifier of a [`NodeSet`], a type derived from [`AtomId`].
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[repr(transparent)]
 pub struct NodeSetId(pub(crate) AtomId);
