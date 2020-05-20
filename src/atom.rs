@@ -740,12 +740,12 @@ impl ExclusivelyContextual for Link {
     }
 }
 
-/// A common type of one-to-many and many-to-one arcs of the BF-graph
-/// representation of c-e structures.
+/// A common type of one-to-many and many-to-one arcs of the fork-join
+/// hypergraph representation of c-e structures.
 ///
 /// A hyperarc represents a monomial attached to a node.  There are
-/// two variants of a `Harc`: a [`Join`] is a B-arc which represents
-/// causes and a [`Fork`] is an F-arc representing effects.
+/// two variants of a `Harc`: [`Join`] represents causes and [`Fork`]
+/// represents effects.
 #[derive(Clone, Eq)]
 pub struct Harc {
     atom_id: Option<AtomId>,

@@ -19,13 +19,13 @@
 //!
 //!   Flow-weights represent the weight labeling used in the standard
 //!   notation for polynomials.  Implementation-wise, they are
-//!   attached to elements of a [flow set](../index.html#flow-set)
+//!   attached to elements of a [flow set](../index.html#flow-sets)
 //!   (forks and joins) and inherited by core-weights of all
 //!   corresponding arcs of the induced core graph.
 //!
 //!   Note that, in general, fork (join) suits are contained in, not
-//!   equal to, post-sets (pre-sets) of the corresponding [core
-//!   sets](../index.html#core-set).
+//!   equal to, post-sets (pre-sets) of the corresponding [flat
+//!   tracks](../index.html#core-graph).
 //!
 //! # Behavior
 //!

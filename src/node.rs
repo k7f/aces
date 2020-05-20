@@ -127,8 +127,8 @@ impl ExclusivelyContextual for NodeSetId {
     }
 }
 
-/// A set of nodes: pre-set or post-set of a transition or a hyperarc
-/// suit.
+/// A set of nodes: pre-set or post-set of a transition or a suit of a
+/// harc.
 ///
 /// Represented as an ordered and deduplicated `Vec` of `NodeId`s.
 #[derive(Clone, Eq, Debug)]
