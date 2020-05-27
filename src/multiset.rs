@@ -23,7 +23,7 @@
 //!   (forks and joins) and inherited by core-weights of all
 //!   corresponding arcs of the induced core graph.
 //!
-//!   Note that, in general, fork (join) suits are contained in, not
+//!   Note that, in general, fork (join) wings are contained in, not
 //!   equal to, post-sets (pre-sets) of the corresponding [flat
 //!   tracks](../index.html#core-graph).
 //!
