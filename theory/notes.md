@@ -186,6 +186,8 @@ FIXME A _weed_ is a fuset without florets.
 
 FIXME not all florets are tight.
 
+FIXME a set of florets is co-firable iff its union is singular.
+
 # Core net
 
 The set <tt>Flow</tt>(***X***) of all florets over some domain
