@@ -4,7 +4,7 @@ use std::{
 };
 use varisat::{Var, Lit, ExtendFormula, solver::SolverError};
 use crate::{
-    ContextHandle, Contextual, NodeId, AtomId, ForkId, JoinId, Harc, AcesError, AcesErrorKind,
+    ContextHandle, Contextual, DotId, AtomId, ForkId, JoinId, Wedge, AcesError, AcesErrorKind,
     atom::Atom,
     sat::{CEVar, CELit, Encoding, Search, Clause, Formula},
 };
@@ -492,8 +492,8 @@ impl Iterator for Solver<'_> {
 pub struct Solution {
     context:  ContextHandle,
     model:    Vec<Lit>,
-    pre_set:  Vec<NodeId>,
-    post_set: Vec<NodeId>,
+    pre_set:  Vec<DotId>,
+    post_set: Vec<DotId>,
     fork_set: Vec<ForkId>,
     join_set: Vec<JoinId>,
 }
@@ -516,10 +516,10 @@ impl Solution {
     ) -> Result<Self, AcesError> {
         let mut solution = Self::new(ctx);
 
-        let mut pre_set: BTreeSet<NodeId> = BTreeSet::new();
-        let mut post_set: BTreeSet<NodeId> = BTreeSet::new();
-        let mut fork_map: BTreeMap<NodeId, BTreeSet<NodeId>> = BTreeMap::new();
-        let mut join_map: BTreeMap<NodeId, BTreeSet<NodeId>> = BTreeMap::new();
+        let mut pre_set: BTreeSet<DotId> = BTreeSet::new();
+        let mut post_set: BTreeSet<DotId> = BTreeSet::new();
+        let mut fork_map: BTreeMap<DotId, BTreeSet<DotId>> = BTreeMap::new();
+        let mut join_map: BTreeMap<DotId, BTreeSet<DotId>> = BTreeMap::new();
         let mut fork_set: BTreeSet<ForkId> = BTreeSet::new();
         let mut join_set: BTreeSet<JoinId> = BTreeSet::new();
 
@@ -533,30 +533,30 @@ impl Solution {
                 if let Some(atom) = ctx.get_atom(atom_id) {
                     match atom {
                         Atom::Tx(port) => {
-                            pre_set.insert(port.get_node_id());
+                            pre_set.insert(port.get_dot_id());
                         }
                         Atom::Rx(port) => {
-                            post_set.insert(port.get_node_id());
+                            post_set.insert(port.get_dot_id());
                         }
                         Atom::Link(link) => {
-                            let tx_node_id = link.get_tx_node_id();
-                            let rx_node_id = link.get_rx_node_id();
+                            let tx_dot_id = link.get_tx_dot_id();
+                            let rx_dot_id = link.get_rx_dot_id();
 
                             fork_map
-                                .entry(tx_node_id)
+                                .entry(tx_dot_id)
                                 .or_insert_with(BTreeSet::new)
-                                .insert(rx_node_id);
+                                .insert(rx_dot_id);
                             join_map
-                                .entry(rx_node_id)
+                                .entry(rx_dot_id)
                                 .or_insert_with(BTreeSet::new)
-                                .insert(tx_node_id);
+                                .insert(tx_dot_id);
                         }
                         Atom::Fork(fork) => {
                             if let Some(fork_id) = fork.get_fork_id() {
-                                pre_set.insert(fork.get_host_id());
+                                pre_set.insert(fork.get_tip_id());
                                 fork_set.insert(fork_id);
                             } else if let Some(join_id) = fork.get_join_id() {
-                                return Err(AcesErrorKind::HarcNotAForkMismatch(join_id)
+                                return Err(AcesErrorKind::WedgeNotAForkMismatch(join_id)
                                     .with_context(&solution.context))
                             } else {
                                 unreachable!()
@@ -564,26 +564,26 @@ impl Solution {
                         }
                         Atom::Join(join) => {
                             if let Some(join_id) = join.get_join_id() {
-                                post_set.insert(join.get_host_id());
+                                post_set.insert(join.get_tip_id());
                                 join_set.insert(join_id);
                             } else if let Some(fork_id) = join.get_fork_id() {
-                                return Err(AcesErrorKind::HarcNotAJoinMismatch(fork_id)
+                                return Err(AcesErrorKind::WedgeNotAJoinMismatch(fork_id)
                                     .with_context(&solution.context))
                             } else {
                                 unreachable!()
                             }
                         }
-                        Atom::Suit(suit) => {
-                            if let Some(suit_id) = suit.get_id() {
-                                return Err(AcesErrorKind::NodeSetUsedAsSATLiteral(suit_id)
+                        Atom::Pit(pit) => {
+                            if let Some(pit_id) = pit.get_id() {
+                                return Err(AcesErrorKind::DotsetUsedAsSATLiteral(pit_id)
                                     .with_context(&solution.context))
                             } else {
                                 unreachable!()
                             }
                         }
-                        Atom::Flow(flow) => {
-                            if let Some(flow_id) = flow.get_id() {
-                                return Err(AcesErrorKind::FlowSetUsedAsSATLiteral(flow_id)
+                        Atom::Fuset(fuset) => {
+                            if let Some(fuset_id) = fuset.get_id() {
+                                return Err(AcesErrorKind::FusetUsedAsSATLiteral(fuset_id)
                                     .with_context(&solution.context))
                             } else {
                                 unreachable!()
@@ -603,15 +603,15 @@ impl Solution {
             }
         }
 
-        fork_set.extend(fork_map.into_iter().map(|(host, suit)| {
-            Harc::new_fork_unchecked(&solution.context, host, suit)
-            // let mut fork = Harc::new_fork_unchecked(host, suit);
+        fork_set.extend(fork_map.into_iter().map(|(tip, pit)| {
+            Wedge::new_fork_unchecked(&solution.context, tip, pit)
+            // let mut fork = Wedge::new_fork_unchecked(tip, pit);
             // solution.context.lock().unwrap().share_fork(&mut fork)
         }));
 
-        join_set.extend(join_map.into_iter().map(|(host, suit)| {
-            Harc::new_join_unchecked(&solution.context, host, suit)
-            // let mut join = Harc::new_join_unchecked(host, suit);
+        join_set.extend(join_map.into_iter().map(|(tip, pit)| {
+            Wedge::new_join_unchecked(&solution.context, tip, pit)
+            // let mut join = Wedge::new_join_unchecked(tip, pit);
             // solution.context.lock().unwrap().share_join(&mut join)
         }));
 
@@ -631,11 +631,11 @@ impl Solution {
         self.model.as_slice()
     }
 
-    pub fn get_pre_set(&self) -> &[NodeId] {
+    pub fn get_pre_set(&self) -> &[DotId] {
         self.pre_set.as_slice()
     }
 
-    pub fn get_post_set(&self) -> &[NodeId] {
+    pub fn get_post_set(&self) -> &[DotId] {
         self.post_set.as_slice()
     }
 
@@ -669,8 +669,8 @@ impl fmt::Display for Solution {
         } else {
             write!(f, "{{")?;
 
-            for node_id in self.pre_set.iter() {
-                write!(f, " {}", node_id.with(&self.context))?;
+            for dot_id in self.pre_set.iter() {
+                write!(f, " {}", dot_id.with(&self.context))?;
             }
 
             write!(f, " }} => {{")?;
@@ -679,8 +679,8 @@ impl fmt::Display for Solution {
         if self.post_set.is_empty() {
             write!(f, "}}")?;
         } else {
-            for node_id in self.post_set.iter() {
-                write!(f, " {}", node_id.with(&self.context))?;
+            for dot_id in self.post_set.iter() {
+                write!(f, " {}", dot_id.with(&self.context))?;
             }
 
             write!(f, " }}")?;

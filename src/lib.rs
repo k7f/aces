@@ -13,7 +13,7 @@ extern crate lazy_static;
 
 mod error;
 mod name;
-mod node;
+mod domain;
 mod atom;
 mod multiset;
 mod polynomial;
@@ -36,13 +36,13 @@ pub use content::{
     CompilableAsContent, CompilableAsDependency,
 };
 pub use yaml_script::YamlFormat;
-pub use node::{NodeId, Face};
+pub use domain::{DotId, Polarity};
 pub use atom::{
-    Port, Link, Harc, Fork, Join, FlowSet, AtomId, PortId, LinkId, ForkId, JoinId, FlowSetId,
+    Port, Link, Wedge, Fork, Join, Fuset, AtomId, PortId, LinkId, ForkId, JoinId, FusetId,
     Atomic,
 };
 pub use polynomial::{Polynomial, Monomials};
-pub use multiset::{Multiplicity, Capacity, Weight, CoreWeight, ShellWeight};
+pub use multiset::{Multiplicity, Capacity, Weight, WedgeWeights};
 pub use ces::CEStructure;
 pub use solver::{Solver, Solution};
 pub use firing::{FiringComponent, FiringSet, FiringSequence};
@@ -55,6 +55,6 @@ use std::num::NonZeroUsize;
 /// A generic one-based serial identifier.
 ///
 /// Used as a common internal type backing the conversion between
-/// vector indices and specific identifiers, such as [`NodeId`],
+/// vector indices and specific identifiers, such as [`DotId`],
 /// [`PortId`], [`LinkId`], [`ForkId`], and [`JoinId`].
 pub(crate) type AnyId = NonZeroUsize;

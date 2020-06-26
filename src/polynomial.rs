@@ -1,7 +1,7 @@
 use std::{slice, iter, cmp, ops, fmt, collections::BTreeSet};
 use bit_vec::BitVec;
 use crate::{
-    Face, NodeId, Port, Link, LinkId, ContextHandle, Contextual, ExclusivelyContextual,
+    Polarity, DotId, Port, Link, LinkId, ContextHandle, Contextual, ExclusivelyContextual,
     InContextMut, Atomic, AcesError, AcesErrorKind, sat,
 };
 
@@ -12,13 +12,13 @@ use crate::{
 /// Internally a `Polynomial` is represented as a vector of _N_
 /// [`Atomic`] identifiers and a boolean matrix with _N_ columns and
 /// _M_ rows.  Vector of [`Atomic`] identifiers is sorted in strictly
-/// increasing order.  It represents the set of nodes occuring in the
-/// polynomial and _N_ is the number of such nodes.
+/// increasing order.  It represents the set of dots occuring in the
+/// polynomial and _N_ is the number of such dots.
 ///
 /// _M_ is the number of monomials in the canonical representation of
 /// the polynomial.  The order in which monomials are listed is
 /// arbitrary.  An element in row _i_ and column _j_ of the matrix
-/// determines if a node in _j_-th position in the vector of
+/// determines if a dot in _j_-th position in the vector of
 /// identifiers occurs in _i_-th monomial.
 ///
 /// `Polynomial`s may be compared and added using traits from
@@ -35,42 +35,42 @@ pub struct Polynomial<T: Atomic + fmt::Debug> {
     atomics: Vec<T>,
     // FIXME choose a better representation of a boolean matrix.
     terms:   Vec<BitVec>,
-    dock:    Option<Face>,
+    dock:    Option<Polarity>,
 }
 
 impl Polynomial<LinkId> {
     /// Creates a polynomial from a sequence of sequences of
-    /// [`NodeId`]s and in a [`Context`] given by a [`ContextHandle`].
+    /// [`DotId`]s and in a [`Context`] given by a [`ContextHandle`].
     ///
     /// [`Context`]: crate::Context
-    pub fn from_nodes_in_context<'a, I>(
+    pub fn from_dots_in_context<'a, I>(
         ctx: &ContextHandle,
-        face: Face,
-        node_id: NodeId,
+        polarity: Polarity,
+        dot_id: DotId,
         poly_ids: I,
     ) -> Self
     where
         I: IntoIterator + 'a,
-        I::Item: IntoIterator<Item = &'a NodeId>,
+        I::Item: IntoIterator<Item = &'a DotId>,
     {
-        let mut result = Self::new_docked(face);
-        let mut port = Port::new(face, node_id);
+        let mut result = Self::new_docked(polarity);
+        let mut port = Port::new(polarity, dot_id);
         let pid = ctx.lock().unwrap().share_port(&mut port);
-        let host = port.get_node_id();
-        let face = port.get_face();
+        let tip = port.get_dot_id();
+        let polarity = port.get_polarity();
 
         let mut ctx = ctx.lock().unwrap();
 
         for mono_ids in poly_ids.into_iter() {
             let mut out_ids = BTreeSet::new();
 
-            for cohost in mono_ids.into_iter().copied() {
-                let mut coport = Port::new(!face, cohost);
+            for cotip in mono_ids.into_iter().copied() {
+                let mut coport = Port::new(!polarity, cotip);
                 let copid = ctx.share_port(&mut coport);
 
-                let mut link = match face {
-                    Face::Tx => Link::new(pid, host, copid, cohost),
-                    Face::Rx => Link::new(copid, cohost, pid, host),
+                let mut link = match polarity {
+                    Polarity::Tx => Link::new(pid, tip, copid, cotip),
+                    Polarity::Rx => Link::new(copid, cotip, pid, tip),
                 };
                 let id = ctx.share_link(&mut link);
 
@@ -90,10 +90,10 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
         Self { atomics: Default::default(), terms: Default::default(), dock: None }
     }
 
-    /// Creates an empty polynomial, _&theta;_, docked at a given
-    /// [`Face`].
+    /// Creates an empty polynomial, _&theta;_, docked with a given
+    /// [`Polarity`].
     #[allow(clippy::new_without_default)]
-    pub fn new_docked(dock: Face) -> Self {
+    pub fn new_docked(dock: Polarity) -> Self {
         Self { atomics: Default::default(), terms: Default::default(), dock: Some(dock) }
     }
 
@@ -297,7 +297,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
 
             Ok(changed)
         } else {
-            Err(AcesErrorKind::PolynomialFaceMismatch.into())
+            Err(AcesErrorKind::PolynomialPolarityMismatch.into())
         }
     }
 
@@ -328,9 +328,10 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
 
     /// Constructs the firing rule of this polynomial, the logical
     /// constraint imposed on firing components, if the polynomial is
-    /// attached to the node and face represented by `port_lit`.  The
-    /// rule is transformed into a CNF formula, a conjunction of
-    /// disjunctions of [`sat::Literal`]s (a sequence of clauses).
+    /// attached to the oriented (with polarity) dot represented by
+    /// `port_lit`.  The rule is transformed into a CNF formula, a
+    /// conjunction of disjunctions of [`sat::Literal`]s (a sequence
+    /// of clauses).
     ///
     /// Returns a sequence of clauses in the form of vector of vectors
     /// of [`sat::Literal`]s.
@@ -364,7 +365,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             let mut clauses = Vec::new();
 
             let num_monos = self.terms.len();
-            let num_nodes = self.atomics.len();
+            let num_dots = self.atomics.len();
 
             let clause_table_row = self.atomics.iter().map(|id| id.into_sat_literal(false));
 
@@ -399,7 +400,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
                 }
 
                 'inner: loop {
-                    if cursors[mono_ndx] < num_nodes - 1 {
+                    if cursors[mono_ndx] < num_dots - 1 {
                         cursors[mono_ndx] += 1;
 
                         for cursor in cursors.iter_mut().take(mono_ndx) {
@@ -481,15 +482,15 @@ impl Contextual for Polynomial<LinkId> {
                     result.push('·');
                 }
 
-                let s = if let Some(face) = self.dock {
+                let s = if let Some(polarity) = self.dock {
                     let ctx = ctx.lock().unwrap();
                     let link = ctx
                         .get_link(id)
                         .ok_or_else(|| AcesError::from(AcesErrorKind::LinkMissingForId(id)))?;
 
-                    match face {
-                        Face::Tx => link.get_rx_node_id().format_locked(&ctx),
-                        Face::Rx => link.get_tx_node_id().format_locked(&ctx),
+                    match polarity {
+                        Polarity::Tx => link.get_rx_dot_id().format_locked(&ctx),
+                        Polarity::Rx => link.get_tx_dot_id().format_locked(&ctx),
                     }
                 } else {
                     id.format(ctx)

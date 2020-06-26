@@ -7,7 +7,7 @@ use std::{
 use regex::Regex;
 use yaml_rust::{Yaml, YamlLoader, ScanError};
 use crate::{
-    ContextHandle, Face, NodeId, Content, PartialContent, ContentFormat,
+    ContextHandle, Polarity, DotId, Content, PartialContent, ContentFormat,
     content::{PolyForContent, MonoForContent},
 };
 
@@ -45,7 +45,7 @@ impl fmt::Display for YamlScriptError {
             PolyAmbiguous => write!(f, "Ambiguous YAML description of a polynomial"),
             ShortPolyWithWords => write!(
                 f,
-                "Multi-word node name is invalid in short YAML description of a polynomial"
+                "Multi-word dot name is invalid in short YAML description of a polynomial"
             ),
             MonoInvalid => write!(f, "Invalid monomial in YAML description of a polynomial"),
             LinkInvalid => write!(f, "Invalid link in YAML description of a polynomial"),
@@ -68,11 +68,11 @@ fn do_share_name<S: AsRef<str>>(
     ctx: &ContextHandle,
     name: S,
     single_word_only: bool,
-) -> Result<NodeId, YamlScriptError> {
+) -> Result<DotId, YamlScriptError> {
     if single_word_only && name.as_ref().contains(char::is_whitespace) {
         Err(YamlScriptError::ShortPolyWithWords)
     } else {
-        Ok(ctx.lock().unwrap().share_node_name(name))
+        Ok(ctx.lock().unwrap().share_dot_name(name))
     }
 }
 
@@ -80,9 +80,9 @@ fn post_process_port_description<S: AsRef<str>>(
     ctx: &ContextHandle,
     description: S,
     single_word_only: bool,
-) -> Result<Vec<NodeId>, YamlScriptError> {
+) -> Result<Vec<DotId>, YamlScriptError> {
     if description.as_ref().contains(',') {
-        let result: Result<Vec<NodeId>, YamlScriptError> = description
+        let result: Result<Vec<DotId>, YamlScriptError> = description
             .as_ref()
             .split(',')
             .map(|s| do_share_name(ctx, s.trim(), single_word_only))
@@ -97,7 +97,7 @@ fn post_process_port_description<S: AsRef<str>>(
     }
 }
 
-type PortParsed = (Vec<NodeId>, Face);
+type PortParsed = (Vec<DotId>, Polarity);
 
 fn do_parse_port_description<S: AsRef<str>>(
     ctx: &ContextHandle,
@@ -105,7 +105,7 @@ fn do_parse_port_description<S: AsRef<str>>(
     single_word_only: bool,
 ) -> Result<Option<PortParsed>, YamlScriptError> {
     lazy_static! {
-        // Node name (untrimmed, unseparated) is any nonempty string not ending in '>' or '<'.
+        // Dot name (untrimmed, unseparated) is any nonempty string not ending in '>' or '<'.
         // Removal of leading and trailing whitespace is done in post processing,
         // as well as comma-separation.
         static ref TX_RE: Regex = Regex::new(r"^(.*[^><])(>+|\s+effects)$").unwrap();
@@ -114,11 +114,11 @@ fn do_parse_port_description<S: AsRef<str>>(
     if let Some(cap) = TX_RE.captures(description.as_ref()) {
         let ids = post_process_port_description(ctx, &cap[1], single_word_only)?;
 
-        Ok(Some((ids, Face::Tx)))
+        Ok(Some((ids, Polarity::Tx)))
     } else if let Some(cap) = RX_RE.captures(description.as_ref()) {
         let ids = post_process_port_description(ctx, &cap[1], single_word_only)?;
 
-        Ok(Some((ids, Face::Rx)))
+        Ok(Some((ids, Polarity::Rx)))
     } else {
         Ok(None)
     }
@@ -134,13 +134,13 @@ fn parse_port_description<S: AsRef<str>>(
 fn parse_link_description<S: AsRef<str> + Copy>(
     ctx: &ContextHandle,
     description: S,
-    valid_face: Face,
+    valid_polarity: Polarity,
     single_word_only: bool,
-) -> Result<(NodeId, bool), YamlScriptError> {
+) -> Result<(DotId, bool), YamlScriptError> {
     let link_with_colink = do_parse_port_description(ctx, description, single_word_only)?;
 
-    if let Some((ids, face)) = link_with_colink {
-        if face == valid_face {
+    if let Some((ids, polarity)) = link_with_colink {
+        if polarity == valid_polarity {
             if ids.len() == 1 {
                 Ok((ids[0], true))
             } else {
@@ -179,8 +179,8 @@ impl YamlContent {
 
     fn add_ports(
         &mut self,
-        ids: &[NodeId],
-        face: Face,
+        ids: &[DotId],
+        polarity: Polarity,
         poly_yaml: &Yaml,
     ) -> Result<(), YamlScriptError> {
         assert!(!ids.is_empty());
@@ -192,14 +192,14 @@ impl YamlContent {
                 let (other_id, with_colink) = parse_link_description(
                     self.content.get_context(),
                     other_name.trim(),
-                    !face,
+                    !polarity,
                     true,
                 )?;
 
                 poly_content.add_mono(vec![other_id]);
 
                 if with_colink {
-                    if face == Face::Tx {
+                    if polarity == Polarity::Tx {
                         self.content.add_to_causes(other_id, &[ids.to_owned()]);
                     } else {
                         self.content.add_to_effects(other_id, &[ids.to_owned()]);
@@ -215,14 +215,14 @@ impl YamlContent {
                             let (other_id, with_colink) = parse_link_description(
                                 self.content.get_context(),
                                 other_name.trim(),
-                                !face,
+                                !polarity,
                                 true,
                             )?;
 
                             poly_content.add_mono(vec![other_id]);
 
                             if with_colink {
-                                if face == Face::Tx {
+                                if polarity == Polarity::Tx {
                                     self.content.add_to_causes(other_id, &[ids.to_owned()]);
                                 } else {
                                     self.content.add_to_effects(other_id, &[ids.to_owned()]);
@@ -238,14 +238,14 @@ impl YamlContent {
                                     let (other_id, with_colink) = parse_link_description(
                                         self.content.get_context(),
                                         other_name.trim(),
-                                        !face,
+                                        !polarity,
                                         false,
                                     )?;
 
-                                    mono_content.add_node(other_id);
+                                    mono_content.add_dot(other_id);
 
                                     if with_colink {
-                                        if face == Face::Tx {
+                                        if polarity == Polarity::Tx {
                                             self.content.add_to_causes(other_id, &[ids.to_owned()]);
                                         } else {
                                             self.content
@@ -268,7 +268,7 @@ impl YamlContent {
             _ => return Err(YamlScriptError::PolyInvalid),
         }
 
-        if face == Face::Tx {
+        if polarity == Polarity::Tx {
             for &id in ids {
                 self.content.add_to_effects(id, poly_content.as_content());
             }
@@ -285,8 +285,8 @@ impl YamlContent {
             let key = key.trim();
             let port_parsed = parse_port_description(self.content.get_context(), key);
 
-            if let Some((ids, face)) = port_parsed {
-                self.add_ports(&ids, face, value)
+            if let Some((ids, polarity)) = port_parsed {
+                self.add_ports(&ids, polarity, value)
             } else if key == "name" {
                 if let Some(name) = value.as_str() {
                     if self.name.is_none() {
@@ -359,17 +359,17 @@ impl Content for YamlContent {
     }
 
     #[inline]
-    fn get_carrier_ids(&mut self) -> Vec<NodeId> {
+    fn get_carrier_ids(&mut self) -> Vec<DotId> {
         self.content.get_carrier_ids()
     }
 
     #[inline]
-    fn get_causes_by_id(&self, id: NodeId) -> Option<&Vec<Vec<NodeId>>> {
+    fn get_causes_by_id(&self, id: DotId) -> Option<&Vec<Vec<DotId>>> {
         self.content.get_causes_by_id(id)
     }
 
     #[inline]
-    fn get_effects_by_id(&self, id: NodeId) -> Option<&Vec<Vec<NodeId>>> {
+    fn get_effects_by_id(&self, id: DotId) -> Option<&Vec<Vec<DotId>>> {
         self.content.get_effects_by_id(id)
     }
 }

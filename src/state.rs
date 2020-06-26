@@ -4,12 +4,12 @@ use std::{
     fmt,
 };
 use log::Level::{Debug, Trace};
-use crate::{ContextHandle, Contextual, Multiplicity, NodeId, FiringSet, AcesError, AcesErrorKind};
+use crate::{ContextHandle, Contextual, Multiplicity, DotId, FiringSet, AcesError, AcesErrorKind};
 
 #[derive(Clone, Debug)]
 pub struct State {
     context: ContextHandle,
-    tokens:  BTreeMap<NodeId, Multiplicity>,
+    tokens:  BTreeMap<DotId, Multiplicity>,
 }
 
 impl State {
@@ -21,20 +21,20 @@ impl State {
         let context = ctx.clone();
         let mut ctx = ctx.lock().unwrap();
         let tokens = BTreeMap::from_iter(triggers.into_iter().map(|(name, mul)| {
-            let node_id = ctx.share_node_name(name.as_ref());
-            let cap = ctx.get_capacity(node_id);
+            let dot_id = ctx.share_dot_name(name.as_ref());
+            let cap = ctx.get_capacity(dot_id);
 
             if mul > cap {
                 warn!(
-                    "Clamping trigger's {:?} to Capacity({}) of node \"{}\"",
+                    "Clamping trigger's {:?} to Capacity({}) of dot \"{}\"",
                     mul,
                     cap,
                     name.as_ref()
                 );
 
-                (node_id, cap)
+                (dot_id, cap)
             } else {
-                (node_id, mul)
+                (dot_id, mul)
             }
         }));
 
@@ -51,15 +51,15 @@ impl State {
             triggers
                 .into_iter()
                 .map(|(name, mul)| {
-                    let node_id = ctx.lock().unwrap().share_node_name(name.as_ref());
+                    let dot_id = ctx.lock().unwrap().share_dot_name(name.as_ref());
 
-                    (node_id, mul)
+                    (dot_id, mul)
                 })
-                .take_while(|&(node_id, mul)| {
-                    let cap = ctx.lock().unwrap().get_capacity(node_id);
+                .take_while(|&(dot_id, mul)| {
+                    let cap = ctx.lock().unwrap().get_capacity(dot_id);
 
                     if mul > cap {
-                        error = Some((node_id, cap, mul));
+                        error = Some((dot_id, cap, mul));
                         false
                     } else {
                         true
@@ -77,12 +77,12 @@ impl State {
         self.tokens.clear()
     }
 
-    pub fn get(&self, node_id: NodeId) -> Multiplicity {
-        self.tokens.get(&node_id).copied().unwrap_or_else(Multiplicity::zero)
+    pub fn get(&self, dot_id: DotId) -> Multiplicity {
+        self.tokens.get(&dot_id).copied().unwrap_or_else(Multiplicity::zero)
     }
 
-    pub fn set_unchecked(&mut self, node_id: NodeId, num_tokens: Multiplicity) {
-        match self.tokens.entry(node_id) {
+    pub fn set_unchecked(&mut self, dot_id: DotId, num_tokens: Multiplicity) {
+        match self.tokens.entry(dot_id) {
             btree_map::Entry::Vacant(entry) => {
                 if num_tokens.is_positive() {
                     entry.insert(num_tokens);
@@ -103,11 +103,11 @@ impl State {
     /// [`FiringComponent::fire()`]: crate::FiringComponent::fire()
     pub(crate) fn decrease(
         &mut self,
-        node_id: NodeId,
+        dot_id: DotId,
         num_tokens: Multiplicity,
     ) -> Result<(), AcesError> {
         if num_tokens.is_positive() {
-            if let btree_map::Entry::Occupied(mut entry) = self.tokens.entry(node_id) {
+            if let btree_map::Entry::Occupied(mut entry) = self.tokens.entry(dot_id) {
                 let tokens_before = *entry.get_mut();
 
                 if tokens_before.is_positive() {
@@ -116,22 +116,22 @@ impl State {
                             *entry.get_mut() = tokens_after;
                         } else {
                             return Err(AcesErrorKind::StateUnderflow(
-                                node_id,
+                                dot_id,
                                 tokens_before,
                                 num_tokens,
                             )
                             .with_context(&self.context))
                         }
                     } else {
-                        return Err(AcesErrorKind::LeakedInhibitor(node_id, tokens_before)
+                        return Err(AcesErrorKind::LeakedInhibitor(dot_id, tokens_before)
                             .with_context(&self.context))
                     }
                 } else if num_tokens.is_finite() {
-                    return Err(AcesErrorKind::StateUnderflow(node_id, tokens_before, num_tokens)
+                    return Err(AcesErrorKind::StateUnderflow(dot_id, tokens_before, num_tokens)
                         .with_context(&self.context))
                 }
             } else if num_tokens.is_finite() {
-                return Err(AcesErrorKind::StateUnderflow(node_id, Multiplicity::zero(), num_tokens)
+                return Err(AcesErrorKind::StateUnderflow(dot_id, Multiplicity::zero(), num_tokens)
                     .with_context(&self.context))
             }
         }
@@ -146,11 +146,11 @@ impl State {
     /// [`FiringComponent::fire()`]: crate::FiringComponent::fire()
     pub(crate) fn increase(
         &mut self,
-        node_id: NodeId,
+        dot_id: DotId,
         num_tokens: Multiplicity,
     ) -> Result<(), AcesError> {
         if num_tokens.is_positive() {
-            match self.tokens.entry(node_id) {
+            match self.tokens.entry(dot_id) {
                 btree_map::Entry::Vacant(entry) => {
                     entry.insert(num_tokens);
                 }
@@ -167,7 +167,7 @@ impl State {
                                 *entry.get_mut() = tokens_after;
                             } else {
                                 return Err(AcesErrorKind::StateOverflow(
-                                    node_id,
+                                    dot_id,
                                     tokens_before,
                                     num_tokens,
                                 )
@@ -175,7 +175,7 @@ impl State {
                             }
                         } else {
                             return Err(AcesErrorKind::StateOverflow(
-                                node_id,
+                                dot_id,
                                 tokens_before,
                                 num_tokens,
                             )
@@ -255,14 +255,14 @@ impl fmt::Display for State {
 
         '{'.fmt(f)?;
 
-        for (node_id, &num_tokens) in self.tokens.iter() {
+        for (dot_id, &num_tokens) in self.tokens.iter() {
             if num_tokens.is_positive() {
                 if at_start {
                     at_start = false;
                 } else {
                     ','.fmt(f)?;
                 }
-                write!(f, " {}: {}", node_id.with(&self.context), num_tokens)?;
+                write!(f, " {}: {}", dot_id.with(&self.context), num_tokens)?;
             }
         }
 
@@ -272,7 +272,7 @@ impl fmt::Display for State {
 
 #[derive(Debug)]
 pub struct Goal {
-    targets: BTreeMap<NodeId, Multiplicity>,
+    targets: BTreeMap<DotId, Multiplicity>,
 }
 
 impl Goal {
@@ -286,15 +286,15 @@ impl Goal {
             targets
                 .into_iter()
                 .map(|(name, mul)| {
-                    let node_id = ctx.lock().unwrap().share_node_name(name.as_ref());
+                    let dot_id = ctx.lock().unwrap().share_dot_name(name.as_ref());
 
-                    (node_id, mul)
+                    (dot_id, mul)
                 })
-                .take_while(|&(node_id, mul)| {
-                    let cap = ctx.lock().unwrap().get_capacity(node_id);
+                .take_while(|&(dot_id, mul)| {
+                    let cap = ctx.lock().unwrap().get_capacity(dot_id);
 
                     if mul > cap {
-                        error = Some((node_id, cap, mul));
+                        error = Some((dot_id, cap, mul));
                         false
                     } else {
                         true
@@ -308,16 +308,16 @@ impl Goal {
         }
     }
 
-    pub fn is_reached(&self, state: &State) -> Option<NodeId> {
-        for (&node_id, &target_tokens) in self.targets.iter() {
-            let tokens = state.get(node_id);
+    pub fn is_reached(&self, state: &State) -> Option<DotId> {
+        for (&dot_id, &target_tokens) in self.targets.iter() {
+            let tokens = state.get(dot_id);
 
             if target_tokens.is_omega() {
                 if tokens.is_omega() {
-                    return Some(node_id)
+                    return Some(dot_id)
                 }
             } else if tokens >= target_tokens {
-                return Some(node_id)
+                return Some(dot_id)
             }
         }
 

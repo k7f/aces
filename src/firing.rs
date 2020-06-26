@@ -1,20 +1,20 @@
 use std::{slice, collections::BTreeMap, convert::TryFrom};
 use rand::{RngCore, Rng};
 use crate::{
-    ContextHandle, Contextual, Face, NodeId, Capacity, Weight, Solution, State, AcesError,
-    AcesErrorKind, node::NodeSet,
+    ContextHandle, Contextual, Polarity, DotId, Capacity, Weight, Solution, State, AcesError,
+    AcesErrorKind, domain::Dotset,
 };
 
 #[derive(Clone, Default, Debug)]
 pub struct FiringComponent {
-    pre_set:  BTreeMap<NodeId, Weight>,
-    post_set: BTreeMap<NodeId, (Weight, Capacity)>,
+    pre_set:  BTreeMap<DotId, Weight>,
+    post_set: BTreeMap<DotId, (Weight, Capacity)>,
 }
 
 impl FiringComponent {
     pub fn is_enabled(&self, state: &State) -> bool {
-        for (&node_id, &weight) in self.pre_set.iter() {
-            let tokens = state.get(node_id);
+        for (&dot_id, &weight) in self.pre_set.iter() {
+            let tokens = state.get(dot_id);
 
             if tokens.is_zero() {
                 if weight.is_finite() {
@@ -25,13 +25,13 @@ impl FiringComponent {
             }
         }
 
-        for (&node_id, &(weight, capacity)) in self.post_set.iter() {
-            if let Some(tokens_after) = state.get(node_id).checked_add(weight) {
+        for (&dot_id, &(weight, capacity)) in self.post_set.iter() {
+            if let Some(tokens_after) = state.get(dot_id).checked_add(weight) {
                 if tokens_after > capacity {
                     return false
                 }
             } else {
-                warn!("Overflow of state at {:?} when checking enablement", node_id);
+                warn!("Overflow of state at {:?} when checking enablement", dot_id);
 
                 if capacity.is_finite() {
                     return false
@@ -51,12 +51,12 @@ impl FiringComponent {
     /// [`is_enabled()`]: FiringComponent::is_enabled()
     /// [`fire()`]: FiringComponent::fire()
     pub fn fire(&self, state: &mut State) -> Result<(), AcesError> {
-        for (&node_id, &weight) in self.pre_set.iter() {
-            state.decrease(node_id, weight)?;
+        for (&dot_id, &weight) in self.pre_set.iter() {
+            state.decrease(dot_id, weight)?;
         }
 
-        for (&node_id, &(weight, _)) in self.post_set.iter() {
-            state.increase(node_id, weight)?;
+        for (&dot_id, &(weight, _)) in self.post_set.iter() {
+            state.increase(dot_id, weight)?;
         }
 
         Ok(())
@@ -69,8 +69,8 @@ impl TryFrom<Solution> for FiringComponent {
     #[allow(clippy::map_entry)]
     fn try_from(sol: Solution) -> Result<Self, Self::Error> {
         let mut ctx = sol.get_context().lock().unwrap();
-        let pre_nodes = sol.get_pre_set();
-        let post_nodes = sol.get_post_set();
+        let pre_dots = sol.get_pre_set();
+        let post_dots = sol.get_post_set();
         let mut pre_set = BTreeMap::new();
         let mut post_set = BTreeMap::new();
         let mut forks = BTreeMap::new();
@@ -79,58 +79,58 @@ impl TryFrom<Solution> for FiringComponent {
         'outer_forks: for &fork_id in sol.get_fork_set() {
             let fork =
                 ctx.get_fork(fork_id).ok_or_else(|| AcesErrorKind::ForkMissingForId(fork_id))?;
-            let tx_node_id = fork.get_host_id();
+            let tx_dot_id = fork.get_tip_id();
 
-            for &node_id in pre_nodes {
-                if node_id == tx_node_id {
-                    if pre_set.contains_key(&node_id) {
-                        return Err(AcesErrorKind::FiringNodeDuplicated(Face::Tx, node_id).into())
+            for &dot_id in pre_dots {
+                if dot_id == tx_dot_id {
+                    if pre_set.contains_key(&dot_id) {
+                        return Err(AcesErrorKind::FiringDotDuplicated(Polarity::Tx, dot_id).into())
                     } else {
-                        pre_set.insert(node_id, Weight::one());
-                        forks.insert(node_id, fork_id);
+                        pre_set.insert(dot_id, Weight::one());
+                        forks.insert(dot_id, fork_id);
                         continue 'outer_forks
                     }
                 }
             }
 
-            return Err(AcesErrorKind::FiringNodeMissing(Face::Tx, tx_node_id).into())
+            return Err(AcesErrorKind::FiringDotMissing(Polarity::Tx, tx_dot_id).into())
         }
 
         'outer_joins: for &join_id in sol.get_join_set() {
             let join = ctx
                 .get_join(join_id)
                 .ok_or_else(|| AcesError::from(AcesErrorKind::JoinMissingForId(join_id)))?;
-            let rx_node_id = join.get_host_id();
+            let rx_dot_id = join.get_tip_id();
 
-            for &node_id in post_nodes {
-                if node_id == rx_node_id {
-                    if post_set.contains_key(&node_id) {
-                        return Err(AcesErrorKind::FiringNodeDuplicated(Face::Rx, node_id).into())
+            for &dot_id in post_dots {
+                if dot_id == rx_dot_id {
+                    if post_set.contains_key(&dot_id) {
+                        return Err(AcesErrorKind::FiringDotDuplicated(Polarity::Rx, dot_id).into())
                     } else {
-                        let capacity = ctx.get_capacity(node_id);
-                        post_set.insert(node_id, (Weight::one(), capacity));
-                        joins.insert(node_id, join_id);
+                        let capacity = ctx.get_capacity(dot_id);
+                        post_set.insert(dot_id, (Weight::one(), capacity));
+                        joins.insert(dot_id, join_id);
                         continue 'outer_joins
                     }
                 }
             }
 
-            return Err(AcesErrorKind::FiringNodeMissing(Face::Rx, rx_node_id).into())
+            return Err(AcesErrorKind::FiringDotMissing(Polarity::Rx, rx_dot_id).into())
         }
 
-        let mut node_set = NodeSet::new_unchecked(pre_set.keys().copied());
-        let pre_set_id = ctx.share_node_set(&mut node_set);
-        let mut node_set = NodeSet::new_unchecked(post_set.keys().copied());
-        let post_set_id = ctx.share_node_set(&mut node_set);
+        let mut dotset = Dotset::new_unchecked(pre_set.keys().copied());
+        let _pre_set_id = ctx.share_dotset(&mut dotset);
+        let mut dotset = Dotset::new_unchecked(post_set.keys().copied());
+        let _post_set_id = ctx.share_dotset(&mut dotset);
 
-        for (node_id, fork_id) in forks {
-            let weight = ctx.get_weight(fork_id.get(), pre_set_id, post_set_id)?;
-            pre_set.entry(node_id).and_modify(|v| *v = weight);
+        for (dot_id, fork_id) in forks {
+            let weight = ctx.get_weight(fork_id.get())?;
+            pre_set.entry(dot_id).and_modify(|v| *v = weight);
         }
 
-        for (node_id, join_id) in joins {
-            let weight = ctx.get_weight(join_id.get(), pre_set_id, post_set_id)?;
-            post_set.entry(node_id).and_modify(|v| v.0 = weight);
+        for (dot_id, join_id) in joins {
+            let weight = ctx.get_weight(join_id.get())?;
+            post_set.entry(dot_id).and_modify(|v| v.0 = weight);
         }
 
         Ok(FiringComponent { pre_set, post_set })
@@ -149,21 +149,21 @@ impl Contextual for FiringComponent {
         } else {
             result.push('{');
 
-            for (node_id, weight) in self.pre_set.iter() {
+            for (dot_id, weight) in self.pre_set.iter() {
                 result.push(' ');
 
                 if weight.is_omega() {
                     result.push('(');
-                    result.push_str(node_id.format(ctx)?.as_str());
+                    result.push_str(dot_id.format(ctx)?.as_str());
                     result.push(')');
                 } else if weight.is_zero() {
-                    result.push_str(format!("[={}]", node_id.format(ctx)?.as_str()).as_str());
+                    result.push_str(format!("[={}]", dot_id.format(ctx)?.as_str()).as_str());
                 } else if weight.is_multiple() {
                     result.push_str(
-                        format!("[{}:{}]", node_id.format(ctx)?.as_str(), weight).as_str(),
+                        format!("[{}:{}]", dot_id.format(ctx)?.as_str(), weight).as_str(),
                     );
                 } else {
-                    result.push_str(node_id.format(ctx)?.as_str());
+                    result.push_str(dot_id.format(ctx)?.as_str());
                 }
             }
 
@@ -173,12 +173,12 @@ impl Contextual for FiringComponent {
         if self.post_set.is_empty() {
             result.push('}');
         } else {
-            for (node_id, (weight, capacity)) in self.post_set.iter() {
+            for (dot_id, (weight, capacity)) in self.post_set.iter() {
                 result.push(' ');
 
                 if weight.is_omega() {
                     result.push('(');
-                    result.push_str(node_id.format(ctx)?.as_str());
+                    result.push_str(dot_id.format(ctx)?.as_str());
                     if capacity.is_multiple() {
                         result.push_str(format!("#{})", capacity).as_str());
                     } else {
@@ -187,28 +187,28 @@ impl Contextual for FiringComponent {
                 } else if weight.is_multiple() {
                     if capacity.is_multiple() {
                         result.push_str(
-                            format!("[{}:{}#{}]", weight, node_id.format(ctx)?.as_str(), capacity)
+                            format!("[{}:{}#{}]", weight, dot_id.format(ctx)?.as_str(), capacity)
                                 .as_str(),
                         );
                     } else {
                         result.push_str(
-                            format!("[{}:{}]", weight, node_id.format(ctx)?.as_str()).as_str(),
+                            format!("[{}:{}]", weight, dot_id.format(ctx)?.as_str()).as_str(),
                         );
                     }
                 } else if weight.is_zero() {
                     if capacity.is_multiple() {
                         result.push_str(
-                            format!("[={}#{}]", node_id.format(ctx)?.as_str(), capacity).as_str(),
+                            format!("[={}#{}]", dot_id.format(ctx)?.as_str(), capacity).as_str(),
                         );
                     } else {
-                        result.push_str(format!("[={}]", node_id.format(ctx)?.as_str()).as_str());
+                        result.push_str(format!("[={}]", dot_id.format(ctx)?.as_str()).as_str());
                     }
                 } else if capacity.is_multiple() {
                     result.push_str(
-                        format!("[{}#{}]", node_id.format(ctx)?.as_str(), capacity).as_str(),
+                        format!("[{}#{}]", dot_id.format(ctx)?.as_str(), capacity).as_str(),
                     );
                 } else {
-                    result.push_str(node_id.format(ctx)?.as_str());
+                    result.push_str(dot_id.format(ctx)?.as_str());
                 }
             }
 

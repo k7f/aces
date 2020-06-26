@@ -64,8 +64,8 @@ impl ExclusivelyContextual for Var {
                 Atom::Link(link) => Ok(format!("{}:{}", atom_id, link.format_locked(ctx)?)),
                 Atom::Fork(fork) => Ok(format!("{}:{}", atom_id, fork.format_locked(ctx)?)),
                 Atom::Join(join) => Ok(format!("{}:{}", atom_id, join.format_locked(ctx)?)),
-                Atom::Suit(suit) => Ok(format!("{}:{}", atom_id, suit.format_locked(ctx)?)),
-                Atom::Flow(flow) => Ok(format!("{}:{}", atom_id, flow.format_locked(ctx)?)),
+                Atom::Pit(pit) => Ok(format!("{}:{}", atom_id, pit.format_locked(ctx)?)),
+                Atom::Fuset(fuset) => Ok(format!("{}:{}", atom_id, fuset.format_locked(ctx)?)),
                 Atom::Bottom => Err(AcesError::from(AcesErrorKind::BottomAtomAccess)),
             }
         } else {
@@ -320,10 +320,10 @@ impl Formula {
 
     /// Adds an _anti_port_ rule to this `Formula`.
     ///
-    /// This clause constrains nodes to a single part of a firing
+    /// This clause constrains dots to a single part of a firing
     /// component, source or sink, so that the induced graph of any
     /// firing component is bipartite.  The `Formula` should contain
-    /// one such clause for each internal node of the c-e structure
+    /// one such clause for each internal dot of the c-e structure
     /// under analysis.
     pub fn add_anti_port(&mut self, port_id: PortId) -> Result<(), AcesError> {
         let (port_lit, anti_port_lit) = {
@@ -333,11 +333,11 @@ impl Formula {
                     Lit::from_atom_id(anti_port_id.into(), true),
                 )
             } else {
-                return Ok(()) // this isn't an internal node
+                return Ok(()) // this isn't an internal dot
             }
         };
 
-        let clause = Clause::from_pair(port_lit, anti_port_lit, "internal node");
+        let clause = Clause::from_pair(port_lit, anti_port_lit, "internal dot");
         self.add_clause(clause)
     }
 
@@ -394,25 +394,25 @@ impl Formula {
         Ok(())
     }
 
-    /// Adds an _anti_harc_ rule to this formula.
+    /// Adds an _anti_wedge_ rule to this formula.
     ///
-    /// This set of clauses constrains nodes to a single part of a
+    /// This set of clauses constrains dots to a single part of a
     /// firing component, source or sink, so that the induced graph of
     /// any firing component is bipartite.  The `Formula` should
     /// contain one clause for each fork-join pair of each internal
-    /// node of the c-e structure under analysis.
-    pub fn add_anti_harcs(
+    /// dot of the c-e structure under analysis.
+    pub fn add_anti_wedges(
         &mut self,
-        harc_ids: &[AtomId],
-        anti_harc_ids: &[AtomId],
+        wedge_ids: &[AtomId],
+        anti_wedge_ids: &[AtomId],
     ) -> Result<(), AcesError> {
-        for &harc_id in harc_ids.iter() {
-            let harc_lit = Lit::from_atom_id(harc_id, true);
+        for &wedge_id in wedge_ids.iter() {
+            let wedge_lit = Lit::from_atom_id(wedge_id, true);
 
-            for &anti_harc_id in anti_harc_ids.iter() {
-                let anti_harc_lit = Lit::from_atom_id(anti_harc_id, true);
+            for &anti_wedge_id in anti_wedge_ids.iter() {
+                let anti_wedge_lit = Lit::from_atom_id(anti_wedge_id, true);
 
-                let clause = Clause::from_pair(harc_lit, anti_harc_lit, "anti_harc");
+                let clause = Clause::from_pair(wedge_lit, anti_wedge_lit, "anti_wedge");
                 self.add_clause(clause)?;
             }
         }
@@ -420,17 +420,17 @@ impl Formula {
         Ok(())
     }
 
-    /// Adds a _branch_harc_ rule to this formula.
+    /// Adds a _branch_wedge_ rule to this formula.
     ///
     /// This rule enforces monomiality of firing components.
-    pub fn add_branch_harcs(&mut self, branch_harc_ids: &[AtomId]) -> Result<(), AcesError> {
-        for (pos, &harc_id) in branch_harc_ids.iter().enumerate() {
-            let harc_lit = Lit::from_atom_id(harc_id, true);
+    pub fn add_branch_wedges(&mut self, branch_wedge_ids: &[AtomId]) -> Result<(), AcesError> {
+        for (pos, &wedge_id) in branch_wedge_ids.iter().enumerate() {
+            let wedge_lit = Lit::from_atom_id(wedge_id, true);
 
-            for &branch_harc_id in branch_harc_ids[pos + 1..].iter() {
-                let branch_harc_lit = Lit::from_atom_id(branch_harc_id, true);
+            for &branch_wedge_id in branch_wedge_ids[pos + 1..].iter() {
+                let branch_wedge_lit = Lit::from_atom_id(branch_wedge_id, true);
 
-                let clause = Clause::from_pair(harc_lit, branch_harc_lit, "branch_harc");
+                let clause = Clause::from_pair(wedge_lit, branch_wedge_lit, "branch_wedge");
                 self.add_clause(clause)?;
             }
         }
@@ -438,28 +438,28 @@ impl Formula {
         Ok(())
     }
 
-    pub fn add_coharcs(
+    pub fn add_cowedges(
         &mut self,
-        harc_id: AtomId,
-        coharc_ids: Vec<Vec<AtomId>>,
+        wedge_id: AtomId,
+        cowedge_ids: Vec<Vec<AtomId>>,
     ) -> Result<(), AcesError> {
-        let harc_lit = Lit::from_atom_id(harc_id, true);
+        let wedge_lit = Lit::from_atom_id(wedge_id, true);
 
-        if coharc_ids.is_empty() {
+        if cowedge_ids.is_empty() {
             Err(AcesErrorKind::IncoherencyLeak.with_context(&self.context))
         } else {
-            for choice in coharc_ids.iter() {
+            for choice in cowedge_ids.iter() {
                 if choice.is_empty() {
                     return Err(AcesErrorKind::IncoherencyLeak.with_context(&self.context))
                 } else {
-                    // Co-harc rules are encoded below as plain
+                    // Co-wedge rules are encoded below as plain
                     // disjunctions instead of exclusive choice,
                     // because we rely on reduction to minimal model
                     // when solving.  FIXME reconsider.
-                    let lits = Some(harc_lit)
+                    let lits = Some(wedge_lit)
                         .into_iter()
-                        .chain(choice.iter().map(|coharc_id| Lit::from_atom_id(*coharc_id, false)));
-                    let clause = Clause::from_literals(lits, "coharc");
+                        .chain(choice.iter().map(|cowedge_id| Lit::from_atom_id(*cowedge_id, false)));
+                    let clause = Clause::from_literals(lits, "cowedge");
 
                     self.add_clause(clause)?;
                 }
@@ -530,37 +530,37 @@ impl fmt::Display for Formula {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Context, ForkId, JoinId, node::NodeSet};
+    use crate::{Context, ForkId, JoinId, domain::Dotset};
     use super::*;
 
-    fn new_fork_id(ctx: &ContextHandle, host_name: &str, suit_names: &[&str]) -> ForkId {
+    fn new_fork_id(ctx: &ContextHandle, tip_name: &str, arm_names: &[&str]) -> ForkId {
         let mut ctx = ctx.lock().unwrap();
-        let host_id = ctx.share_node_name(host_name);
-        let suit_ids = suit_names.iter().map(|n| ctx.share_node_name(n));
-        let suit = NodeSet::new(suit_ids);
+        let tip_id = ctx.share_dot_name(tip_name);
+        let arm_ids = arm_names.iter().map(|n| ctx.share_dot_name(n));
+        let pit = Dotset::new(arm_ids);
 
-        ctx.share_fork_from_host_and_suit(host_id, suit)
+        ctx.share_fork_from_tip_and_pit(tip_id, pit)
     }
 
-    fn new_join_id(ctx: &ContextHandle, host_name: &str, suit_names: &[&str]) -> JoinId {
+    fn new_join_id(ctx: &ContextHandle, tip_name: &str, arm_names: &[&str]) -> JoinId {
         let mut ctx = ctx.lock().unwrap();
-        let host_id = ctx.share_node_name(host_name);
-        let suit_ids = suit_names.iter().map(|n| ctx.share_node_name(n));
-        let suit = NodeSet::new(suit_ids);
+        let tip_id = ctx.share_dot_name(tip_name);
+        let arm_ids = arm_names.iter().map(|n| ctx.share_dot_name(n));
+        let pit = Dotset::new(arm_ids);
 
-        ctx.share_join_from_host_and_suit(host_id, suit)
+        ctx.share_join_from_tip_and_pit(tip_id, pit)
     }
 
     #[test]
-    fn test_coharcs() {
-        let ctx = Context::new_toplevel("test_coharcs");
+    fn test_cowedges() {
+        let ctx = Context::new_toplevel("test_cowedges");
         let a_fork_id = new_fork_id(&ctx, "a", &["z"]);
         let z_join_id = new_join_id(&ctx, "z", &["a"]);
 
         let mut test_formula = Formula::new(&ctx);
         let mut ref_formula = Formula::new(&ctx);
 
-        test_formula.add_coharcs(a_fork_id.get(), vec![vec![z_join_id.get()]]).unwrap();
+        test_formula.add_cowedges(a_fork_id.get(), vec![vec![z_join_id.get()]]).unwrap();
 
         ref_formula
             .add_clause(Clause::from_pair(

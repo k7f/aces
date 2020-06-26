@@ -1,6 +1,6 @@
 use log::Level::Debug;
 use crate::{
-    ContextHandle, NodeId, Multiplicity, State, Goal, Semantics, FiringSet, FiringSequence,
+    ContextHandle, DotId, Multiplicity, State, Goal, Semantics, FiringSet, FiringSequence,
     AcesError,
 };
 
@@ -19,7 +19,7 @@ impl Props {
 
 #[derive(Debug)]
 pub enum StopCondition {
-    GoalReached(NodeId, usize),
+    GoalReached(DotId, usize),
     Stalemate(usize),
     Pause(usize),
     UnimplementedFeature(String),
@@ -117,10 +117,10 @@ impl Runner {
         self.rng = Some(rng);
 
         for num_steps in 0..self.max_steps {
-            if let Some(node_id) = self.goal_is_reached() {
-                debug!("Goal reached at {:?} after {} steps", node_id, num_steps);
+            if let Some(dot_id) = self.goal_is_reached() {
+                debug!("Goal reached at {:?} after {} steps", dot_id, num_steps);
 
-                return Ok(StopCondition::GoalReached(node_id, num_steps))
+                return Ok(StopCondition::GoalReached(dot_id, num_steps))
             }
 
             let fc_id = if log_enabled!(Debug) {
@@ -138,10 +138,10 @@ impl Runner {
             }
         }
 
-        if let Some(node_id) = self.goal_is_reached() {
-            debug!("Goal reached at {:?} after {} steps", node_id, self.max_steps);
+        if let Some(dot_id) = self.goal_is_reached() {
+            debug!("Goal reached at {:?} after {} steps", dot_id, self.max_steps);
 
-            return Ok(StopCondition::GoalReached(node_id, self.max_steps))
+            return Ok(StopCondition::GoalReached(dot_id, self.max_steps))
         }
 
         if log_enabled!(Debug) {
@@ -182,7 +182,7 @@ impl Runner {
         &self.firing_sequence
     }
 
-    pub fn goal_is_reached(&self) -> Option<NodeId> {
+    pub fn goal_is_reached(&self) -> Option<DotId> {
         self.goal.as_ref().and_then(|goal| goal.is_reached(&self.current_state))
     }
 }

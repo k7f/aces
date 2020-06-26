@@ -28,9 +28,9 @@ for every dipole _{(x, u), (v, y)}_ _x_ is in _v_ and y is
 in u.
 
 FIXME necessary: the pre-set is fork-armed by the post-set, which
-is join-armed by the pre-set.  For every pre-set point _x_ and
-every fork (also _x_-tipped?) _x_ is in the pot and for every
-post-set point _y_ and every join _y_ is in the pot.
+is join-armed by the pre-set.  For every pre-set dot _x_ and
+every fork (also _x_-tipped?) _x_ is in the pit and for every
+post-set dot _y_ and every join _y_ is in the pit.
 
 FIXME Sufficient in a singular tight fuset.
 
@@ -60,13 +60,13 @@ _X, we say_ that
 As may be shown by examination of the domain partition table, the
 exclusion of weak followers is equivalent to coherence.
 
-A _strong patching_ of a point _x_ in a fuset _&phi;_ is a pair of
+A _strong patching_ of a dot _x_ in a fuset _&phi;_ is a pair of
 domain subsets (<tt><b>P</b></tt><sub>_&phi;_</sub>(_x_),
 <tt><b>p</b></tt><sub>_&phi;_</sub>(_x_)), where the components
 <tt><b>P</b></tt><sub>_&phi;_</sub>(_x_)&nbsp;=&nbsp;{_y_ | _x_ &larr;<sub>_&phi;_</sub> _y_ &and; _y_ &rarr;<sub>_&phi;_</sub> _x_} and
 <tt><b>p</b></tt><sub>_&phi;_</sub>(_x_)&nbsp;=&nbsp;{_y_ | _x_ &rarr;<sub>_&phi;_</sub> _y_ &and; _y_ &larr;<sub>_&phi;_</sub> _x_} are the _upper_ and _lower strong patching_ of _x_ in _&phi;_.
 
-A _weak patching_ of a point _x_ in a fuset _&phi;_ is a 4-tuple
+A _weak patching_ of a dot _x_ in a fuset _&phi;_ is a 4-tuple
 of domain subsets (<tt><b>A</b></tt><sub>_&phi;_</sub>(_x_),
 <tt><b>a</b></tt><sub>_&phi;_</sub>(_x_),
 <tt><b>T</b></tt><sub>_&phi;_</sub>(_x_), <tt><b>t</b></tt><sub>_&phi;_</sub>(_x_)), where the components
@@ -75,11 +75,11 @@ of domain subsets (<tt><b>A</b></tt><sub>_&phi;_</sub>(_x_),
 <tt><b>T</b></tt><sub>_&phi;_</sub>(_x_)&nbsp;=&nbsp;{_y_ | _y_ &rarr;<sub>_&phi;_</sub> _x_ &and; _x_ &nlarr;<sub>_&phi;_</sub> _y_}, and
 <tt><b>t</b></tt><sub>_&phi;_</sub>(_x_)&nbsp;=&nbsp;{_y_ | _y_ &larr;<sub>_&phi;_</sub> _x_ &and; _x_ &nrarr;<sub>_&phi;_</sub> _y_},
 are the _upper_ and _lower arm patching_ of _x_ in _&phi;_ (the
-points arming _x_), and the _upper_ and _lower tip patching_ of _x_
+dots arming _x_), and the _upper_ and _lower tip patching_ of _x_
 in _&phi;_ (the tips armed by _x_).
 
 The following _weak patching pattern table_ lists possible
-component patterns of weak patching of a point, depending on its
+component patterns of weak patching of a dot, depending on its
 class.  Non-empty components are represented by the corresponding
 letters: <tt><b>A</b></tt>, <tt><b>a</b></tt>, <tt><b>T</b></tt>,
 and <tt><b>t</b></tt>.  Empty components are omitted, unless all
@@ -103,10 +103,10 @@ fuset to be coherent is even stronger: it is necessary that
 pre-set is equal to over-set and post-set is equal to under-set.
 This is the _set equality condition_ of coherence.
 
-To see that this is the case, note that if a pre-set point _x_
+To see that this is the case, note that if a pre-set dot _x_
 isn't in the over-set, then _x_ is fork-armed by at least one arm
 and all such arms are weak followers of _x_; conversely, if an
-over-set point _x_ isn't in the pre-set, then there is at least
+over-set dot _x_ isn't in the pre-set, then there is at least
 one tip join-armed by _x_ and all such tips are weak followers of
 _x_.  Hence, if a fuset doesn't contain weak followers, then its
 pre-set and over-set must be equal.  The other equality is
@@ -149,7 +149,7 @@ _x_ in ***X*** such that _&phi;_ is a flow path from _x_ to _x_.
 FIXME Given a path _&pi;<sub>1</sub>_ from _s_ to _r_ and a path
 _&pi;<sub>2</sub>_ from _r_ to _t_
 
-FIXME If a point _r_ is internal in a path _&pi;_ from _s_ to _t_
+FIXME If a dot _r_ is internal in a path _&pi;_ from _s_ to _t_
 
 FIXME all flow paths are singular.
 
@@ -213,7 +213,5 @@ subgraph induced by the union of ***X*** and
 FIXME reachability, 
 
 FIXME juncture, junction, (a -> x y, x <- a b) => {(a,x)},{(a,y)},{(x,b)}
-
-FIXME flowerpot, melting pot, potshot
 
 FIXME push-pull derivation

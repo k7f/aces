@@ -1,13 +1,14 @@
-//! A common representation of node capacities, weight labels and
+//! A common representation of dot capacities, weight labels and
 //! state.
 
 use std::{
+    collections::BTreeMap,
     str::FromStr,
     fmt::{self, Write},
 };
-use crate::{FlowSetId, Context, ExclusivelyContextual, AcesError, AcesErrorKind, node::NodeSetId};
+use crate::{AtomId, AcesError, AcesErrorKind};
 
-/// A scalar type common for node capacity, weight labels and state.
+/// A scalar type common for dot capacity, weight labels and state.
 ///
 /// Valid multiplicities are nonnegative integers or _&omega;_.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -165,68 +166,52 @@ impl FromStr for Multiplicity {
     }
 }
 
-/// A maximum number of tokens a node may hold.
+/// A maximum number of tokens a dot may hold.
 ///
 /// This is the type of values of the function _cap<sub>U</sub>_,
-/// which maps nodes in the carrier of a c-e structure _U_ to their
+/// which maps dots in the carrier of a c-e structure _U_ to their
 /// capacities.
 pub type Capacity = Multiplicity;
 
-/// Multiplicity of a node's monomial cause or effect in a firing
+/// Multiplicity of a dot's monomial cause or effect in a firing
 /// component.
 ///
-/// This type is used in the representation of the three types of
-/// weight labeling.  The implementation stores flow-weight labeling
-/// in the variable [`Context::flow_weights`] which maps harcs to
-/// [`Weight`]s.  See also [`CoreWeight`] and [`ShellWeight`] for the
-/// other two weight labelings.
+/// This type is used in the representation of two modes of weight
+/// labeling &mdash; generic or fuset-dependent.  The implementation
+/// stores the generic wedge weight labeling in the variable
+/// [`Context::wedge_weights`] which maps wedges to [`Weight`]s.  The
+/// explicit labeling of core nets is stored in the variable
+/// [`Context::core_weights`] which maps fusets to wedge weight
+/// labelings.
 ///
-/// [`Context::flow_weights`]: crate::Context::flow_weights
+/// [`Context::wedge_weights`]: crate::Context::wedge_weights
+/// [`Context::core_weights`]: crate::Context::core_weights
 pub type Weight = Multiplicity;
 
-/// Explicit weight attached to an arc of a specific core graph.
-///
-/// The implementation stores core-weight labeling in the variable
-/// [`Context::core_weights`] which maps nodes to sets of
-/// [`CoreWeight`]s.  See also [`ShellWeight`].
-///
-/// [`Context::core_weights`]: crate::Context::core_weights
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct CoreWeight {
-    pub(crate) flow_set: FlowSetId,
-    pub(crate) weight:   Weight,
+// impl ExclusivelyContextual for CoreWeight {
+//     fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
+//         Ok(format!("{}:{}", self.weight, self.fuset_id.format_locked(ctx)?,))
+//     }
+// }
+
+#[derive(Clone, Default, Debug)]
+pub struct WedgeWeights {
+    pub(crate) weights: BTreeMap<AtomId, Weight>,
 }
 
-impl CoreWeight {
+impl WedgeWeights {
     #[inline]
-    pub fn new(flow_set: FlowSetId, weight: Weight) -> Self {
-        CoreWeight { flow_set, weight }
+    pub fn clear(&mut self) {
+        self.weights.clear();
     }
-}
 
-impl ExclusivelyContextual for CoreWeight {
-    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
-        Ok(format!("{}:{}", self.weight, self.flow_set.format_locked(ctx)?,))
-    }
-}
-
-/// Generic weight attached to an arc of a shell graph.
-///
-/// The implementation stores shell-weight labeling in the variable
-/// [`Context::shell_weights`] which maps nodes to sets of
-/// `ShellWeight`s.  See also [`CoreWeight`].
-///
-/// [`Context::shell_weights`]: crate::Context::shell_weights
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct ShellWeight {
-    pub(crate) pre_set:  NodeSetId,
-    pub(crate) post_set: NodeSetId,
-    pub(crate) weight:   Weight,
-}
-
-impl ShellWeight {
     #[inline]
-    pub fn new(pre_set: NodeSetId, post_set: NodeSetId, weight: Weight) -> Self {
-        ShellWeight { pre_set, post_set, weight }
+    pub fn get(&self, wedge_id: &AtomId) -> Option<&Weight> {
+        self.weights.get(wedge_id)
+    }
+
+    #[inline]
+    pub fn insert(&mut self, wedge_id: AtomId, weight: Weight) -> Option<Weight> {
+        self.weights.insert(wedge_id, weight)
     }
 }

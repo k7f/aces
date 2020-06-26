@@ -9,16 +9,16 @@ use std::{
 };
 use log::Level::{Debug, Trace};
 use crate::{
-    ContextHandle, Contextual, ExclusivelyContextual, ContentFormat, InteractiveFormat, Port, Harc,
-    Face, AtomId, NodeId, PortId, LinkId, ForkId, JoinId, Polynomial, FiringSet, Content, sat,
+    ContextHandle, Contextual, ExclusivelyContextual, ContentFormat, InteractiveFormat, Port, Wedge,
+    Polarity, AtomId, DotId, PortId, LinkId, ForkId, JoinId, Polynomial, FiringSet, Content, sat,
     sat::Resolution, Solver, AcesError, AcesErrorKind,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum LinkState {
-    /// Single-face link (structure containing it is incoherent).  The
-    /// [`Face`] value is the missing face.
-    Thin(Face),
+    /// Unipolar link (any structure containing it is incoherent).
+    /// The [`Polarity`] value is the _missing_ orientation.
+    Thin(Polarity),
     Fat,
 }
 
@@ -40,12 +40,12 @@ pub struct CEStructure {
     resolution:     Resolution,
     causes:         BTreeMap<PortId, Polynomial<LinkId>>,
     effects:        BTreeMap<PortId, Polynomial<LinkId>>,
-    carrier:        BTreeSet<NodeId>,
+    carrier:        BTreeSet<DotId>,
     links:          BTreeMap<LinkId, LinkState>,
     num_thin_links: u32,
-    forks:          BTreeMap<NodeId, Vec<AtomId>>,
-    joins:          BTreeMap<NodeId, Vec<AtomId>>,
-    // FIXME define `struct Coharcs`, grouped on demand (cf. `group_coharcs`)
+    forks:          BTreeMap<DotId, Vec<AtomId>>,
+    joins:          BTreeMap<DotId, Vec<AtomId>>,
+    // FIXME define `struct Cowedges`, grouped on demand (cf. `group_cowedges`)
     co_forks:       BTreeMap<AtomId, Vec<AtomId>>, // Joins -> 2^Forks
     co_joins:       BTreeMap<AtomId, Vec<AtomId>>, // Forks -> 2^Joins
 }
@@ -89,86 +89,86 @@ impl CEStructure {
         CEStructure::new(ctx, Rc::new(InteractiveFormat::new()))
     }
 
-    fn add_harc_to_host(&mut self, harc_id: AtomId, face: Face, node_id: NodeId) {
-        let harc_entry = match face {
-            Face::Tx => self.forks.entry(node_id),
-            Face::Rx => self.joins.entry(node_id),
+    fn add_wedge_to_tip(&mut self, wedge_id: AtomId, polarity: Polarity, dot_id: DotId) {
+        let wedge_entry = match polarity {
+            Polarity::Tx => self.forks.entry(dot_id),
+            Polarity::Rx => self.joins.entry(dot_id),
         };
 
-        match harc_entry {
+        match wedge_entry {
             btree_map::Entry::Vacant(entry) => {
-                entry.insert(vec![harc_id]);
+                entry.insert(vec![wedge_id]);
             }
             btree_map::Entry::Occupied(mut entry) => {
                 let sids = entry.get_mut();
 
-                if let Err(pos) = sids.binary_search(&harc_id) {
-                    sids.insert(pos, harc_id);
+                if let Err(pos) = sids.binary_search(&wedge_id) {
+                    sids.insert(pos, wedge_id);
                 } // else idempotency of addition.
             }
         }
     }
 
-    fn add_harc_to_suit(&mut self, harc_id: AtomId, face: Face, co_harc_ids: &[AtomId]) {
-        for &co_harc_id in co_harc_ids.iter() {
-            let harc_entry = match face {
-                Face::Tx => self.co_forks.entry(co_harc_id),
-                Face::Rx => self.co_joins.entry(co_harc_id),
+    fn add_wedge_to_pit(&mut self, wedge_id: AtomId, polarity: Polarity, co_wedge_ids: &[AtomId]) {
+        for &co_wedge_id in co_wedge_ids.iter() {
+            let wedge_entry = match polarity {
+                Polarity::Tx => self.co_forks.entry(co_wedge_id),
+                Polarity::Rx => self.co_joins.entry(co_wedge_id),
             };
 
             if log_enabled!(Trace) {
-                match face {
-                    Face::Tx => {
+                match polarity {
+                    Polarity::Tx => {
                         trace!(
                             "Old join's co_forks[{}] -> {}",
-                            JoinId(co_harc_id).with(&self.context),
-                            ForkId(harc_id).with(&self.context),
+                            JoinId(co_wedge_id).with(&self.context),
+                            ForkId(wedge_id).with(&self.context),
                         );
                     }
-                    Face::Rx => {
+                    Polarity::Rx => {
                         trace!(
                             "Old fork's co_joins[{}] -> {}",
-                            ForkId(co_harc_id).with(&self.context),
-                            JoinId(harc_id).with(&self.context)
+                            ForkId(co_wedge_id).with(&self.context),
+                            JoinId(wedge_id).with(&self.context)
                         );
                     }
                 }
             }
 
-            match harc_entry {
+            match wedge_entry {
                 btree_map::Entry::Vacant(entry) => {
-                    entry.insert(vec![harc_id]);
+                    entry.insert(vec![wedge_id]);
                 }
                 btree_map::Entry::Occupied(mut entry) => {
                     let sids = entry.get_mut();
 
-                    if let Err(pos) = sids.binary_search(&harc_id) {
-                        sids.insert(pos, harc_id);
+                    if let Err(pos) = sids.binary_search(&wedge_id) {
+                        sids.insert(pos, wedge_id);
                     } // else idempotency of addition.
                 }
             }
         }
     }
 
-    fn create_harcs(
+    fn create_wedges(
         &mut self,
-        face: Face,
-        node_id: NodeId,
+        polarity: Polarity,
+        dot_id: DotId,
         poly: &Polynomial<LinkId>,
     ) -> Result<(), AcesError> {
         for mono in poly.get_monomials() {
-            let mut fat_co_node_ids = Vec::new();
+            let mut fat_codot_ids = Vec::new();
 
             // Link sequence `mono` is ordered by `LinkId`, reorder
-            // first by conode's `NodeId`.
-            let mut co_node_map = BTreeMap::new();
+            // first by codot's `DotId`.
+            let mut codot_map = BTreeMap::new();
 
             for lid in mono {
                 if let Some(link_state) = self.links.get(&lid) {
                     let ctx = self.context.lock().unwrap();
 
                     if let Some(link) = ctx.get_link(lid) {
-                        co_node_map.insert(link.get_node_id(!face), link_state);
+                        codot_map.insert(link.get_dot_id(!polarity), link_state);
                     } else {
                         return Err(AcesErrorKind::LinkMissingForId(lid).with_context(&self.context))
                     }
@@ -177,91 +177,91 @@ impl CEStructure {
                 }
             }
 
-            for (&co_node_id, link_state) in co_node_map.iter() {
+            for (&codot_id, link_state) in codot_map.iter() {
                 match link_state {
                     LinkState::Fat => {
-                        fat_co_node_ids.push(co_node_id);
+                        fat_codot_ids.push(codot_id);
                     }
                     LinkState::Thin(_) => {} // Don't push a thin link.
                 }
             }
 
-            let mut co_harcs = Vec::new();
+            let mut co_wedges = Vec::new();
 
-            for nid in fat_co_node_ids.iter() {
-                if let Some(harc_ids) = match face {
-                    Face::Tx => self.joins.get(nid),
-                    Face::Rx => self.forks.get(nid),
+            for nid in fat_codot_ids.iter() {
+                if let Some(wedge_ids) = match polarity {
+                    Polarity::Tx => self.joins.get(nid),
+                    Polarity::Rx => self.forks.get(nid),
                 } {
                     let ctx = self.context.lock().unwrap();
 
-                    for &sid in harc_ids {
-                        if let Some(harc) = match face {
-                            Face::Tx => ctx.get_join(sid.into()),
-                            Face::Rx => ctx.get_fork(sid.into()),
+                    for &sid in wedge_ids {
+                        if let Some(wedge) = match polarity {
+                            Polarity::Tx => ctx.get_join(sid.into()),
+                            Polarity::Rx => ctx.get_fork(sid.into()),
                         } {
-                            let suit_id = harc.get_suit_id();
-                            let suit = ctx.get_node_set(suit_id).ok_or_else(|| {
-                                AcesError::from(AcesErrorKind::NodeSetMissingForId(suit_id))
+                            let pit_id = wedge.get_pit_id();
+                            let pit = ctx.get_dotset(pit_id).ok_or_else(|| {
+                                AcesError::from(AcesErrorKind::DotsetMissingForId(pit_id))
                             })?;
 
-                            if suit.get_node_ids().binary_search(&node_id).is_ok() {
-                                co_harcs.push(sid);
+                            if pit.get_dot_ids().binary_search(&dot_id).is_ok() {
+                                co_wedges.push(sid);
                             }
                         }
                     }
                 } else {
-                    // This co_node has no co_harcs yet, a condition
+                    // This codot has no co_wedges yet, a condition
                     // which should have been detected above as a thin
                     // link.
                     return Err(AcesErrorKind::IncoherencyLeak.with_context(&self.context))
                 }
             }
 
-            let harc_id: AtomId = match face {
-                Face::Tx => {
-                    Harc::new_fork_unchecked(&self.context, node_id, co_node_map.keys().copied())
+            let wedge_id: AtomId = match polarity {
+                Polarity::Tx => {
+                    Wedge::new_fork_unchecked(&self.context, dot_id, codot_map.keys().copied())
                         .into()
                     // let ctx = self.context.lock().unwrap();
-                    // let mut fork = Harc::new_fork_unchecked(ctx, node_id, co_node_map.keys().copied());
+                    // let mut fork = Wedge::new_fork_unchecked(ctx, dot_id, codot_map.keys().copied());
                     // ctx.share_fork(&mut fork).into()
                 }
-                Face::Rx => {
-                    Harc::new_join_unchecked(&self.context, node_id, co_node_map.keys().copied())
+                Polarity::Rx => {
+                    Wedge::new_join_unchecked(&self.context, dot_id, codot_map.keys().copied())
                         .into()
                     // let ctx = self.context.lock().unwrap();
-                    // let mut join = Harc::new_join_unchecked(ctx, node_id, co_node_map.keys().copied());
+                    // let mut join = Wedge::new_join_unchecked(ctx, dot_id, codot_map.keys().copied());
                     // ctx.share_join(&mut join).into()
                 }
             };
 
-            self.add_harc_to_host(harc_id, face, node_id);
+            self.add_wedge_to_tip(wedge_id, polarity, dot_id);
 
-            if !co_harcs.is_empty() {
-                self.add_harc_to_suit(harc_id, face, co_harcs.as_slice());
+            if !co_wedges.is_empty() {
+                self.add_wedge_to_pit(wedge_id, polarity, co_wedges.as_slice());
 
                 if log_enabled!(Trace) {
-                    match face {
-                        Face::Tx => {
+                    match polarity {
+                        Polarity::Tx => {
                             trace!(
                                 "New fork's co_joins[{}] -> {:?}",
-                                ForkId(harc_id).with(&self.context),
-                                co_harcs
+                                ForkId(wedge_id).with(&self.context),
+                                co_wedges
                             );
                         }
-                        Face::Rx => {
+                        Polarity::Rx => {
                             trace!(
                                 "New join's co_forks[{}] -> {:?}",
-                                JoinId(harc_id).with(&self.context),
-                                co_harcs
+                                JoinId(wedge_id).with(&self.context),
+                                co_wedges
                             );
                         }
                     }
                 }
 
-                match face {
-                    Face::Tx => self.co_joins.insert(harc_id, co_harcs),
-                    Face::Rx => self.co_forks.insert(harc_id, co_harcs),
+                match polarity {
+                    Polarity::Tx => self.co_joins.insert(wedge_id, co_wedges),
+                    Polarity::Rx => self.co_forks.insert(wedge_id, co_wedges),
                 };
             }
         }
@@ -270,7 +270,7 @@ impl CEStructure {
     }
 
     /// Constructs new [`Polynomial`] from a sequence of sequences of
-    /// [`NodeId`]s and adds it to causes or effects of a node of this
+    /// [`DotId`]s and adds it to causes or effects of a dot of this
     /// `CEStructure`.
     ///
     /// The only direct callers of this are methods [`add_causes()`]
@@ -280,22 +280,22 @@ impl CEStructure {
     /// [`add_effects()`]: CEStructure::add_effects()
     fn add_causes_or_effects<'a, I>(
         &mut self,
-        face: Face,
-        node_id: NodeId,
+        polarity: Polarity,
+        dot_id: DotId,
         poly_ids: I,
     ) -> Result<(), AcesError>
     where
         I: IntoIterator + 'a,
-        I::Item: IntoIterator<Item = &'a NodeId>,
+        I::Item: IntoIterator<Item = &'a DotId>,
     {
-        let poly = Polynomial::from_nodes_in_context(&self.context, face, node_id, poly_ids);
+        let poly = Polynomial::from_dots_in_context(&self.context, polarity, dot_id, poly_ids);
 
-        let mut port = Port::new(face, node_id);
+        let mut port = Port::new(polarity, dot_id);
         let port_id = self.context.lock().unwrap().share_port(&mut port);
 
         for &lid in poly.get_atomics() {
             if let Some(what_missing) = self.links.get_mut(&lid) {
-                if *what_missing == LinkState::Thin(face) {
+                if *what_missing == LinkState::Thin(polarity) {
                     // Fat link: occurs in causes and effects.
                     *what_missing = LinkState::Fat;
                     self.num_thin_links -= 1;
@@ -306,16 +306,16 @@ impl CEStructure {
             } else {
                 // Rx: Thin, cause-only link: occurs in causes, but not in effects.
                 // Tx: Thin, effect-only link: occurs in effects, but not in causes.
-                self.links.insert(lid, LinkState::Thin(!face));
+                self.links.insert(lid, LinkState::Thin(!polarity));
                 self.num_thin_links += 1;
             }
         }
 
-        self.create_harcs(face, node_id, &poly)?;
+        self.create_wedges(polarity, dot_id, &poly)?;
 
-        let poly_entry = match face {
-            Face::Rx => self.causes.entry(port_id),
-            Face::Tx => self.effects.entry(port_id),
+        let poly_entry = match polarity {
+            Polarity::Rx => self.causes.entry(port_id),
+            Polarity::Tx => self.effects.entry(port_id),
         };
 
         match poly_entry {
@@ -327,41 +327,41 @@ impl CEStructure {
             }
         }
 
-        self.carrier.insert(node_id);
+        self.carrier.insert(dot_id);
 
         Ok(())
     }
 
     /// Constructs new [`Polynomial`] from a sequence of sequences of
-    /// [`NodeId`]s and adds it to causes of a node of this
+    /// [`DotId`]s and adds it to causes of a dot of this
     /// `CEStructure`.
     ///
     /// This method is incremental: new polynomial is added to old
-    /// polynomial that is already attached to the `node_id` as node's
+    /// polynomial that is already attached to the `dot_id` as dot's
     /// causes (there is always some polynomial attached, if not
     /// explicitly, then implicitly, as the default _&theta;_).
-    pub fn add_causes<'a, I>(&mut self, node_id: NodeId, poly_ids: I) -> Result<(), AcesError>
+    pub fn add_causes<'a, I>(&mut self, dot_id: DotId, poly_ids: I) -> Result<(), AcesError>
     where
         I: IntoIterator + 'a,
-        I::Item: IntoIterator<Item = &'a NodeId>,
+        I::Item: IntoIterator<Item = &'a DotId>,
     {
-        self.add_causes_or_effects(Face::Rx, node_id, poly_ids)
+        self.add_causes_or_effects(Polarity::Rx, dot_id, poly_ids)
     }
 
     /// Constructs new [`Polynomial`] from a sequence of sequences of
-    /// [`NodeId`]s and adds it to effects of a node of this
+    /// [`DotId`]s and adds it to effects of a dot of this
     /// `CEStructure`.
     ///
     /// This method is incremental: new polynomial is added to old
-    /// polynomial that is already attached to the `node_id` as node's
+    /// polynomial that is already attached to the `dot_id` as dot's
     /// effects (there is always some polynomial attached, if not
     /// explicitly, then implicitly, as the default _&theta;_).
-    pub fn add_effects<'a, I>(&mut self, node_id: NodeId, poly_ids: I) -> Result<(), AcesError>
+    pub fn add_effects<'a, I>(&mut self, dot_id: DotId, poly_ids: I) -> Result<(), AcesError>
     where
         I: IntoIterator + 'a,
-        I::Item: IntoIterator<Item = &'a NodeId>,
+        I::Item: IntoIterator<Item = &'a DotId>,
     {
-        self.add_causes_or_effects(Face::Tx, node_id, poly_ids)
+        self.add_causes_or_effects(Polarity::Tx, dot_id, poly_ids)
     }
 
     /// Extends this c-e structure with another one, which is created
@@ -370,29 +370,29 @@ impl CEStructure {
     ///
     /// [`Context`]: crate::Context
     pub fn add_from_content(&mut self, mut content: Box<dyn Content>) -> Result<(), AcesError> {
-        for node_id in content.get_carrier_ids() {
-            if let Some(poly_ids) = content.get_causes_by_id(node_id) {
+        for dot_id in content.get_carrier_ids() {
+            if let Some(poly_ids) = content.get_causes_by_id(dot_id) {
                 if poly_ids.is_empty() {
-                    let node_name =
-                        self.context.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
+                    let dot_name =
+                        self.context.lock().unwrap().get_dot_name(dot_id).unwrap().to_owned();
 
-                    return Err(AcesErrorKind::EmptyCausesOfInternalNode(node_name)
+                    return Err(AcesErrorKind::EmptyCausesOfInternalDot(dot_name)
                         .with_context(&self.context))
                 }
 
-                self.add_causes(node_id, poly_ids)?;
+                self.add_causes(dot_id, poly_ids)?;
             }
 
-            if let Some(poly_ids) = content.get_effects_by_id(node_id) {
+            if let Some(poly_ids) = content.get_effects_by_id(dot_id) {
                 if poly_ids.is_empty() {
-                    let node_name =
-                        self.context.lock().unwrap().get_node_name(node_id).unwrap().to_owned();
+                    let dot_name =
+                        self.context.lock().unwrap().get_dot_name(dot_id).unwrap().to_owned();
 
-                    return Err(AcesErrorKind::EmptyEffectsOfInternalNode(node_name)
+                    return Err(AcesErrorKind::EmptyEffectsOfInternalDot(dot_name)
                         .with_context(&self.context))
                 }
 
-                self.add_effects(node_id, poly_ids)?;
+                self.add_effects(dot_id, poly_ids)?;
             }
         }
 
@@ -598,75 +598,75 @@ impl CEStructure {
         Ok(formula)
     }
 
-    /// Given a flat list of co-harcs, groups them by their host
-    /// nodes (i.e. by suit members of the considered harc), and
-    /// returns a vector of vectors of [`AtomId`]s.
+    /// Given a flat list of co-wedges, groups them by their tip dots
+    /// (i.e. by the arms of the considered wedge), and returns a
+    /// vector of vectors of [`AtomId`]s.
     ///
     /// The result, if interpreted in terms of SAT encoding, is a
-    /// conjunction of exclusive choices of co-harcs.
-    fn group_coharcs(&self, coharc_ids: &[AtomId]) -> Result<Vec<Vec<AtomId>>, AcesError> {
-        if coharc_ids.len() < 2 {
-            if coharc_ids.is_empty() {
+    /// conjunction of exclusive choices of co-wedges.
+    fn group_cowedges(&self, cowedge_ids: &[AtomId]) -> Result<Vec<Vec<AtomId>>, AcesError> {
+        if cowedge_ids.len() < 2 {
+            if cowedge_ids.is_empty() {
                 Err(AcesErrorKind::IncoherencyLeak.with_context(&self.context))
             } else {
-                Ok(vec![coharc_ids.to_vec()])
+                Ok(vec![cowedge_ids.to_vec()])
             }
         } else {
-            let mut cohost_map: BTreeMap<NodeId, Vec<AtomId>> = BTreeMap::new();
+            let mut cotip_map: BTreeMap<DotId, Vec<AtomId>> = BTreeMap::new();
 
-            for &coharc_id in coharc_ids.iter() {
+            for &cowedge_id in cowedge_ids.iter() {
                 let ctx = self.context.lock().unwrap();
-                let coharc = ctx.get_harc(coharc_id).ok_or_else(|| {
-                    AcesErrorKind::HarcMissingForId(coharc_id).with_context(&self.context)
+                let cowedge = ctx.get_wedge(cowedge_id).ok_or_else(|| {
+                    AcesErrorKind::WedgeMissingForId(cowedge_id).with_context(&self.context)
                 })?;
-                let cohost_id = coharc.get_host_id();
+                let cotip_id = cowedge.get_tip_id();
 
-                match cohost_map.entry(cohost_id) {
+                match cotip_map.entry(cotip_id) {
                     btree_map::Entry::Vacant(entry) => {
-                        entry.insert(vec![coharc_id]);
+                        entry.insert(vec![cowedge_id]);
                     }
                     btree_map::Entry::Occupied(mut entry) => {
                         let sids = entry.get_mut();
 
-                        if let Err(pos) = sids.binary_search(&coharc_id) {
-                            sids.insert(pos, coharc_id);
+                        if let Err(pos) = sids.binary_search(&cowedge_id) {
+                            sids.insert(pos, cowedge_id);
                         } else {
                             warn!(
-                                "Multiple occurrences of {} in coharc array",
-                                coharc.format_locked(&ctx)?
+                                "Multiple occurrences of {} in cowedge array",
+                                cowedge.format_locked(&ctx)?
                             );
                         }
                     }
                 }
             }
 
-            Ok(cohost_map.into_iter().map(|(_, v)| v).collect())
+            Ok(cotip_map.into_iter().map(|(_, v)| v).collect())
         }
     }
 
     pub fn get_fork_join_formula(&self) -> Result<sat::Formula, AcesError> {
         let mut formula = sat::Formula::new(&self.context);
 
-        for (node_id, fork_atom_ids) in self.forks.iter() {
-            if let Some(join_atom_ids) = self.joins.get(node_id) {
-                formula.add_anti_harcs(fork_atom_ids.as_slice(), join_atom_ids.as_slice())?;
+        for (dot_id, fork_atom_ids) in self.forks.iter() {
+            if let Some(join_atom_ids) = self.joins.get(dot_id) {
+                formula.add_anti_wedges(fork_atom_ids.as_slice(), join_atom_ids.as_slice())?;
             }
 
-            formula.add_branch_harcs(fork_atom_ids.as_slice())?;
+            formula.add_branch_wedges(fork_atom_ids.as_slice())?;
         }
 
         for (_, join_atom_ids) in self.joins.iter() {
-            formula.add_branch_harcs(join_atom_ids.as_slice())?;
+            formula.add_branch_wedges(join_atom_ids.as_slice())?;
         }
 
         for (&join_id, cofork_ids) in self.co_forks.iter() {
-            let coharcs = self.group_coharcs(cofork_ids.as_slice())?;
-            formula.add_coharcs(join_id, coharcs)?;
+            let cowedges = self.group_cowedges(cofork_ids.as_slice())?;
+            formula.add_cowedges(join_id, cowedges)?;
         }
 
         for (&fork_id, cojoin_ids) in self.co_joins.iter() {
-            let coharcs = self.group_coharcs(cojoin_ids.as_slice())?;
-            formula.add_coharcs(fork_id, coharcs)?;
+            let cowedges = self.group_cowedges(cojoin_ids.as_slice())?;
+            formula.add_cowedges(fork_id, cowedges)?;
         }
 
         Ok(formula)
@@ -688,15 +688,15 @@ impl CEStructure {
     fn get_thin_link_names(
         &self,
         link_id: LinkId,
-        missing_face: Face,
+        missing_polarity: Polarity,
     ) -> Result<(String, String), AcesError> {
         let ctx = self.context.lock().unwrap();
 
         if let Some(link) = ctx.get_link(link_id) {
-            let node_id = link.get_node_id(!missing_face);
-            let conode_id = link.get_node_id(missing_face);
+            let dot_id = link.get_dot_id(!missing_polarity);
+            let codot_id = link.get_dot_id(missing_polarity);
 
-            Ok((node_id.format_locked(&ctx)?, conode_id.format_locked(&ctx)?))
+            Ok((dot_id.format_locked(&ctx)?, codot_id.format_locked(&ctx)?))
         } else {
             Err(AcesErrorKind::LinkMissingForId(link_id).with_context(&self.context))
         }
@@ -709,17 +709,17 @@ impl CEStructure {
             let mut first_link_info = None;
 
             for (&link_id, &link_state) in self.links.iter() {
-                if let LinkState::Thin(missing_face) = link_state {
+                if let LinkState::Thin(missing_polarity) = link_state {
                     if log_enabled!(Debug) || first_link_info.is_none() {
-                        let (tx_name, rx_name) = self.get_thin_link_names(link_id, missing_face)?;
+                        let (tx_name, rx_name) = self.get_thin_link_names(link_id, missing_polarity)?;
 
-                        match missing_face {
-                            Face::Rx => debug!("Tx-only link: {} -> {}", tx_name, rx_name,),
-                            Face::Tx => debug!("Rx-only link: {} <- {}", tx_name, rx_name,),
+                        match missing_polarity {
+                            Polarity::Rx => debug!("Tx-only link: {} -> {}", tx_name, rx_name,),
+                            Polarity::Tx => debug!("Rx-only link: {} <- {}", tx_name, rx_name,),
                         }
 
                         if first_link_info.is_none() {
-                            first_link_info = Some((!missing_face, tx_name, rx_name));
+                            first_link_info = Some((!missing_polarity, tx_name, rx_name));
                         }
                     }
                 }

@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
-use crate::NodeId;
+use crate::DotId;
 
 #[derive(Clone, Default, Debug)]
 pub(crate) struct Props {
     pub(crate) title:  Option<String>,
-    pub(crate) labels: BTreeMap<NodeId, String>,
-    // FIXME node and link geometry, colour, annotations, etc.
+    pub(crate) labels: BTreeMap<DotId, String>,
+    // FIXME dot and link geometry, colour, annotations, etc.
 }
 
 impl Props {

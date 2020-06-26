@@ -15,7 +15,7 @@ components.
   wedges (elements of a fuset: forks and joins) and inherited by
   core-weights of all corresponding arcs of the induced core net.
 
-  Note that, in general, fork (join) pots are contained in, not equal
+  Note that, in general, fork (join) pits are contained in, not equal
   to, post-sets (pre-sets) of the corresponding florets.
 
 # Behavior

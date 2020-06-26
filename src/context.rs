@@ -1,14 +1,13 @@
 use std::{
     cmp, fmt,
-    collections::{btree_map, BTreeMap, BTreeSet},
-    iter::FromIterator,
+    collections::BTreeMap,
     sync::{Arc, Mutex},
 };
 use crate::{
-    PartialContent, Port, Link, Harc, Fork, Join, FlowSet, Face, NodeId, AtomId, PortId, LinkId,
-    ForkId, JoinId, FlowSetId, Semantics, Capacity, Weight, CoreWeight, ShellWeight, AcesError,
+    PartialContent, Port, Link, Wedge, Fork, Join, Fuset, Polarity, DotId, AtomId, PortId, LinkId,
+    ForkId, JoinId, FusetId, Semantics, Capacity, Weight, WedgeWeights, AcesError,
     AcesErrorKind,
-    node::{NodeSet, NodeSetId},
+    domain::{Dotset, DotsetId},
     name::{NameSpace, NameId},
     atom::{AtomSpace, Atom},
     sat, solver, runner, vis,
@@ -34,9 +33,9 @@ pub type ContextHandle = Arc<Mutex<Context>>;
 ///
 /// This is an umbrella type which, currently, includes a collection
 /// of [`Atom`]s, two symbol tables (one for structure names, and
-/// another for node names), node capacities, core weights, shell
-/// weights, flow weights, and [`PartialContent`] of any c-e structure
-/// created in this `Context`.
+/// another for dot names), dot capacities, core weights, wedge
+/// weights, and [`PartialContent`] of any c-e structure created in
+/// this `Context`.
 ///
 /// For usage, see [`ContextHandle`] type, [`Contextual`] trait and
 /// [`InContext`] struct.
@@ -47,21 +46,22 @@ pub struct Context {
     magic_id:      u64,    // group identifier
     name_id:       NameId, // given name
     globals:       NameSpace,
-    nodes:         NameSpace,
+    dots:        NameSpace,
     atoms:         AtomSpace,
     content:       BTreeMap<NameId, PartialContent>,
-    capacities:    BTreeMap<NodeId, Capacity>,
-    core_weights:  BTreeMap<NodeId, Vec<CoreWeight>>,
-    shell_weights: BTreeMap<NodeId, Vec<ShellWeight>>,
-    /// Generic weights of monomial causes or effects of a node.
+    capacities:    BTreeMap<DotId, Capacity>,
+    /// Explicit, fuset-dependent weights attached to arcs of specific
+    /// core nets.
+    core_weights:  BTreeMap<FusetId, WedgeWeights>,
+    /// Generic weights of monomial causes or effects of a dot.
     ///
-    /// Flow-weights represent the weight labeling used in the standard
-    /// notation for polynomials.  Conceptually, they are attached to
-    /// elements of a flow set (harcs) and inherited by all corresponding
-    /// arcs of the induced core graph.  Note that, in general, fork
-    /// (join) suits are contained in, not equal to, post-sets (pre-sets)
-    /// of the corresponding core sets.
-    flow_weights:  BTreeMap<AtomId, Weight>,
+    /// Wedge weights represent the weight labeling used in the
+    /// standard notation for polynomials.  Conceptually, they are
+    /// attached to elements of a fuset (wedges) and inherited by all
+    /// corresponding arcs of the induced core net.  Note that, in
+    /// general, fork (join) pits are contained in, not equal to,
+    /// post-sets (pre-sets) of the corresponding florets.
+    wedge_weights: WedgeWeights,
     solver_props:  solver::Props,
     runner_props:  runner::Props,
     vis_props:     vis::Props,
@@ -83,13 +83,12 @@ impl Context {
             magic_id,
             name_id,
             globals,
-            nodes: Default::default(),
+            dots: Default::default(),
             atoms: Default::default(),
             content: Default::default(),
             capacities: Default::default(),
             core_weights: Default::default(),
-            shell_weights: Default::default(),
-            flow_weights: Default::default(),
+            wedge_weights: Default::default(),
             solver_props: Default::default(),
             runner_props: Default::default(),
             vis_props: Default::default(),
@@ -105,12 +104,11 @@ impl Context {
     /// symbol tables, and the `Context`'s own given name and group
     /// identifier.
     pub fn reset(&mut self) {
-        // Fields unchanged: magic_id, name_id, globals, nodes, atoms.
+        // Fields unchanged: magic_id, name_id, globals, dots, atoms.
         self.content.clear();
         self.capacities.clear();
         self.core_weights.clear();
-        self.shell_weights.clear();
-        self.flow_weights.clear();
+        self.wedge_weights.clear();
         self.solver_props.clear();
         self.runner_props.clear();
         self.vis_props.clear();
@@ -132,13 +130,12 @@ impl Context {
             let name_id = parent.globals.share_name(name);
 
             let globals = parent.globals.clone();
-            let nodes = parent.nodes.clone();
+            let dots = parent.dots.clone();
             let atoms = parent.atoms.clone();
             let content = parent.content.clone();
             let capacities = parent.capacities.clone();
             let core_weights = parent.core_weights.clone();
-            let shell_weights = parent.shell_weights.clone();
-            let flow_weights = parent.flow_weights.clone();
+            let wedge_weights = parent.wedge_weights.clone();
             let solver_props = parent.solver_props.clone();
             let runner_props = parent.runner_props.clone();
             let vis_props = parent.vis_props.clone();
@@ -147,13 +144,12 @@ impl Context {
                 magic_id,
                 name_id,
                 globals,
-                nodes,
+                dots,
                 atoms,
                 content,
                 capacities,
                 core_weights,
-                shell_weights,
-                flow_weights,
+                wedge_weights,
                 solver_props,
                 runner_props,
                 vis_props,
@@ -175,23 +171,23 @@ impl Context {
         self.globals.get_name(self.name_id).expect("Invalid context.")
     }
 
-    // Nodes
+    // Dots
 
-    // FIXME support node iteration (define a generic NameSpace iterator)
+    // FIXME support dot iteration (define a generic NameSpace iterator)
 
     #[inline]
-    pub fn share_node_name<S: AsRef<str>>(&mut self, node_name: S) -> NodeId {
-        NodeId(self.nodes.share_name(node_name))
+    pub fn share_dot_name<S: AsRef<str>>(&mut self, dot_name: S) -> DotId {
+        DotId(self.dots.share_name(dot_name))
     }
 
     #[inline]
-    pub fn get_node_name(&self, node_id: NodeId) -> Option<&str> {
-        self.nodes.get_name(node_id.get())
+    pub fn get_dot_name(&self, dot_id: DotId) -> Option<&str> {
+        self.dots.get_name(dot_id.get())
     }
 
     #[inline]
-    pub fn get_node_id<S: AsRef<str>>(&self, node_name: S) -> Option<NodeId> {
-        self.nodes.get_id(node_name).map(NodeId)
+    pub fn get_dot_id<S: AsRef<str>>(&self, dot_name: S) -> Option<DotId> {
+        self.dots.get_id(dot_name).map(DotId)
     }
 
     // Atoms
@@ -218,8 +214,8 @@ impl Context {
     }
 
     #[inline]
-    pub fn is_harc(&self, atom_id: AtomId) -> bool {
-        self.atoms.is_harc(atom_id)
+    pub fn is_wedge(&self, atom_id: AtomId) -> bool {
+        self.atoms.is_wedge(atom_id)
     }
 
     #[inline]
@@ -253,31 +249,31 @@ impl Context {
     }
 
     #[inline]
-    pub(crate) fn share_fork_from_host_and_suit(
+    pub(crate) fn share_fork_from_tip_and_pit(
         &mut self,
-        host_id: NodeId,
-        suit: NodeSet,
+        tip_id: DotId,
+        pit: Dotset,
     ) -> ForkId {
-        self.atoms.share_fork_from_host_and_suit(host_id, suit)
+        self.atoms.share_fork_from_tip_and_pit(tip_id, pit)
     }
 
     #[inline]
-    pub(crate) fn share_join_from_host_and_suit(
+    pub(crate) fn share_join_from_tip_and_pit(
         &mut self,
-        host_id: NodeId,
-        suit: NodeSet,
+        tip_id: DotId,
+        pit: Dotset,
     ) -> JoinId {
-        self.atoms.share_join_from_host_and_suit(host_id, suit)
+        self.atoms.share_join_from_tip_and_pit(tip_id, pit)
     }
 
     #[inline]
-    pub fn share_node_set(&mut self, suit: &mut NodeSet) -> NodeSetId {
-        self.atoms.share_node_set(suit)
+    pub fn share_dotset(&mut self, pit: &mut Dotset) -> DotsetId {
+        self.atoms.share_dotset(pit)
     }
 
     #[inline]
-    pub fn share_flow_set(&mut self, flow: &mut FlowSet) -> FlowSetId {
-        self.atoms.share_flow_set(flow)
+    pub fn share_fuset(&mut self, fuset: &mut Fuset) -> FusetId {
+        self.atoms.share_fuset(fuset)
     }
 
     #[inline]
@@ -291,8 +287,8 @@ impl Context {
     }
 
     #[inline]
-    pub fn get_harc(&self, atom_id: AtomId) -> Option<&Harc> {
-        self.atoms.get_harc(atom_id)
+    pub fn get_wedge(&self, atom_id: AtomId) -> Option<&Wedge> {
+        self.atoms.get_wedge(atom_id)
     }
 
     #[inline]
@@ -306,13 +302,13 @@ impl Context {
     }
 
     #[inline]
-    pub fn get_node_set(&self, suit_id: NodeSetId) -> Option<&NodeSet> {
-        self.atoms.get_node_set(suit_id)
+    pub fn get_dotset(&self, pit_id: DotsetId) -> Option<&Dotset> {
+        self.atoms.get_dotset(pit_id)
     }
 
     #[inline]
-    pub fn get_flow_set(&self, flow_set_id: FlowSetId) -> Option<&FlowSet> {
-        self.atoms.get_flow_set(flow_set_id)
+    pub fn get_fuset(&self, fuset_id: FusetId) -> Option<&Fuset> {
+        self.atoms.get_fuset(fuset_id)
     }
 
     #[inline]
@@ -344,26 +340,26 @@ impl Context {
 
     pub fn set_capacity_by_name<S: AsRef<str>>(
         &mut self,
-        node_name: S,
+        dot_name: S,
         cap: Capacity,
     ) -> Option<Capacity> {
-        let node_id = self.share_node_name(node_name.as_ref());
+        let dot_id = self.share_dot_name(dot_name.as_ref());
 
-        self.capacities.insert(node_id, cap)
+        self.capacities.insert(dot_id, cap)
     }
 
     #[inline]
-    pub fn get_capacity(&self, node_id: NodeId) -> Capacity {
-        self.capacities.get(&node_id).copied().unwrap_or_else(Capacity::one)
+    pub fn get_capacity(&self, dot_id: DotId) -> Capacity {
+        self.capacities.get(&dot_id).copied().unwrap_or_else(Capacity::one)
     }
 
     // Weights
 
-    pub fn set_flow_weight_by_names<S, I>(
+    pub fn set_wedge_weight_by_names<S, I>(
         &mut self,
-        face: Face,
-        host_name: S,
-        suit_names: I,
+        polarity: Polarity,
+        tip_name: S,
+        arm_names: I,
         weight: Weight,
     ) -> Option<Weight>
     where
@@ -371,172 +367,63 @@ impl Context {
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        let host_id = self.share_node_name(host_name.as_ref());
-        let suit_ids = suit_names.into_iter().map(|n| self.share_node_name(n.as_ref()));
-        let suit = NodeSet::new(suit_ids);
+        let tip_id = self.share_dot_name(tip_name.as_ref());
+        let arm_ids = arm_names.into_iter().map(|n| self.share_dot_name(n.as_ref()));
+        let pit = Dotset::new(arm_ids);
 
-        let atom_id = match face {
-            Face::Tx => self.share_fork_from_host_and_suit(host_id, suit).get(),
-            Face::Rx => self.share_join_from_host_and_suit(host_id, suit).get(),
+        let atom_id = match polarity {
+            Polarity::Tx => self.share_fork_from_tip_and_pit(tip_id, pit).get(),
+            Polarity::Rx => self.share_join_from_tip_and_pit(tip_id, pit).get(),
         };
 
-        self.flow_weights.insert(atom_id, weight)
-    }
-
-    /// Attach a given `weight` to a node specified by `host_name` and
-    /// a transition specified by `pre_set_names` and
-    /// `post_set_names`.
-    ///
-    /// On success, return either the given weight, if it has already
-    /// been attached to the same node and transition, or the lowest
-    /// weight that has already been attached to the same node and
-    /// transition, or `None` if no weight has been attached so far.
-    pub fn set_shell_weight_by_names<S, I, J>(
-        &mut self,
-        face: Face,
-        host_name: S,
-        pre_set_names: I,
-        post_set_names: J,
-        weight: Weight,
-    ) -> Result<Option<Weight>, AcesError>
-    where
-        S: AsRef<str>,
-        I: IntoIterator,
-        I::Item: AsRef<str>,
-        J: IntoIterator,
-        J::Item: AsRef<str>,
-    {
-        let host_id = self.share_node_name(host_name.as_ref());
-        let pre_set = BTreeSet::from_iter(
-            pre_set_names.into_iter().map(|n| self.share_node_name(n.as_ref())),
-        );
-        let post_set = BTreeSet::from_iter(
-            post_set_names.into_iter().map(|n| self.share_node_name(n.as_ref())),
-        );
-
-        if match face {
-            Face::Tx => &pre_set,
-            Face::Rx => &post_set,
-        }
-        .contains(&host_id)
-        {
-            if pre_set.is_disjoint(&post_set) {
-                let mut pre_set = NodeSet::new_unchecked(pre_set);
-                let pre_set_id = self.share_node_set(&mut pre_set);
-                let mut post_set = NodeSet::new_unchecked(post_set);
-                let post_set_id = self.share_node_set(&mut post_set);
-
-                match self.shell_weights.entry(host_id) {
-                    btree_map::Entry::Occupied(entry) => {
-                        let weights = entry.into_mut();
-                        let new_weight = ShellWeight::new(pre_set_id, post_set_id, weight);
-
-                        match weights.binary_search(&new_weight) {
-                            Ok(_) => Ok(Some(weight)),
-                            Err(pos) => {
-                                weights.insert(pos, new_weight);
-
-                                if pos > 0 {
-                                    if let Some(old_weight) = weights.get(pos - 1) {
-                                        if old_weight.pre_set == pre_set_id
-                                            && old_weight.post_set == post_set_id
-                                        {
-                                            return Ok(Some(old_weight.weight))
-                                        }
-                                    }
-                                }
-
-                                if let Some(old_weight) = weights.get(pos + 1) {
-                                    if old_weight.pre_set == pre_set_id
-                                        && old_weight.post_set == post_set_id
-                                    {
-                                        return Ok(Some(old_weight.weight))
-                                    }
-                                }
-
-                                Ok(None)
-                            }
-                        }
-                    }
-                    btree_map::Entry::Vacant(entry) => {
-                        let new_weight = ShellWeight::new(pre_set_id, post_set_id, weight);
-
-                        entry.insert(vec![new_weight]);
-
-                        Ok(None)
-                    }
-                }
-            } else {
-                Err(AcesErrorKind::FiringOverlap.into())
-            }
-        } else {
-            Err(AcesErrorKind::FiringNodeMissing(face, host_id).into())
-        }
+        self.wedge_weights.insert(atom_id, weight)
     }
 
     #[inline]
-    pub fn set_flow_inhibitor_by_names<S, I>(
+    pub fn set_wedge_inhibitor_by_names<S, I>(
         &mut self,
-        face: Face,
-        host_name: S,
-        suit_names: I,
+        polarity: Polarity,
+        tip_name: S,
+        arm_names: I,
     ) -> Option<Weight>
     where
         S: AsRef<str>,
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        self.set_flow_weight_by_names(face, host_name, suit_names, Weight::omega())
+        self.set_wedge_weight_by_names(polarity, tip_name, arm_names, Weight::omega())
     }
 
     #[inline]
-    pub fn set_flow_activator_by_names<S, I>(
+    pub fn set_wedge_activator_by_names<S, I>(
         &mut self,
-        face: Face,
-        host_name: S,
-        suit_names: I,
+        polarity: Polarity,
+        tip_name: S,
+        arm_names: I,
     ) -> Option<Weight>
     where
         S: AsRef<str>,
         I: IntoIterator,
         I::Item: AsRef<str>,
     {
-        self.set_flow_weight_by_names(face, host_name, suit_names, Weight::zero())
+        self.set_wedge_weight_by_names(polarity, tip_name, arm_names, Weight::zero())
     }
 
     pub fn get_weight(
-        &mut self,
-        atom_id: AtomId,
-        pre_set_id: NodeSetId,
-        post_set_id: NodeSetId,
+        &self,
+        wedge_id: AtomId,
+        // fuset_id: FusetId,
     ) -> Result<Weight, AcesError> {
-        if let Some(weight) = self.flow_weights.get(&atom_id) {
-            Ok(*weight)
-        } else if let Some(harc) = self.get_harc(atom_id) {
-            let node_id = harc.get_host_id();
-            let mut test_weight = ShellWeight::new(pre_set_id, post_set_id, Weight::zero());
+        // FIXME search in the fuset lattice
+        // let wedge_weights = self.core_weights.get(&fuset_id).unwrap_or(&self.wedge_weights);
+        let wedge_weights = &self.wedge_weights;
 
-            if let Some(weights) = self.shell_weights.get(&node_id) {
-                match weights.binary_search(&test_weight) {
-                    Ok(_) => Ok(test_weight.weight),
-                    Err(pos) => {
-                        if let Some(shell_weight) = weights.get(pos) {
-                            test_weight.weight = shell_weight.weight;
-                            if test_weight == *shell_weight {
-                                Ok(test_weight.weight)
-                            } else {
-                                Ok(Weight::one())
-                            }
-                        } else {
-                            Ok(Weight::one())
-                        }
-                    }
-                }
-            } else {
-                Ok(Weight::one())
-            }
+        if let Some(weight) = wedge_weights.get(&wedge_id) {
+            Ok(*weight)
+        } else if self.get_wedge(wedge_id).is_some() {
+            Ok(Weight::one())
         } else {
-            Err(AcesErrorKind::HarcMissingForId(atom_id).into())
+            Err(AcesErrorKind::WedgeMissingForId(wedge_id).into())
         }
     }
 
@@ -594,12 +481,12 @@ impl Context {
         self.vis_props.title.as_deref()
     }
 
-    pub fn set_label<S: AsRef<str>>(&mut self, node_id: NodeId, label: S) {
-        self.vis_props.labels.insert(node_id, label.as_ref().to_owned());
+    pub fn set_label<S: AsRef<str>>(&mut self, dot_id: DotId, label: S) {
+        self.vis_props.labels.insert(dot_id, label.as_ref().to_owned());
     }
 
-    pub fn get_label(&self, node_id: NodeId) -> Option<&str> {
-        self.vis_props.labels.get(&node_id).map(|t| t.as_str())
+    pub fn get_label(&self, dot_id: DotId) -> Option<&str> {
+        self.vis_props.labels.get(&dot_id).map(|t| t.as_str())
     }
 }
 
@@ -793,10 +680,10 @@ impl<'a, D: Contextual> fmt::Display for InContextMut<'a, D> {
 mod tests {
     use super::*;
 
-    fn new_port(ctx: &ContextHandle, face: Face, host_name: &str) -> (Port, PortId) {
+    fn new_port(ctx: &ContextHandle, polarity: Polarity, tip_name: &str) -> (Port, PortId) {
         let mut ctx = ctx.lock().unwrap();
-        let node_id = ctx.share_node_name(host_name);
-        let mut port = Port::new(face, node_id);
+        let dot_id = ctx.share_dot_name(tip_name);
+        let mut port = Port::new(polarity, dot_id);
         let port_id = ctx.share_port(&mut port);
 
         (port, port_id)
@@ -816,17 +703,17 @@ mod tests {
     #[test]
     fn test_derivation() {
         let toplevel = Context::new_toplevel("toplevel");
-        let (a_port, a_port_id) = new_port(&toplevel, Face::Tx, "a");
+        let (a_port, a_port_id) = new_port(&toplevel, Polarity::Tx, "a");
 
         {
             let derived = Context::new_derived("derived", &toplevel);
-            let (_, z_port_id) = new_port(&derived, Face::Rx, "z");
+            let (_, z_port_id) = new_port(&derived, Polarity::Rx, "z");
 
             assert_eq!(derived.lock().unwrap().get_port(a_port_id), Some(&a_port));
             assert_eq!(toplevel.lock().unwrap().get_port(z_port_id), None);
         }
 
-        let (b_port, b_port_id) = new_port(&toplevel, Face::Tx, "b");
+        let (b_port, b_port_id) = new_port(&toplevel, Polarity::Tx, "b");
 
         assert_eq!(toplevel.lock().unwrap().get_port(b_port_id), Some(&b_port));
     }

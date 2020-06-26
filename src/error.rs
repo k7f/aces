@@ -1,40 +1,40 @@
 use std::{num, fmt, error::Error};
 use crate::{
-    ContextHandle, Contextual, Face, NodeId, AtomId, PortId, LinkId, ForkId, JoinId, FlowSetId,
-    Multiplicity, Capacity, node::NodeSetId,
+    ContextHandle, Contextual, Polarity, DotId, AtomId, PortId, LinkId, ForkId, JoinId, FusetId,
+    Multiplicity, Capacity, domain::DotsetId,
 };
 
 #[derive(Clone, Debug)]
 pub enum AcesErrorKind {
     ContextMismatch,
-    PolynomialFaceMismatch,
-    HarcNotAForkMismatch(JoinId),
-    HarcNotAJoinMismatch(ForkId),
-    NodeMissingForId(NodeId),
+    PolynomialPolarityMismatch,
+    WedgeNotAForkMismatch(JoinId),
+    WedgeNotAJoinMismatch(ForkId),
+    DotMissingForId(DotId),
     AtomMissingForId(AtomId),
     PortMissingForId(PortId),
     LinkMissingForId(LinkId),
-    HarcMissingForId(AtomId),
+    WedgeMissingForId(AtomId),
     ForkMissingForId(ForkId),
     JoinMissingForId(JoinId),
-    NodeSetMissingForId(NodeSetId),
-    FlowSetMissingForId(FlowSetId),
+    DotsetMissingForId(DotsetId),
+    FusetMissingForId(FusetId),
     BottomAtomAccess,
     AtomicsNotOrdered,
 
-    NodeMissingForPort(Face),
-    NodeMissingForLink(Face),
-    NodeMissingForFork(Face),
-    NodeMissingForJoin(Face),
-    FiringNodeMissing(Face, NodeId),
-    FiringNodeDuplicated(Face, NodeId),
+    DotMissingForPort(Polarity),
+    DotMissingForLink(Polarity),
+    DotMissingForFork(Polarity),
+    DotMissingForJoin(Polarity),
+    FiringDotMissing(Polarity, DotId),
+    FiringDotDuplicated(Polarity, DotId),
     FiringOverlap,
-    IncoherentStructure(String, u32, (Face, String, String)),
+    IncoherentStructure(String, u32, (Polarity, String, String)),
 
-    LeakedInhibitor(NodeId, Multiplicity),
-    StateUnderflow(NodeId, Multiplicity, Multiplicity),
-    StateOverflow(NodeId, Multiplicity, Multiplicity),
-    CapacityOverflow(NodeId, Capacity, Multiplicity),
+    LeakedInhibitor(DotId, Multiplicity),
+    StateUnderflow(DotId, Multiplicity, Multiplicity),
+    StateOverflow(DotId, Multiplicity, Multiplicity),
+    CapacityOverflow(DotId, Capacity, Multiplicity),
     MultiplicityOverflow(String),
     ParseIntError(num::ParseIntError),
     ParseFloatError(num::ParseFloatError),
@@ -43,10 +43,10 @@ pub enum AcesErrorKind {
     EmptySolving,
     EmptyClauseRejectedByFormula(String),
     EmptyClauseRejectedBySolver(String),
-    EmptyCausesOfInternalNode(String),
-    EmptyEffectsOfInternalNode(String),
-    NodeSetUsedAsSATLiteral(NodeSetId),
-    FlowSetUsedAsSATLiteral(FlowSetId),
+    EmptyCausesOfInternalDot(String),
+    EmptyEffectsOfInternalDot(String),
+    DotsetUsedAsSATLiteral(DotsetId),
+    FusetUsedAsSATLiteral(FusetId),
 
     UnlistedAtomicInMonomial,
     IncoherencyLeak,
@@ -61,62 +61,62 @@ impl fmt::Display for AcesErrorKind {
 
         match self {
             ContextMismatch => write!(f, "Context mismatch"),
-            PolynomialFaceMismatch => {
-                write!(f, "Attempt to combine polynomials attached to opposite faces")
+            PolynomialPolarityMismatch => {
+                write!(f, "Attempt to combine polynomials with opposite polarities")
             }
-            HarcNotAForkMismatch(join_id) => write!(f, "Expected fork, but harc is {:?}", join_id),
-            HarcNotAJoinMismatch(fork_id) => write!(f, "Expected join, but harc is {:?}", fork_id),
-            NodeMissingForId(node_id) => write!(f, "There is no node with {:?}", node_id),
+            WedgeNotAForkMismatch(join_id) => write!(f, "Expected fork, but wedge is {:?}", join_id),
+            WedgeNotAJoinMismatch(fork_id) => write!(f, "Expected join, but wedge is {:?}", fork_id),
+            DotMissingForId(dot_id) => write!(f, "There is no dot with {:?}", dot_id),
             AtomMissingForId(atom_id) => write!(f, "There is no atom with {:?}", atom_id),
             PortMissingForId(port_id) => write!(f, "There is no port with {:?}", port_id),
             LinkMissingForId(link_id) => write!(f, "There is no link with {:?}", link_id),
-            HarcMissingForId(harc_id) => write!(f, "There is no harc with {:?}", harc_id),
+            WedgeMissingForId(wedge_id) => write!(f, "There is no wedge with {:?}", wedge_id),
             ForkMissingForId(fork_id) => write!(f, "There is no fork with {:?}", fork_id),
             JoinMissingForId(join_id) => write!(f, "There is no join with {:?}", join_id),
-            NodeSetMissingForId(suit_id) => write!(f, "There is no node set with {:?}", suit_id),
-            FlowSetMissingForId(flow_id) => write!(f, "There is no flow set with {:?}", flow_id),
+            DotsetMissingForId(pit_id) => write!(f, "There is no dotset with {:?}", pit_id),
+            FusetMissingForId(fuset_id) => write!(f, "There is no fuset with {:?}", fuset_id),
             BottomAtomAccess => write!(f, "Attempt to access the bottom atom"),
             AtomicsNotOrdered => write!(f, "Atomics have to be given in strictly increasing order"),
 
-            NodeMissingForPort(face) => write!(
+            DotMissingForPort(polarity) => write!(
                 f,
-                "Missing node for {} port",
-                if *face == Face::Tx { "sending" } else { "receiving" }
+                "Missing dot for {} port",
+                if *polarity == Polarity::Tx { "sending" } else { "receiving" }
             ),
-            NodeMissingForLink(face) => write!(
+            DotMissingForLink(polarity) => write!(
                 f,
-                "Missing {} node for link",
-                if *face == Face::Tx { "sending" } else { "receiving" }
+                "Missing {} dot for link",
+                if *polarity == Polarity::Tx { "sending" } else { "receiving" }
             ),
-            NodeMissingForFork(face) => write!(
+            DotMissingForFork(polarity) => write!(
                 f,
-                "Missing {} node for fork",
-                if *face == Face::Tx { "sending" } else { "receiving" }
+                "Missing {} dot for fork",
+                if *polarity == Polarity::Tx { "sending" } else { "receiving" }
             ),
-            NodeMissingForJoin(face) => write!(
+            DotMissingForJoin(polarity) => write!(
                 f,
-                "Missing {} node for join",
-                if *face == Face::Tx { "sending" } else { "receiving" }
+                "Missing {} dot for join",
+                if *polarity == Polarity::Tx { "sending" } else { "receiving" }
             ),
-            FiringNodeMissing(face, node_id) => write!(
+            FiringDotMissing(polarity, dot_id) => write!(
                 f,
-                "Missing {} node {:?} in firing component",
-                if *face == Face::Tx { "sending" } else { "receiving" },
-                node_id
+                "Missing {} dot {:?} in firing component",
+                if *polarity == Polarity::Tx { "sending" } else { "receiving" },
+                dot_id
             ),
-            FiringNodeDuplicated(face, node_id) => write!(
+            FiringDotDuplicated(polarity, dot_id) => write!(
                 f,
-                "Duplicated {} node {:?} in firing component",
-                if *face == Face::Tx { "sending" } else { "receiving" },
-                node_id
+                "Duplicated {} dot {:?} in firing component",
+                if *polarity == Polarity::Tx { "sending" } else { "receiving" },
+                dot_id
             ),
             FiringOverlap => write!(f, "Attempt to create a non-disjoint firing component"),
-            IncoherentStructure(ces_name, num_thin_links, (face, tx_name, rx_name)) => {
+            IncoherentStructure(ces_name, num_thin_links, (polarity, tx_name, rx_name)) => {
                 if *num_thin_links == 1 {
                     write!(
                         f,
                         "Structure '{}' is incoherent; there is one thin link: ({} {} {})",
-                        ces_name, tx_name, face, rx_name
+                        ces_name, tx_name, polarity, rx_name
                     )
                 } else {
                     write!(
@@ -125,28 +125,28 @@ impl fmt::Display for AcesErrorKind {
                          more..",
                         ces_name,
                         tx_name,
-                        face,
+                        polarity,
                         rx_name,
                         *num_thin_links - 1,
                     )
                 }
             }
 
-            LeakedInhibitor(node_id, tokens_before) => {
-                write!(f, "Leaked inhibitor at {:?} firing from {} tokens", node_id, tokens_before)
+            LeakedInhibitor(dot_id, tokens_before) => {
+                write!(f, "Leaked inhibitor at {:?} firing from {} tokens", dot_id, tokens_before)
             }
-            StateUnderflow(node_id, tokens_before, num_tokens) => write!(
+            StateUnderflow(dot_id, tokens_before, num_tokens) => write!(
                 f,
                 "State underflow at {:?} after subtracting {} from {}",
-                node_id, num_tokens, tokens_before
+                dot_id, num_tokens, tokens_before
             ),
-            StateOverflow(node_id, tokens_before, num_tokens) => write!(
+            StateOverflow(dot_id, tokens_before, num_tokens) => write!(
                 f,
                 "State overflow at {:?} after adding {} to {}",
-                node_id, num_tokens, tokens_before
+                dot_id, num_tokens, tokens_before
             ),
-            CapacityOverflow(node_id, capacity, num_tokens) => {
-                write!(f, "Capacity overflow at {:?} set to {} > {}", node_id, num_tokens, capacity)
+            CapacityOverflow(dot_id, capacity, num_tokens) => {
+                write!(f, "Capacity overflow at {:?} set to {} > {}", dot_id, num_tokens, capacity)
             }
             MultiplicityOverflow(when_happened) => {
                 write!(f, "Multiplicity overflow when {}", when_happened)
@@ -162,14 +162,14 @@ impl fmt::Display for AcesErrorKind {
             EmptyClauseRejectedBySolver(name) => {
                 write!(f, "Empty {} clause rejected by solver", name)
             }
-            EmptyCausesOfInternalNode(name) => {
-                write!(f, "Empty cause polynomial of internal node '{}'", name)
+            EmptyCausesOfInternalDot(name) => {
+                write!(f, "Empty cause polynomial of internal dot '{}'", name)
             }
-            EmptyEffectsOfInternalNode(name) => {
-                write!(f, "Empty effect polynomial of internal node '{}'", name)
+            EmptyEffectsOfInternalDot(name) => {
+                write!(f, "Empty effect polynomial of internal dot '{}'", name)
             }
-            NodeSetUsedAsSATLiteral(suit_id) => write!(f, "{:?} used as SAT literal", suit_id),
-            FlowSetUsedAsSATLiteral(flow_id) => write!(f, "{:?} used as SAT literal", flow_id),
+            DotsetUsedAsSATLiteral(pit_id) => write!(f, "{:?} used as SAT literal", pit_id),
+            FusetUsedAsSATLiteral(fuset_id) => write!(f, "{:?} used as SAT literal", fuset_id),
 
             UnlistedAtomicInMonomial => write!(f, "Monomial contains an unlisted atomic"),
             IncoherencyLeak => write!(f, "Unexpected incoherence of a c-e structure"),
@@ -219,48 +219,48 @@ impl fmt::Display for AcesError {
 
         if let Some(ref ctx) = self.context {
             match self.kind {
-                HarcNotAForkMismatch(join_id) => {
-                    write!(f, "Expected fork, but harc is a join {}", join_id.with(ctx))
+                WedgeNotAForkMismatch(join_id) => {
+                    write!(f, "Expected fork, but wedge is a join {}", join_id.with(ctx))
                 }
-                HarcNotAJoinMismatch(fork_id) => {
-                    write!(f, "Expected join, but harc is a fork {}", fork_id.with(ctx))
+                WedgeNotAJoinMismatch(fork_id) => {
+                    write!(f, "Expected join, but wedge is a fork {}", fork_id.with(ctx))
                 }
-                FiringNodeMissing(face, node_id) => write!(
+                FiringDotMissing(polarity, dot_id) => write!(
                     f,
-                    "Missing {} node \"{}\" in firing component",
-                    if face == Face::Tx { "sending" } else { "receiving" },
-                    node_id.with(ctx),
+                    "Missing {} dot \"{}\" in firing component",
+                    if polarity == Polarity::Tx { "sending" } else { "receiving" },
+                    dot_id.with(ctx),
                 ),
-                FiringNodeDuplicated(face, node_id) => write!(
+                FiringDotDuplicated(polarity, dot_id) => write!(
                     f,
-                    "Duplicated {} node \"{}\" in firing component",
-                    if face == Face::Tx { "sending" } else { "receiving" },
-                    node_id.with(ctx),
+                    "Duplicated {} dot \"{}\" in firing component",
+                    if polarity == Polarity::Tx { "sending" } else { "receiving" },
+                    dot_id.with(ctx),
                 ),
-                LeakedInhibitor(node_id, tokens_before) => write!(
+                LeakedInhibitor(dot_id, tokens_before) => write!(
                     f,
-                    "Leaked inhibitor at node \"{}\" firing from {} tokens",
-                    node_id.with(ctx),
+                    "Leaked inhibitor at dot \"{}\" firing from {} tokens",
+                    dot_id.with(ctx),
                     tokens_before
                 ),
-                StateUnderflow(node_id, tokens_before, num_tokens) => write!(
+                StateUnderflow(dot_id, tokens_before, num_tokens) => write!(
                     f,
-                    "State underflow at node \"{}\" after subtracting {} from {}",
-                    node_id.with(ctx),
+                    "State underflow at dot \"{}\" after subtracting {} from {}",
+                    dot_id.with(ctx),
                     num_tokens,
                     tokens_before
                 ),
-                StateOverflow(node_id, tokens_before, num_tokens) => write!(
+                StateOverflow(dot_id, tokens_before, num_tokens) => write!(
                     f,
-                    "State overflow at node \"{}\" after adding {} to {}",
-                    node_id.with(ctx),
+                    "State overflow at dot \"{}\" after adding {} to {}",
+                    dot_id.with(ctx),
                     num_tokens,
                     tokens_before
                 ),
-                CapacityOverflow(node_id, capacity, num_tokens) => write!(
+                CapacityOverflow(dot_id, capacity, num_tokens) => write!(
                     f,
-                    "Capacity overflow at node \"{}\" set to {} > {}",
-                    node_id.with(ctx),
+                    "Capacity overflow at dot \"{}\" set to {} > {}",
+                    dot_id.with(ctx),
                     num_tokens,
                     capacity
                 ),

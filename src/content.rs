@@ -5,7 +5,7 @@ use std::{
     fmt,
     error::Error,
 };
-use crate::{NodeId, ContextHandle};
+use crate::{DotId, ContextHandle};
 
 pub trait ContentFormat: fmt::Debug {
     // Note: this can't be declared as an associated const due to
@@ -90,9 +90,9 @@ pub trait Content: fmt::Debug {
     fn get_script(&self) -> Option<&str>;
     fn get_name(&self) -> Option<&str>;
     fn is_module(&self) -> bool;
-    fn get_carrier_ids(&mut self) -> Vec<NodeId>;
-    fn get_causes_by_id(&self, id: NodeId) -> Option<&Vec<Vec<NodeId>>>;
-    fn get_effects_by_id(&self, id: NodeId) -> Option<&Vec<Vec<NodeId>>>;
+    fn get_carrier_ids(&mut self) -> Vec<DotId>;
+    fn get_causes_by_id(&self, id: DotId) -> Option<&Vec<Vec<DotId>>>;
+    fn get_effects_by_id(&self, id: DotId) -> Option<&Vec<Vec<DotId>>>;
 }
 
 impl Content for String {
@@ -108,15 +108,15 @@ impl Content for String {
         panic!("Attempt to access a phantom content.")
     }
 
-    fn get_carrier_ids(&mut self) -> Vec<NodeId> {
+    fn get_carrier_ids(&mut self) -> Vec<DotId> {
         panic!("Attempt to access a phantom content.")
     }
 
-    fn get_causes_by_id(&self, _id: NodeId) -> Option<&Vec<Vec<NodeId>>> {
+    fn get_causes_by_id(&self, _id: DotId) -> Option<&Vec<Vec<DotId>>> {
         panic!("Attempt to access a phantom content.")
     }
 
-    fn get_effects_by_id(&self, _id: NodeId) -> Option<&Vec<Vec<NodeId>>> {
+    fn get_effects_by_id(&self, _id: DotId) -> Option<&Vec<Vec<DotId>>> {
         panic!("Attempt to access a phantom content.")
     }
 }
@@ -129,7 +129,7 @@ impl<'a, C: Content + 'a> From<C> for Box<dyn Content + 'a> {
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Default, Debug)]
 pub(crate) struct MonoForContent {
-    content: Vec<NodeId>,
+    content: Vec<DotId>,
 }
 
 impl MonoForContent {
@@ -137,20 +137,20 @@ impl MonoForContent {
         Default::default()
     }
 
-    pub(crate) fn add_node(&mut self, id: NodeId) {
+    pub(crate) fn add_dot(&mut self, id: DotId) {
         if let Err(pos) = self.content.binary_search(&id) {
             self.content.insert(pos, id);
         }
     }
 
-    pub(crate) fn into_content(self) -> Vec<NodeId> {
+    pub(crate) fn into_content(self) -> Vec<DotId> {
         self.content
     }
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Default, Debug)]
 pub(crate) struct PolyForContent {
-    content: Vec<Vec<NodeId>>,
+    content: Vec<Vec<DotId>>,
 }
 
 impl PolyForContent {
@@ -158,13 +158,13 @@ impl PolyForContent {
         Default::default()
     }
 
-    pub(crate) fn add_mono(&mut self, mono: Vec<NodeId>) {
+    pub(crate) fn add_mono(&mut self, mono: Vec<DotId>) {
         if let Err(pos) = self.content.binary_search(&mono) {
             self.content.insert(pos, mono);
         }
     }
 
-    pub(crate) fn multiply_by_mono(&mut self, mono: Vec<NodeId>) {
+    pub(crate) fn multiply_by_mono(&mut self, mono: Vec<DotId>) {
         if self.content.is_empty() {
             self.add_mono(mono);
         } else {
@@ -172,9 +172,9 @@ impl PolyForContent {
             old_poly.append(&mut self.content);
 
             for mut old_mono in old_poly {
-                for node_id in mono.iter() {
-                    if let Err(pos) = old_mono.binary_search(node_id) {
-                        old_mono.insert(pos, *node_id);
+                for dot_id in mono.iter() {
+                    if let Err(pos) = old_mono.binary_search(dot_id) {
+                        old_mono.insert(pos, *dot_id);
                     }
                 }
                 self.add_mono(old_mono);
@@ -182,7 +182,7 @@ impl PolyForContent {
         }
     }
 
-    pub(crate) fn as_content(&self) -> &Vec<Vec<NodeId>> {
+    pub(crate) fn as_content(&self) -> &Vec<Vec<DotId>> {
         &self.content
     }
 }
@@ -197,14 +197,14 @@ impl AddAssign for PolyForContent {
 
 #[derive(Clone, Default, Debug)]
 struct MapForContent {
-    content: BTreeMap<NodeId, PolyForContent>,
+    content: BTreeMap<DotId, PolyForContent>,
 }
 
 impl MapForContent {
     // `poly.is_empty()` test is ommited here, because it is done by the
     // only callers, `PartialContent::add_to_causes()` and
     // `PartialContent::add_to_effects()`.
-    fn add_poly(&mut self, id: NodeId, poly: &[Vec<NodeId>]) {
+    fn add_poly(&mut self, id: DotId, poly: &[Vec<DotId>]) {
         self.content
             .entry(id)
             .and_modify(|old_poly| {
@@ -218,7 +218,7 @@ impl MapForContent {
     // `poly.is_empty()` test is ommited here, because it is done by the
     // only callers, `PartialContent::multiply_causes()` and
     // `PartialContent::multiply_effects()`.
-    fn multiply_by_poly(&mut self, id: NodeId, poly: &[Vec<NodeId>]) {
+    fn multiply_by_poly(&mut self, id: DotId, poly: &[Vec<DotId>]) {
         self.content
             .entry(id)
             .and_modify(|old_poly| {
@@ -236,11 +236,11 @@ impl MapForContent {
 
 #[derive(Clone, Default, Debug)]
 struct CarrierForContent {
-    content: Option<BTreeSet<NodeId>>,
+    content: Option<BTreeSet<DotId>>,
 }
 
 impl CarrierForContent {
-    fn touch(&mut self, id: NodeId) {
+    fn touch(&mut self, id: DotId) {
         if let Some(ref content) = self.content {
             if content.contains(&id) {
                 return
@@ -256,7 +256,7 @@ impl CarrierForContent {
         }
     }
 
-    fn as_owned_content(&self) -> Vec<NodeId> {
+    fn as_owned_content(&self) -> Vec<DotId> {
         self.content.as_ref().unwrap().iter().copied().collect()
     }
 }
@@ -283,28 +283,28 @@ impl PartialContent {
         &self.context
     }
 
-    pub fn add_to_causes(&mut self, id: NodeId, poly: &[Vec<NodeId>]) {
+    pub fn add_to_causes(&mut self, id: DotId, poly: &[Vec<DotId>]) {
         if !poly.is_empty() {
             self.causes.add_poly(id, poly);
             self.carrier.touch(id);
         }
     }
 
-    pub fn add_to_effects(&mut self, id: NodeId, poly: &[Vec<NodeId>]) {
+    pub fn add_to_effects(&mut self, id: DotId, poly: &[Vec<DotId>]) {
         if !poly.is_empty() {
             self.effects.add_poly(id, poly);
             self.carrier.touch(id);
         }
     }
 
-    pub fn multiply_causes(&mut self, id: NodeId, poly: &[Vec<NodeId>]) {
+    pub fn multiply_causes(&mut self, id: DotId, poly: &[Vec<DotId>]) {
         if !poly.is_empty() {
             self.causes.multiply_by_poly(id, poly);
             self.carrier.touch(id);
         }
     }
 
-    pub fn multiply_effects(&mut self, id: NodeId, poly: &[Vec<NodeId>]) {
+    pub fn multiply_effects(&mut self, id: DotId, poly: &[Vec<DotId>]) {
         if !poly.is_empty() {
             self.effects.multiply_by_poly(id, poly);
             self.carrier.touch(id);
@@ -352,18 +352,18 @@ impl Content for PartialContent {
         false
     }
 
-    fn get_carrier_ids(&mut self) -> Vec<NodeId> {
+    fn get_carrier_ids(&mut self) -> Vec<DotId> {
         self.carrier.maybe_update(&self.causes, &self.effects);
         self.carrier.as_owned_content()
     }
 
     #[inline]
-    fn get_causes_by_id(&self, id: NodeId) -> Option<&Vec<Vec<NodeId>>> {
+    fn get_causes_by_id(&self, id: DotId) -> Option<&Vec<Vec<DotId>>> {
         self.causes.content.get(&id).map(|poly| poly.as_content())
     }
 
     #[inline]
-    fn get_effects_by_id(&self, id: NodeId) -> Option<&Vec<Vec<NodeId>>> {
+    fn get_effects_by_id(&self, id: DotId) -> Option<&Vec<Vec<DotId>>> {
         self.effects.content.get(&id).map(|poly| poly.as_content())
     }
 }
