@@ -45,7 +45,7 @@ pub use polynomial::{Polynomial, Monomials};
 pub use multiset::{Multiplicity, Capacity, Weight, WedgeWeights};
 pub use ces::CEStructure;
 pub use solver::{Solver, Solution};
-pub use firing::{FiringComponent, FiringSet, FiringSequence};
+pub use firing::{FiringComponent, FiringSet, FiringSubset, FiringSequence};
 pub use state::{State, Goal, Semantics};
 pub use runner::{Runner, StopCondition};
 pub use logging::Logger;

@@ -19,7 +19,7 @@ from ***X***, called a _tip_ of a fork (or join), and _u_ is a
 non-empty subset of ***X***, called a _pit_ of a fork (or join).  We
 call pit members _arms_ and say that any arm of a fork (join) is
 _arming_ both the fork (join) and its tip.  We also say that a fork
-_(x, u)_ or join _(u, x)_ is _tipped_ by _x_ (or _x-tipped), and that
+_(x, u)_ or join _(u, x)_ is _tipped_ by _x_ (or _x-tipped_), and that
 it is _armed_ by _u_ or _u-armed_ (rather than
 &ldquo;u-pitted&rdquo;).  A fork (join) is a _loop_ iff its tip is in
 its pit.
@@ -54,12 +54,12 @@ fork, and contains at least one join.
   {<tt>_a_,_b_,_c_</tt>} is
   <tt>**{**(_a_,{_b_}),(_a_,{_c_}),(_a_,{_b_,_c_}),(_b_,{_a_}),(_b_,{_c_}),(_b_,{_a_,_c_}),(_c_,{_a_}),(_c_,{_b_}),(_c_,{_a_,_b_}),({_b_},_a_),({_c_},_a_),({_b_,_c_},_a_),({_a_},_b_),({_c_},_b_),({_a_,_c_},_b_),({_a_},_c_),({_b_},_c_),({_a_,_b_},_c_)**}**</tt>.
 
-Observe, looking at the last example, that the total number of proper
+Looking at the last example, observe that the total number of proper
 fusets over a finite domain ***X*** is a double exponential function
-of |***X***|.  Indeed, there are altogether nine different proper
-fusets over a 2-element domain and 261121 different proper fusets over
-a 3-element domain.  In general, if &mu;(***X***) denotes the maximal
-proper fuset over ***X***, then
+of |***X***| (number of dots).  Indeed, there are altogether nine
+different proper fusets over a 2-element domain and 261121 different
+proper fusets over a 3-element domain.  In general, if &mu;(***X***)
+denotes the maximal proper fuset over ***X***, then
 |&mu;(***X***)| = 2 |***X***| (2<sup>|***X***| - 1</sup> - 1), and
 the total number of proper fusets is
 (2<sup>|&mu;(***X***)|/2</sup> - 1)<sup>2</sup>.
@@ -101,17 +101,19 @@ The _under-set_ (_over-set_) of a fuset _&phi;_ is the union of pits
 of all forks (joins) in _&phi;_.  The _range_ of a fuset is the set of
 all its arms, i.e. the union of all pits (the union of under-set and
 over-set), and the _frame_ &mdash; the set of all pits.  The
-_co-interior_ is the intersection of under-set and over-set.  Finally,
-the _residue_ contains all non-carrier elements of the range.
+_co-interior_ (or _pre-interior_, or _post-interior_ ) is the
+intersection of under-set and over-set (or pre-set and under-set, or
+post-set and over-set).  Finally, the _residue_ contains all
+non-carrier elements of the range.
 
 ### An alternative: fork-join hypergraphs
 
 It is natural to perceive fusion sets as graph-like structures.  This
-correspondence may suggest an alternative description in terms of the
-more standard theory of hypergraphs: instead of defining forks and
-joins over a fixed domain common to all structures, one may want to
-define forks and joins over node sets of individual signed directed
-hypergraphs.
+correspondence may suggest an alternative &ldquo;low level&rdquo;
+description in terms of the more standard theory of hypergraphs:
+instead of defining forks and joins over a fixed domain common to all
+structures, one may want to define forks and joins over node sets of
+individual signed directed hypergraphs.
 
 A _fork-join hypergraph_ may thus be defined as a directed hypergraph
 equipped with a labeling function partitioning hyperedges into forks
@@ -137,15 +139,14 @@ fusion sets.
 
 ### Arming and framing relations
 
-A fuset _&phi;_ may be &ldquo;compressed&rdquo; into an _arming_
-relation between domain elements (dots).  We say that a dot _x_ is
-_armed_ by a dot _y_ in _&phi;_ (_y_ is _arming_ _x_) when _x_ is the
-tip of some wedge of _&phi;_ and _y_ is an arm of the same wedge.
-More often we consider the two specific relations: a dot _x_ may be
-_fork-armed_ or _join-armed_ by dot _y_, depending on whether _x_ is
-the tip of some fork or some join, and _y_ is an arm of the same fork
-or join.  These two relations may be represented in a symbolic
-notation:
+A fuset may be &ldquo;compressed&rdquo; into an _arming_ relation
+between dots.  We say that a dot _x_ is _armed_ by a dot _y_ in a
+fuset _&phi;_ (_y_ is _arming_ _x_) when _x_ is the tip of some wedge
+of _&phi;_ and _y_ is an arm of the same wedge.  More often we
+consider the two specific relations: a dot _x_ may be _fork-armed_ or
+_join-armed_ by dot _y_, depending on whether _x_ is the tip of some
+fork or some join, and _y_ is an arm of the same fork or join.  These
+two relations may be represented in a symbolic notation:
 
 > _x_ &rarr;<sub>_&phi;_</sub> _y_, which denotes that _x_ is fork-armed by _y_ in _&phi;_,<br>
 > _x_ &larr;<sub>_&phi;_</sub> _y_, which denotes that _x_ is join-armed by _y_ in _&phi;_,
@@ -297,15 +298,16 @@ corresponding set-based arming relations.
 
 A non-empty fuset may be _bipolar_, if its pre-set and post-set are
 both non-empty, or _unipolar_ otherwise.  Note, that all proper fusets
-are bipolar.  A fuset is _thin_ if its pre-set and post-set are
-disjoint (its interior is empty) or it is _thick_ otherwise.
+are bipolar.  A fuset is _thick_ if its pre-set and post-set aren't
+disjoint (its interior isn't empty).  A fuset is _thin_ if it is not
+thick and has empty co-interior, pre-interior and post-interior.
 
-A _dipole_ is a minimal bipolar thin fuset, not necessarily proper (it
-may contain loops).  Note, that any dipole contains exactly one fork,
-exactly one join, and its carrier has exactly two elements.  A dipole
-that is proper and has intersecting carrier and range is called a
-_semifusor_.  Moreover, if carrier is a subset of range, then a
-semifusor is called a _fusor_.
+A _dipole_ is a minimal bipolar non-thick fuset, not necessarily
+proper (it may contain loops).  Note, that any dipole contains exactly
+one fork, exactly one join, and its carrier has exactly two elements.
+A dipole that is proper and has intersecting carrier and range is
+called a _semifusor_.  Moreover, if carrier is a subset of range, then
+a semifusor is called a _fusor_.
 
 Given a fuset _&phi;_, two wedges _w<sub>1</sub>_ and _w<sub>2</sub>_
 are _connected through &phi;_ iff they are the two elements of a fusor
@@ -315,19 +317,23 @@ _w<sub>2</sub>_ are also elements of _&phi;_, then they are said to be
 _connected in &phi;_.
 
 A fuset _&phi;_ is _connected_ iff all wedges of _&phi;_ are pairwise
-connected in _&phi;_.  A _fusible_ is any fuset that is connected and
-singular.
-
-A fuset containing only single-arm wedges is called _primitive_.
+connected in _&phi;_.  An inductive formulation is equivalent: a
+connected fuset is a fusor or a union of two overlapping connected
+fusets.
 
 A _star_ is a thin fuset with a singleton carrier.  All stars are
 unipolar and thus improper (note, that singleton-carrier fusets are
 either proper or thin, but not both).  If a star _&alpha;_ is a subset
 of a fuset _&phi;_, then we say that it is a _star of_ _x_ _in_
-_&phi;_, where _x_ is the only carrier dot.  A fuset _&phi;_ is
-_singular_ iff all stars in _&phi;_ are singletons.  The _star
-partition_ of a fuset _&phi;_ is the set of all maximal stars in
-_&phi;_.
+_&phi;_, where _x_ is the only carrier dot.  The _star partition_ of a
+fuset _&phi;_ is the set of all maximal stars in _&phi;_.
+
+Two classes of fusets are naturally isomorphic to pairs of digraphs:
+
+* a fuset _&phi;_ is _singular_ iff all stars in _&phi;_ are
+  singletons;
+
+* a fuset containing only single-arm wedges is called _primitive_.
 
 Given a fuset _&phi;_ and a dot _x_, the maximal fork-containing
 star of _x_ in _&phi;_ is called the _lower star_ of _x_ in
@@ -388,3 +394,20 @@ fusors are tight).
 * **Example 6.** The fuset
   <tt>**{**(_a_,{_x_}),(_b_,{_x_,_y_}),(_c_,{_y_}),({_a_,_b_},_x_),({_b_,_c_},_y_)**}**</tt>
   is coherent but not tight.
+
+# Fusion
+
+Fusion is a process of building fuset families.  First we need to
+introduce three notions:
+
+* a _fusible_ is any fuset that is connected and singular;
+
+* a _floret_ is a thin fusible;
+
+* a _flower_ is a maximal antichain of florets.
+
+By applying the inductive definition of connected fusets, the
+definition of florets may be formulated recursively:
+
+* a floret is a fusor or a singular and thin union of two overlapping
+  florets.

@@ -239,13 +239,20 @@ impl State {
     ) -> Result<Option<usize>, AcesError> {
         let enabled_fcs = fset.get_enabled(self);
 
-        if let Some(fc_id) = enabled_fcs.get_random(rng) {
-            fset.as_slice()[fc_id].fire(self)?;
+        enabled_fcs.fire_random(self, fset, rng)
+    }
 
-            Ok(Some(fc_id))
-        } else {
-            Ok(None)
-        }
+    /// Returns a vector of indices of activated firing components, a
+    /// subset of a given [`FiringSet`].
+    pub fn maximal_transition(
+        &mut self,
+        fset: &FiringSet,
+    ) -> Result<Vec<usize>, AcesError> {
+        let enabled_fcs = fset.get_enabled(self);
+
+        enabled_fcs.fire_maximal(self, fset)?;
+
+        Ok(enabled_fcs.into())
     }
 }
 
@@ -329,6 +336,7 @@ impl Goal {
 pub enum Semantics {
     Sequential,
     Parallel,
+    Maximal,
 }
 
 impl Default for Semantics {

@@ -49,6 +49,12 @@ FIXME However, neither intersection, nor set difference has to be.
 Given a fuset _&phi;_ over ***X*** and two elements _x_ and _y_ of
 _X, we say_ that
 
+* _y_ is an _upper misstip_ of _x_ iff _y_ is fork-armed by _x_ but
+  _x_ isn't join-armed by _y_;
+
+* _y_ is a _lower misstip_ of _x_ iff _y_ is join-armed by _x_ but _x_
+  isn't fork-armed by _y_;
+
 * _y_ _weakly follows_ _x_ iff _y_ is join-armed by _x_ or _x_ is
   fork-armed by _y_, but not both; synonymously, _y_ is a _weak
   follower_ of _x_;
@@ -58,7 +64,8 @@ _X, we say_ that
   of _x_.
 
 As may be shown by examination of the domain partition table, the
-exclusion of weak followers is equivalent to coherence.
+exclusion of weak followers is equivalent to coherence (and so is the
+exclusion of misstips).
 
 A _strong patching_ of a dot _x_ in a fuset _&phi;_ is a pair of
 domain subsets (<tt><b>P</b></tt><sub>_&phi;_</sub>(_x_),
@@ -123,6 +130,21 @@ equality condition is satisfied by _&psi;_, but _&psi;_ isn't
 coherent, because any element of _u_ not in
 <tt>Under</tt>(_x_<sub>&star;</sub>(_&phi;_)) is a weak follower
 of _x_ in _&psi;_.
+
+### Fusing complement (padding, promotion) and coherent closure
+
+Given a domain ***X*** and two fusets _&phi;_ and _&psi;_ over ***X***
+we define:
+
+*  
+
+FIXME relative complement in a coherent superset (or in a coherent
+closure)
+
+FIXME coherent closure: _&psi;_ is the maximal fuset over ***X***.
+
+for all misstips (_x_, <tt><b>t</b></tt><sub>_&phi;_</sub>(_x_))
+(<tt><b>T</b></tt><sub>_&phi;_</sub>(_x_), _x_)
 
 # Product fusets
 

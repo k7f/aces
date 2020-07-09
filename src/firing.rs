@@ -230,8 +230,8 @@ impl FiringSet {
         self.fcs.as_slice()
     }
 
-    pub fn get_enabled(&self, state: &State) -> FiringSequence {
-        let mut enabled_fcs = FiringSequence::new();
+    pub fn get_enabled(&self, state: &State) -> FiringSubset {
+        let mut enabled_fcs = FiringSubset::new();
 
         for (pos, fc) in self.fcs.as_slice().iter().enumerate() {
             if fc.is_enabled(state) {
@@ -247,6 +247,104 @@ impl From<Vec<FiringComponent>> for FiringSet {
     #[inline]
     fn from(fcs: Vec<FiringComponent>) -> Self {
         FiringSet { fcs }
+    }
+}
+
+#[derive(Clone, Default, Debug)]
+pub struct FiringSubset {
+    fcs: Vec<usize>,
+}
+
+impl FiringSubset {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    #[inline]
+    pub fn clear(&mut self) {
+        self.fcs.clear()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.fcs.is_empty()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.fcs.len()
+    }
+
+    #[inline]
+    pub fn push(&mut self, fc_id: usize) {
+        self.fcs.push(fc_id)
+    }
+
+    #[inline]
+    pub fn first(&self) -> Option<usize> {
+        self.fcs.first().copied()
+    }
+
+    #[inline]
+    pub fn get(&self, pos: usize) -> Option<usize> {
+        self.fcs.get(pos).copied()
+    }
+
+    pub fn get_random<R: RngCore>(&self, rng: &mut R) -> Option<usize> {
+        match self.fcs.len() {
+            0 => None,
+            1 => Some(self.fcs[0]),
+            n => Some(self.fcs[rng.gen_range(0, n)]),
+        }
+    }
+
+    pub fn iter<'b, 'a: 'b>(&'a self, firing_set: &'b FiringSet) -> FiringIter<'b> {
+        FiringIter { iter: self.fcs.iter(), fset: firing_set }
+    }
+
+    pub fn fire_random<R: rand::RngCore>(&self, state: &mut State, fset: &FiringSet, rng: &mut R) -> Result<Option<usize>, AcesError> {
+        let fc_id = match self.fcs.len() {
+            0 => return Ok(None),
+            1 => self.fcs[0],
+            n => self.fcs[rng.gen_range(0, n)],
+        };
+
+        fset.as_slice()[fc_id].fire(state)?;
+
+        Ok(Some(fc_id))
+    }
+
+    pub fn fire_maximal(&self, state: &mut State, fset: &FiringSet) -> Result<(), AcesError> {
+        // FIXME semantics
+        for fc in self.iter(fset) {
+            fc.fire(state)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl From<FiringSubset> for Vec<usize> {
+    fn from(fs: FiringSubset) -> Self {
+        fs.fcs.clone()
+    }
+}
+
+pub struct FiringIter<'a> {
+    iter: slice::Iter<'a, usize>,
+    fset: &'a FiringSet,
+}
+
+impl<'a> Iterator for FiringIter<'a> {
+    type Item = &'a FiringComponent;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(pos) = self.iter.next() {
+            let fc = self.fset.fcs.get(*pos).expect("Broken firing subset.");
+            Some(fc)
+        } else {
+            None
+        }
     }
 }
 
@@ -282,6 +380,12 @@ impl FiringSequence {
     }
 
     #[inline]
+    pub fn push_multi(&mut self, last_id: usize, other_ids: &[usize]) {
+        self.fcs.extend(other_ids.iter().map(|id| (*id, false)));
+        self.fcs.push((last_id, true))
+    }
+
+    #[inline]
     pub fn first(&self) -> Option<usize> {
         self.fcs.first().map(|r| r.0)
     }
@@ -299,21 +403,27 @@ impl FiringSequence {
         }
     }
 
-    pub fn iter<'b, 'a: 'b>(&'a self, firing_set: &'b FiringSet) -> FiringIter<'b> {
-        FiringIter { iter: self.fcs.iter(), fset: firing_set }
+    pub fn seq_iter<'b, 'a: 'b>(&'a self, firing_set: &'b FiringSet) -> FiringSeqIter<'b> {
+        FiringSeqIter { iter: self.fcs.iter(), fset: firing_set }
     }
 
-    pub fn par_iter<'b, 'a: 'b>(&'a self, firing_set: &'b FiringSet) -> FiringParIter<'b> {
-        FiringParIter { iter: self.fcs.iter(), fset: firing_set }
+    pub fn par_iter<'b, 'a: 'b>(&'a self) -> FiringParIter<'b> {
+        FiringParIter { iter: self.fcs.iter() }
     }
 }
 
-pub struct FiringIter<'a> {
+impl From<FiringSequence> for Vec<usize> {
+    fn from(fs: FiringSequence) -> Self {
+        fs.fcs.into_iter().map(|(id, _)| id).collect()
+    }
+}
+
+pub struct FiringSeqIter<'a> {
     iter: slice::Iter<'a, (usize, bool)>,
     fset: &'a FiringSet,
 }
 
-impl<'a> Iterator for FiringIter<'a> {
+impl<'a> Iterator for FiringSeqIter<'a> {
     type Item = &'a FiringComponent;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -328,22 +438,21 @@ impl<'a> Iterator for FiringIter<'a> {
 
 pub struct FiringParIter<'a> {
     iter: slice::Iter<'a, (usize, bool)>,
-    fset: &'a FiringSet,
 }
 
 impl<'a> Iterator for FiringParIter<'a> {
-    type Item = Vec<&'a FiringComponent>;
+    type Item = FiringSubset;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut fcs = Vec::new();
+        let mut fsub = FiringSubset::new();
 
         while let Some((pos, fin)) = self.iter.next() {
-            let fc = self.fset.fcs.get(*pos).expect("Broken firing sequence.");
+            // let fc = self.fset.fcs.get(*pos).expect("Broken firing sequence.");
 
-            fcs.push(fc);
+            fsub.push(*pos);
 
             if *fin {
-                return Some(fcs)
+                return Some(fsub)
             }
         }
 

@@ -106,35 +106,59 @@ impl Runner {
     }
 
     pub fn resume(&mut self, fset: &FiringSet) -> Result<StopCondition, AcesError> {
-        if self.semantics == Semantics::Parallel {
-            // FIXME implement firing under parallel semantics
-            debug!("Firing under parallel semantics isn't implemented yet");
+        match self.semantics {
+            Semantics::Sequential => {
+                let mut rng = self.rng.unwrap_or_else(rand::thread_rng);
+                self.rng = Some(rng);
 
-            return Ok(StopCondition::UnimplementedFeature("firing under parallel semantics".into()))
-        }
+                for num_steps in 0..self.max_steps {
+                    if let Some(dot_id) = self.goal_is_reached() {
+                        debug!("Goal reached at {:?} after {} steps", dot_id, num_steps);
 
-        let mut rng = self.rng.unwrap_or_else(rand::thread_rng);
-        self.rng = Some(rng);
+                        return Ok(StopCondition::GoalReached(dot_id, num_steps))
+                    }
 
-        for num_steps in 0..self.max_steps {
-            if let Some(dot_id) = self.goal_is_reached() {
-                debug!("Goal reached at {:?} after {} steps", dot_id, num_steps);
+                    let fc_id = if log_enabled!(Debug) {
+                        self.current_state.transition_debug(&self.context, num_steps, fset, &mut rng)?
+                    } else {
+                        self.current_state.transition(fset, &mut rng)?
+                    };
 
-                return Ok(StopCondition::GoalReached(dot_id, num_steps))
+                    if let Some(fc_id) = fc_id {
+                        self.firing_sequence.push(fc_id);
+                    } else {
+                        debug!("Stuck after {} steps", num_steps + 1);
+
+                        return Ok(StopCondition::Stalemate(num_steps))
+                    }
+                }
             }
 
-            let fc_id = if log_enabled!(Debug) {
-                self.current_state.transition_debug(&self.context, num_steps, fset, &mut rng)?
-            } else {
-                self.current_state.transition(fset, &mut rng)?
-            };
+            Semantics::Parallel => {
+                // FIXME implement firing under parallel semantics
+                debug!("Firing under parallel semantics isn't implemented yet");
 
-            if let Some(fc_id) = fc_id {
-                self.firing_sequence.push(fc_id);
-            } else {
-                debug!("Stuck after {} steps", num_steps + 1);
+                return Ok(StopCondition::UnimplementedFeature("firing under parallel semantics".into()))
+            }
 
-                return Ok(StopCondition::Stalemate(num_steps))
+            Semantics::Maximal => {
+                for num_steps in 0..self.max_steps {
+                    if let Some(dot_id) = self.goal_is_reached() {
+                        debug!("Goal reached at {:?} after {} steps", dot_id, num_steps);
+
+                        return Ok(StopCondition::GoalReached(dot_id, num_steps))
+                    }
+
+                    let fc_ids = self.current_state.maximal_transition(fset)?;
+
+                    if let Some((last_id, other_ids)) = fc_ids.split_last() {
+                        self.firing_sequence.push_multi(*last_id, other_ids);
+                    } else {
+                        debug!("Stuck after {} steps", num_steps + 1);
+
+                        return Ok(StopCondition::Stalemate(num_steps))
+                    }
+                }
             }
         }
 
