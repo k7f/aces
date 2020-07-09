@@ -5,8 +5,7 @@ use std::{
 };
 use crate::{
     PartialContent, Port, Link, Wedge, Fork, Join, Fuset, Polarity, DotId, AtomId, PortId, LinkId,
-    ForkId, JoinId, FusetId, Semantics, Capacity, Weight, WedgeWeights, AcesError,
-    AcesErrorKind,
+    ForkId, JoinId, FusetId, Semantics, Capacity, Weight, WedgeWeights, AcesError, AcesErrorKind,
     domain::{Dotset, DotsetId},
     name::{NameSpace, NameId},
     atom::{AtomSpace, Atom},
@@ -46,7 +45,7 @@ pub struct Context {
     magic_id:      u64,    // group identifier
     name_id:       NameId, // given name
     globals:       NameSpace,
-    dots:        NameSpace,
+    dots:          NameSpace,
     atoms:         AtomSpace,
     content:       BTreeMap<NameId, PartialContent>,
     capacities:    BTreeMap<DotId, Capacity>,
@@ -249,20 +248,12 @@ impl Context {
     }
 
     #[inline]
-    pub(crate) fn share_fork_from_tip_and_pit(
-        &mut self,
-        tip_id: DotId,
-        pit: Dotset,
-    ) -> ForkId {
+    pub(crate) fn share_fork_from_tip_and_pit(&mut self, tip_id: DotId, pit: Dotset) -> ForkId {
         self.atoms.share_fork_from_tip_and_pit(tip_id, pit)
     }
 
     #[inline]
-    pub(crate) fn share_join_from_tip_and_pit(
-        &mut self,
-        tip_id: DotId,
-        pit: Dotset,
-    ) -> JoinId {
+    pub(crate) fn share_join_from_tip_and_pit(&mut self, tip_id: DotId, pit: Dotset) -> JoinId {
         self.atoms.share_join_from_tip_and_pit(tip_id, pit)
     }
 

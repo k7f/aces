@@ -38,8 +38,7 @@ pub use content::{
 pub use yaml_script::YamlFormat;
 pub use domain::{DotId, Polarity};
 pub use atom::{
-    Port, Link, Wedge, Fork, Join, Fuset, AtomId, PortId, LinkId, ForkId, JoinId, FusetId,
-    Atomic,
+    Port, Link, Wedge, Fork, Join, Fuset, AtomId, PortId, LinkId, ForkId, JoinId, FusetId, Atomic,
 };
 pub use polynomial::{Polynomial, Monomials};
 pub use multiset::{Multiplicity, Capacity, Weight, WedgeWeights};

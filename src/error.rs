@@ -64,8 +64,12 @@ impl fmt::Display for AcesErrorKind {
             PolynomialPolarityMismatch => {
                 write!(f, "Attempt to combine polynomials with opposite polarities")
             }
-            WedgeNotAForkMismatch(join_id) => write!(f, "Expected fork, but wedge is {:?}", join_id),
-            WedgeNotAJoinMismatch(fork_id) => write!(f, "Expected join, but wedge is {:?}", fork_id),
+            WedgeNotAForkMismatch(join_id) => {
+                write!(f, "Expected fork, but wedge is {:?}", join_id)
+            }
+            WedgeNotAJoinMismatch(fork_id) => {
+                write!(f, "Expected join, but wedge is {:?}", fork_id)
+            }
             DotMissingForId(dot_id) => write!(f, "There is no dot with {:?}", dot_id),
             AtomMissingForId(atom_id) => write!(f, "There is no atom with {:?}", atom_id),
             PortMissingForId(port_id) => write!(f, "There is no port with {:?}", port_id),

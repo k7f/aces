@@ -133,7 +133,7 @@ impl ExclusivelyContextual for DotsetId {
 /// Represented as an ordered and deduplicated `Vec` of `DotId`s.
 #[derive(Clone, Eq, Debug)]
 pub struct Dotset {
-    pub(crate) atom_id:  Option<AtomId>,
+    pub(crate) atom_id: Option<AtomId>,
     pub(crate) dot_ids: Vec<DotId>,
 }
 

@@ -218,8 +218,8 @@ impl ExclusivelyContextual for FusetId {
 /// [`AtomSpace::get_port()`] followed by [`Port::get_dot_id()`].
 #[derive(Clone, Debug)]
 pub(crate) struct AtomSpace {
-    atoms:           Vec<Atom>,
-    atom_ids:        HashMap<Atom, AtomId>,
+    atoms:         Vec<Atom>,
+    atom_ids:      HashMap<Atom, AtomId>,
     source_dots:   BTreeMap<DotId, PortId>,
     sink_dots:     BTreeMap<DotId, PortId>,
     internal_dots: BTreeMap<DotId, (PortId, PortId)>,
@@ -228,8 +228,8 @@ pub(crate) struct AtomSpace {
 impl Default for AtomSpace {
     fn default() -> Self {
         Self {
-            atoms:           vec![Atom::Bottom],
-            atom_ids:        Default::default(),
+            atoms:         vec![Atom::Bottom],
+            atom_ids:      Default::default(),
             source_dots:   Default::default(),
             sink_dots:     Default::default(),
             internal_dots: Default::default(),
@@ -326,22 +326,14 @@ impl AtomSpace {
         JoinId(atom_id)
     }
 
-    pub(crate) fn share_fork_from_tip_and_pit(
-        &mut self,
-        tip_id: DotId,
-        mut pit: Dotset,
-    ) -> ForkId {
+    pub(crate) fn share_fork_from_tip_and_pit(&mut self, tip_id: DotId, mut pit: Dotset) -> ForkId {
         let pit_id = self.share_dotset(&mut pit);
         let mut fork = Wedge::new(Polarity::Tx, tip_id, pit_id);
 
         self.share_fork(&mut fork)
     }
 
-    pub(crate) fn share_join_from_tip_and_pit(
-        &mut self,
-        tip_id: DotId,
-        mut pit: Dotset,
-    ) -> JoinId {
+    pub(crate) fn share_join_from_tip_and_pit(&mut self, tip_id: DotId, mut pit: Dotset) -> JoinId {
         let pit_id = self.share_dotset(&mut pit);
         let mut join = Wedge::new(Polarity::Rx, tip_id, pit_id);
 
@@ -637,9 +629,9 @@ impl hash::Hash for Port {
 
 impl ExclusivelyContextual for Port {
     fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
-        let dot_name = ctx
-            .get_dot_name(self.get_dot_id())
-            .ok_or_else(|| AcesError::from(AcesErrorKind::DotMissingForPort(self.get_polarity())))?;
+        let dot_name = ctx.get_dot_name(self.get_dot_id()).ok_or_else(|| {
+            AcesError::from(AcesErrorKind::DotMissingForPort(self.get_polarity()))
+        })?;
 
         Ok(format!("[{} {}]", dot_name, self.get_polarity()))
     }
@@ -656,20 +648,15 @@ impl ExclusivelyContextual for Port {
 /// [`CEStructure::check_coherence()`]: crate::CEStructure::check_coherence()
 #[derive(Clone, Eq, Debug)]
 pub struct Link {
-    atom_id:     Option<AtomId>,
-    tx_port_id:  PortId,
-    tx_dot_id: DotId,
-    rx_port_id:  PortId,
-    rx_dot_id: DotId,
+    atom_id:    Option<AtomId>,
+    tx_port_id: PortId,
+    tx_dot_id:  DotId,
+    rx_port_id: PortId,
+    rx_dot_id:  DotId,
 }
 
 impl Link {
-    pub fn new(
-        tx_port_id: PortId,
-        tx_dot_id: DotId,
-        rx_port_id: PortId,
-        rx_dot_id: DotId,
-    ) -> Self {
+    pub fn new(tx_port_id: PortId, tx_dot_id: DotId, rx_port_id: PortId, rx_dot_id: DotId) -> Self {
         Self { atom_id: None, tx_port_id, tx_dot_id, rx_port_id, rx_dot_id }
     }
 
@@ -881,7 +868,9 @@ impl fmt::Debug for Wedge {
 impl PartialEq for Wedge {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.polarity == other.polarity && self.tip_id == other.tip_id && self.pit_id == other.pit_id
+        self.polarity == other.polarity
+            && self.tip_id == other.tip_id
+            && self.pit_id == other.pit_id
     }
 }
 
@@ -1139,8 +1128,8 @@ mod tests {
     }
 
     fn new_fork(atoms: &mut AtomSpace, tip_id: usize, pit_size: usize) -> ForkId {
-        let arm_ids = (tip_id + 1..=tip_id + pit_size)
-            .map(|id| DotId(unsafe { AnyId::new_unchecked(id) }));
+        let arm_ids =
+            (tip_id + 1..=tip_id + pit_size).map(|id| DotId(unsafe { AnyId::new_unchecked(id) }));
         let pit = Dotset::new(arm_ids);
         atoms.share_fork_from_tip_and_pit(DotId(unsafe { AnyId::new_unchecked(tip_id) }), pit)
     }

@@ -1,5 +1,5 @@
 use std::{slice, collections::BTreeMap, convert::TryFrom};
-use rand::{RngCore, Rng};
+use rand::{RngCore, Rng, seq::SliceRandom};
 use crate::{
     ContextHandle, Contextual, Polarity, DotId, Capacity, Weight, Solution, State, AcesError,
     AcesErrorKind, domain::Dotset,
@@ -302,20 +302,70 @@ impl FiringSubset {
         FiringIter { iter: self.fcs.iter(), fset: firing_set }
     }
 
-    pub fn fire_random<R: rand::RngCore>(&self, state: &mut State, fset: &FiringSet, rng: &mut R) -> Result<Option<usize>, AcesError> {
-        let fc_id = match self.fcs.len() {
-            0 => return Ok(None),
-            1 => self.fcs[0],
-            n => self.fcs[rng.gen_range(0, n)],
-        };
+    pub fn fire_single<R: rand::RngCore>(
+        &self,
+        state: &mut State,
+        fset: &FiringSet,
+        rng: &mut R,
+    ) -> Result<Option<usize>, AcesError> {
+        if let Some(fc_id) = self.fcs.choose(rng).copied() {
+            fset.as_slice()[fc_id].fire(state)?;
 
-        fset.as_slice()[fc_id].fire(state)?;
+            Ok(Some(fc_id))
+        } else {
+            Ok(None)
+        }
+    }
 
-        Ok(Some(fc_id))
+    pub fn fire_parallel<R: rand::RngCore>(
+        &mut self,
+        state: &mut State,
+        fset: &FiringSet,
+        rng: &mut R,
+    ) -> Result<Vec<usize>, AcesError> {
+        let mut result = Vec::new();
+
+        match self.fcs.len() {
+            0 => {}
+            1 => {
+                let fc_id = self.fcs[0];
+
+                fset.as_slice()[fc_id].fire(state)?;
+
+                result.push(fc_id);
+            }
+            n => {
+                let amount = rng.gen_range(0, n) + 1;
+                let (chosen, _) = self.fcs.partial_shuffle(rng, amount);
+                let mut neigh = Vec::new();
+
+                for fc_id in chosen.iter() {
+                    if !neigh.contains(fc_id) {
+                        result.push(*fc_id);
+                        // FIXME collect neighs
+                    }
+                }
+
+                for fc_id in result.iter() {
+                    fset.as_slice()[*fc_id].fire(state)?;
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    pub fn fire_all(&self, state: &mut State, fset: &FiringSet) -> Result<(), AcesError> {
+        for fc in self.iter(fset) {
+            fc.fire(state)?;
+        }
+
+        Ok(())
     }
 
     pub fn fire_maximal(&self, state: &mut State, fset: &FiringSet) -> Result<(), AcesError> {
-        // FIXME semantics
+        // FIXME apply max-weight semantics
+
         for fc in self.iter(fset) {
             fc.fire(state)?;
         }

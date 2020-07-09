@@ -456,9 +456,9 @@ impl Formula {
                     // disjunctions instead of exclusive choice,
                     // because we rely on reduction to minimal model
                     // when solving.  FIXME reconsider.
-                    let lits = Some(wedge_lit)
-                        .into_iter()
-                        .chain(choice.iter().map(|cowedge_id| Lit::from_atom_id(*cowedge_id, false)));
+                    let lits = Some(wedge_lit).into_iter().chain(
+                        choice.iter().map(|cowedge_id| Lit::from_atom_id(*cowedge_id, false)),
+                    );
                     let clause = Clause::from_literals(lits, "cowedge");
 
                     self.add_clause(clause)?;

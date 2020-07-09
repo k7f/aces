@@ -9,9 +9,9 @@ use std::{
 };
 use log::Level::{Debug, Trace};
 use crate::{
-    ContextHandle, Contextual, ExclusivelyContextual, ContentFormat, InteractiveFormat, Port, Wedge,
-    Polarity, AtomId, DotId, PortId, LinkId, ForkId, JoinId, Polynomial, FiringSet, Content, sat,
-    sat::Resolution, Solver, AcesError, AcesErrorKind,
+    ContextHandle, Contextual, ExclusivelyContextual, ContentFormat, InteractiveFormat, Port,
+    Wedge, Polarity, AtomId, DotId, PortId, LinkId, ForkId, JoinId, Polynomial, FiringSet, Content,
+    sat, sat::Resolution, Solver, AcesError, AcesErrorKind,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -711,7 +711,8 @@ impl CEStructure {
             for (&link_id, &link_state) in self.links.iter() {
                 if let LinkState::Thin(missing_polarity) = link_state {
                     if log_enabled!(Debug) || first_link_info.is_none() {
-                        let (tx_name, rx_name) = self.get_thin_link_names(link_id, missing_polarity)?;
+                        let (tx_name, rx_name) =
+                            self.get_thin_link_names(link_id, missing_polarity)?;
 
                         match missing_polarity {
                             Polarity::Rx => debug!("Tx-only link: {} -> {}", tx_name, rx_name,),

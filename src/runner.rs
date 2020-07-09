@@ -119,7 +119,12 @@ impl Runner {
                     }
 
                     let fc_id = if log_enabled!(Debug) {
-                        self.current_state.transition_debug(&self.context, num_steps, fset, &mut rng)?
+                        self.current_state.transition_debug(
+                            &self.context,
+                            num_steps,
+                            fset,
+                            &mut rng,
+                        )?
                     } else {
                         self.current_state.transition(fset, &mut rng)?
                     };
@@ -135,13 +140,31 @@ impl Runner {
             }
 
             Semantics::Parallel => {
-                // FIXME implement firing under parallel semantics
-                debug!("Firing under parallel semantics isn't implemented yet");
+                let mut rng = self.rng.unwrap_or_else(rand::thread_rng);
+                self.rng = Some(rng);
 
-                return Ok(StopCondition::UnimplementedFeature("firing under parallel semantics".into()))
+                for num_steps in 0..self.max_steps {
+                    if let Some(dot_id) = self.goal_is_reached() {
+                        debug!("Goal reached at {:?} after {} steps", dot_id, num_steps);
+
+                        return Ok(StopCondition::GoalReached(dot_id, num_steps))
+                    }
+
+                    let fc_ids = self.current_state.parallel_transition(fset, &mut rng)?;
+
+                    if let Some((last_id, other_ids)) = fc_ids.split_last() {
+                        self.firing_sequence.push_multi(*last_id, other_ids);
+                    } else {
+                        debug!("Stuck after {} steps", num_steps + 1);
+
+                        return Ok(StopCondition::Stalemate(num_steps))
+                    }
+                }
             }
 
             Semantics::Maximal => {
+                warn!("This is only a mockup, maximal semantics isn't supported yet");
+
                 for num_steps in 0..self.max_steps {
                     if let Some(dot_id) = self.goal_is_reached() {
                         debug!("Goal reached at {:?} after {} steps", dot_id, num_steps);

@@ -230,8 +230,13 @@ impl State {
         }
     }
 
-    /// Returns an index of the activated firing component taken from
-    /// a given [`FiringSet`].
+    /// Activates and fires a single firing component.
+    ///
+    /// The firing component is randomly chosen from the enabled
+    /// subset of the given [`FiringSet`].
+    ///
+    /// Returns the position of the activated firing component in the
+    /// [`FiringSet`].
     pub fn transition<R: rand::RngCore>(
         &mut self,
         fset: &FiringSet,
@@ -239,15 +244,34 @@ impl State {
     ) -> Result<Option<usize>, AcesError> {
         let enabled_fcs = fset.get_enabled(self);
 
-        enabled_fcs.fire_random(self, fset, rng)
+        enabled_fcs.fire_single(self, fset, rng)
     }
 
-    /// Returns a vector of indices of activated firing components, a
-    /// subset of a given [`FiringSet`].
-    pub fn maximal_transition(
+    /// Activates a random independent set of firing components and
+    /// fires them all in a single step.
+    ///
+    /// The firing components are chosen from the enabled subset of
+    /// the given [`FiringSet`].  Note that two firing components are
+    /// independent (not adjacent) iff they have disjoint carriers.
+    ///
+    /// Returns the vector of positions of activated firing components
+    /// in the [`FiringSet`].
+    pub fn parallel_transition<R: rand::RngCore>(
         &mut self,
         fset: &FiringSet,
+        rng: &mut R,
     ) -> Result<Vec<usize>, AcesError> {
+        let mut enabled_fcs = fset.get_enabled(self);
+
+        enabled_fcs.fire_parallel(self, fset, rng)
+    }
+
+    /// Activates the set of enabled firing components and fires them
+    /// all in a single step.
+    ///
+    /// Returns the vector of positions of activated firing components
+    /// in the [`FiringSet`].
+    pub fn maximal_transition(&mut self, fset: &FiringSet) -> Result<Vec<usize>, AcesError> {
         let enabled_fcs = fset.get_enabled(self);
 
         enabled_fcs.fire_maximal(self, fset)?;
