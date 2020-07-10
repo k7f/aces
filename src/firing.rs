@@ -1,4 +1,8 @@
-use std::{slice, collections::BTreeMap, convert::TryFrom};
+use std::{
+    slice,
+    collections::{BTreeMap, BTreeSet, HashSet},
+    convert::TryFrom,
+};
 use rand::{RngCore, Rng, seq::SliceRandom};
 use crate::{
     ContextHandle, Contextual, Polarity, DotId, Capacity, Weight, Solution, State, AcesError,
@@ -9,9 +13,14 @@ use crate::{
 pub struct FiringComponent {
     pre_set:  BTreeMap<DotId, Weight>,
     post_set: BTreeMap<DotId, (Weight, Capacity)>,
+    carrier:  BTreeSet<DotId>,
 }
 
 impl FiringComponent {
+    pub fn is_independent(&self, other: &Self) -> bool {
+        self.carrier.is_disjoint(&other.carrier)
+    }
+
     pub fn is_enabled(&self, state: &State) -> bool {
         for (&dot_id, &weight) in self.pre_set.iter() {
             let tokens = state.get(dot_id);
@@ -133,7 +142,12 @@ impl TryFrom<Solution> for FiringComponent {
             post_set.entry(dot_id).and_modify(|v| v.0 = weight);
         }
 
-        Ok(FiringComponent { pre_set, post_set })
+        let mut carrier = BTreeSet::new();
+
+        carrier.extend(pre_set.keys());
+        carrier.extend(post_set.keys());
+
+        Ok(FiringComponent { pre_set, post_set, carrier })
     }
 }
 
@@ -221,13 +235,26 @@ impl Contextual for FiringComponent {
 
 #[derive(Clone, Default, Debug)]
 pub struct FiringSet {
-    fcs: Vec<FiringComponent>,
+    fcs:  Vec<FiringComponent>,
+    deps: Vec<HashSet<usize>>,
 }
 
 impl FiringSet {
     #[inline]
+    pub fn len(&self) -> usize {
+        self.fcs.len()
+    }
+
     pub fn as_slice(&self) -> &[FiringComponent] {
         self.fcs.as_slice()
+    }
+
+    pub fn get(&self, fc_id: usize) -> Option<&FiringComponent> {
+        self.fcs.get(fc_id)
+    }
+
+    pub fn get_adjacent(&self, fc_id: usize) -> Option<&HashSet<usize>> {
+        self.deps.get(fc_id)
     }
 
     pub fn get_enabled(&self, state: &State) -> FiringSubset {
@@ -246,7 +273,34 @@ impl FiringSet {
 impl From<Vec<FiringComponent>> for FiringSet {
     #[inline]
     fn from(fcs: Vec<FiringComponent>) -> Self {
-        FiringSet { fcs }
+        let last_id = fcs.len() - 1;
+        let mut deps: Vec<HashSet<usize>> = Vec::new();
+
+        for (pos1, fc1) in fcs[..last_id].iter().enumerate() {
+            let mut adjacent: HashSet<_> = deps
+                .iter()
+                .enumerate()
+                .filter_map(|(pos2, back_refs)| back_refs.contains(&pos1).then_some(pos2))
+                .collect();
+
+            for (pos2, fc2) in fcs[pos1 + 1..].iter().enumerate() {
+                if !fc1.is_independent(fc2) {
+                    adjacent.insert(pos1 + 1 + pos2);
+                }
+            }
+
+            deps.push(adjacent);
+        }
+
+        let adjacent: HashSet<_> = deps
+            .iter()
+            .enumerate()
+            .filter_map(|(pos, back_refs)| back_refs.contains(&last_id).then_some(pos))
+            .collect();
+
+        deps.push(adjacent);
+
+        FiringSet { fcs, deps }
     }
 }
 
@@ -330,24 +384,34 @@ impl FiringSubset {
             1 => {
                 let fc_id = self.fcs[0];
 
-                fset.as_slice()[fc_id].fire(state)?;
+                if let Some(fc) = fset.get(fc_id) {
+                    fc.fire(state)?;
+                } else {
+                    return Err(AcesErrorKind::FiringSetOverflow(fc_id, fset.len()).into())
+                }
 
                 result.push(fc_id);
             }
             n => {
                 let amount = rng.gen_range(0, n) + 1;
                 let (chosen, _) = self.fcs.partial_shuffle(rng, amount);
-                let mut neigh = Vec::new();
+                let mut neigh: HashSet<usize> = HashSet::new();
 
                 for fc_id in chosen.iter() {
                     if !neigh.contains(fc_id) {
                         result.push(*fc_id);
-                        // FIXME collect neighs
+                        if let Some(ns) = fset.get_adjacent(*fc_id) {
+                            neigh.extend(ns);
+                        } else {
+                            return Err(AcesErrorKind::FiringSetOverflow(*fc_id, fset.len()).into())
+                        }
                     }
                 }
 
+                let fset = fset.as_slice();
+
                 for fc_id in result.iter() {
-                    fset.as_slice()[*fc_id].fire(state)?;
+                    fset[*fc_id].fire(state)?;
                 }
             }
         }

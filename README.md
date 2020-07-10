@@ -14,7 +14,7 @@ the [_Ascesis_](https://github.com/k7f/ascesis) project.
 
 In principle, `aces` should build wherever `rustc` and `cargo` runs.
 Be aware, though, that the project is very much a WIP.  The main
-toolchain used in development is nightly channel of Rust 1.45.
+toolchain used in development is nightly channel of Rust 1.46.
 
 To use `aces` as a library in a Rust project, include these lines in
 the `Cargo.toml` file:

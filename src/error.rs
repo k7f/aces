@@ -19,6 +19,7 @@ pub enum AcesErrorKind {
     JoinMissingForId(JoinId),
     DotsetMissingForId(DotsetId),
     FusetMissingForId(FusetId),
+    FiringSetOverflow(usize, usize),
     BottomAtomAccess,
     AtomicsNotOrdered,
 
@@ -79,6 +80,9 @@ impl fmt::Display for AcesErrorKind {
             JoinMissingForId(join_id) => write!(f, "There is no join with {:?}", join_id),
             DotsetMissingForId(pit_id) => write!(f, "There is no dotset with {:?}", pit_id),
             FusetMissingForId(fuset_id) => write!(f, "There is no fuset with {:?}", fuset_id),
+            FiringSetOverflow(fc_id, fset_len) => {
+                write!(f, "Index {} overflow of a {}-element firing set", fc_id, fset_len)
+            }
             BottomAtomAccess => write!(f, "Attempt to access the bottom atom"),
             AtomicsNotOrdered => write!(f, "Atomics have to be given in strictly increasing order"),
 
