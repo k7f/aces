@@ -1,4 +1,5 @@
 use std::{
+    hash,
     collections::{btree_map, BTreeMap, BTreeSet},
     convert::TryInto,
     rc::Rc,
@@ -9,37 +10,177 @@ use std::{
 };
 use log::Level::{Debug, Trace};
 use crate::{
-    ContextHandle, Contextual, ExclusivelyContextual, ContentFormat, InteractiveFormat, Port,
-    Wedge, Polarity, AtomId, DotId, PortId, LinkId, ForkId, JoinId, Polynomial, FiringSet, Content,
-    sat, sat::Resolution, Solver, AcesError, AcesErrorKind,
+    Context, ContextHandle, Contextual, ExclusivelyContextual, ContentFormat, InteractiveFormat,
+    Port, Wedge, Polarity, AtomId, DotId, PortId, LinkId, ForkId, JoinId, FusetId, Frame,
+    FiringSet, Content, sat, sat::Resolution, Solver, AcesError, AcesErrorKind,
 };
+
+/// Fuset: a set of forks and joins.
+///
+/// Represented as two ordered and deduplicated `Vec`s, one of
+/// [`ForkId`]s, and another of [`JoinId`]s.
+#[derive(Clone, Eq, Debug)]
+pub struct Fuset {
+    pub(crate) atom_id:  Option<AtomId>,
+    pub(crate) fork_ids: Vec<ForkId>,
+    pub(crate) join_ids: Vec<JoinId>,
+}
+
+impl Fuset {
+    /// [`Fuset`] constructor.
+    ///
+    /// See also  [`Fuset::new_unchecked()`].
+    pub fn new<I, J>(fork_ids: I, join_ids: J) -> Self
+    where
+        I: IntoIterator<Item = ForkId>,
+        J: IntoIterator<Item = JoinId>,
+    {
+        let fork_ids: BTreeSet<_> = fork_ids.into_iter().collect();
+        let join_ids: BTreeSet<_> = join_ids.into_iter().collect();
+
+        if fork_ids.is_empty() {
+            // FIXME
+        }
+
+        if join_ids.is_empty() {
+            // FIXME
+        }
+
+        Self::new_unchecked(fork_ids, join_ids)
+    }
+
+    /// A more efficient variant of [`Fuset::new()`].
+    ///
+    /// Note: new [`Fuset`] is created under the assumption that
+    /// `fork_ids` and `join_ids` are nonempty and listed in ascending
+    /// order.  If the caller fails to provide ordered sets of forks
+    /// and joins, the library may panic in some other call (the
+    /// constructor itself panics immediately in debug mode).
+    pub fn new_unchecked<I, J>(fork_ids: I, join_ids: J) -> Self
+    where
+        I: IntoIterator<Item = ForkId>,
+        J: IntoIterator<Item = JoinId>,
+    {
+        let fork_ids: Vec<_> = fork_ids.into_iter().collect();
+        let join_ids: Vec<_> = join_ids.into_iter().collect();
+        trace!("New fuset: {:?}->{:?}", fork_ids, join_ids);
+
+        if cfg!(debug_assertions) {
+            let mut fiter = fork_ids.iter();
+
+            if let Some(fid) = fiter.next() {
+                let mut prev_fid = *fid;
+
+                for &fid in fiter {
+                    assert!(prev_fid < fid, "Unordered set of forks");
+                    prev_fid = fid;
+                }
+            } else {
+                panic!("Empty set of forks")
+            }
+
+            let mut jiter = join_ids.iter();
+
+            if let Some(jid) = jiter.next() {
+                let mut prev_jid = *jid;
+
+                for &jid in jiter {
+                    assert!(prev_jid < jid, "Unordered set of joins");
+                    prev_jid = jid;
+                }
+            } else {
+                panic!("Empty set of joins")
+            }
+        }
+
+        Fuset { atom_id: None, fork_ids, join_ids }
+    }
+
+    #[inline]
+    pub fn get_atom_id(&self) -> AtomId {
+        self.atom_id.expect("Attempt to access an uninitialized fuset")
+    }
+
+    #[inline]
+    pub fn get_id(&self) -> Option<FusetId> {
+        self.atom_id.map(FusetId)
+    }
+
+    #[inline]
+    pub fn get_fork_ids(&self) -> &[ForkId] {
+        self.fork_ids.as_slice()
+    }
+
+    #[inline]
+    pub fn get_join_ids(&self) -> &[JoinId] {
+        self.join_ids.as_slice()
+    }
+}
+
+impl PartialEq for Fuset {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.fork_ids == other.fork_ids && self.join_ids == other.join_ids
+    }
+}
+
+impl hash::Hash for Fuset {
+    #[inline]
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.fork_ids.hash(state);
+        self.join_ids.hash(state);
+    }
+}
+
+impl ExclusivelyContextual for Fuset {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
+        let forks: Result<Vec<_>, AcesError> = self
+            .fork_ids
+            .iter()
+            .map(|&fork_id| {
+                ctx.get_fork(fork_id).ok_or_else(|| AcesErrorKind::ForkMissingForId(fork_id).into())
+            })
+            .collect();
+
+        let joins: Result<Vec<_>, AcesError> = self
+            .join_ids
+            .iter()
+            .map(|&join_id| {
+                ctx.get_join(join_id).ok_or_else(|| AcesErrorKind::JoinMissingForId(join_id).into())
+            })
+            .collect();
+
+        Ok(format!("({:?}->{:?})", forks?, joins?))
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum LinkState {
-    /// Unipolar link (any structure containing it is incoherent).
+    /// Unipolar link (any fuset containing it is incoherent).
     /// The [`Polarity`] value is the _missing_ orientation.
     Thin(Polarity),
     Fat,
 }
 
-/// A single c-e structure.
+/// A reference to a single fuset coupled with an environment.
 ///
-/// Internally, instances of this type own structural information (the
-/// cause and effect polynomials), the intermediate content
-/// representation from which a c-e structure originated (optionally),
-/// and some auxiliary recomputable data.  Other properties are
-/// available indirectly: `CEStructure` instance owns a
-/// [`ContextHandle`] which resolves to a shared [`Context`] object.
+/// Internally, instances of this type refer to the fuset atom itself
+/// and to the context, and own the intermediate content
+/// representation from which a fuset originated (optionally), and
+/// some auxiliary recomputable data.  Other properties are available
+/// indirectly: `FusetHolder` instance owns a [`ContextHandle`] which
+/// resolves to a shared [`Context`] object.
 ///
 /// [`Context`]: crate::Context
 #[derive(Debug)]
-pub struct CEStructure {
+pub struct FusetHolder {
     context:        ContextHandle,
     origin:         Rc<dyn ContentFormat>,
     content:        Vec<Box<dyn Content>>,
+    // FIXME FusetId
     resolution:     Resolution,
-    causes:         BTreeMap<PortId, Polynomial<LinkId>>,
-    effects:        BTreeMap<PortId, Polynomial<LinkId>>,
+    causes:         BTreeMap<PortId, Frame<LinkId>>,
+    effects:        BTreeMap<PortId, Frame<LinkId>>,
     carrier:        BTreeSet<DotId>,
     links:          BTreeMap<LinkId, LinkState>,
     num_thin_links: u32,
@@ -50,15 +191,15 @@ pub struct CEStructure {
     co_joins:       BTreeMap<AtomId, Vec<AtomId>>, // Forks -> 2^Joins
 }
 
-impl CEStructure {
-    /// Creates an empty c-e structure in a [`Context`] given by a
+impl FusetHolder {
+    /// Creates an empty fuset holder in a [`Context`] given by a
     /// [`ContextHandle`].
     ///
     /// See also a specialized variant of this method,
     /// [`new_interactive()`].
     ///
     /// [`Context`]: crate::Context
-    /// [`new_interactive()`]: CEStructure::new_interactive()
+    /// [`new_interactive()`]: FusetHolder::new_interactive()
     pub fn new(ctx: &ContextHandle, origin: Rc<dyn ContentFormat>) -> Self {
         Self {
             context: ctx.clone(),
@@ -77,16 +218,16 @@ impl CEStructure {
         }
     }
 
-    /// Creates an empty c-e structure in a [`Context`] given by a
+    /// Creates an empty fuset holder in a [`Context`] given by a
     /// [`ContextHandle`], and sets content origin to
     /// [`InteractiveFormat`].
     ///
     /// This is a specialized variant of the [`new()`] method.
     ///
     /// [`Context`]: crate::Context
-    /// [`new()`]: CEStructure::new()
+    /// [`new()`]: FusetHolder::new()
     pub fn new_interactive(ctx: &ContextHandle) -> Self {
-        CEStructure::new(ctx, Rc::new(InteractiveFormat::new()))
+        FusetHolder::new(ctx, Rc::new(InteractiveFormat::new()))
     }
 
     fn add_wedge_to_tip(&mut self, wedge_id: AtomId, polarity: Polarity, dot_id: DotId) {
@@ -154,16 +295,16 @@ impl CEStructure {
         &mut self,
         polarity: Polarity,
         dot_id: DotId,
-        poly: &Polynomial<LinkId>,
+        poly: &Frame<LinkId>,
     ) -> Result<(), AcesError> {
-        for mono in poly.get_monomials() {
+        for pit in poly.iter() {
             let mut fat_codot_ids = Vec::new();
 
-            // Link sequence `mono` is ordered by `LinkId`, reorder
+            // Link sequence `pit` is ordered by `LinkId`, reorder
             // first by codot's `DotId`.
             let mut codot_map = BTreeMap::new();
 
-            for lid in mono {
+            for lid in pit {
                 if let Some(link_state) = self.links.get(&lid) {
                     let ctx = self.context.lock().unwrap();
 
@@ -269,34 +410,34 @@ impl CEStructure {
         Ok(())
     }
 
-    /// Constructs new [`Polynomial`] from a sequence of sequences of
+    /// Constructs new [`Frame`] from a sequence of sequences of
     /// [`DotId`]s and adds it to causes or effects of a dot of this
-    /// `CEStructure`.
+    /// `FusetHolder`.
     ///
     /// The only direct callers of this are methods [`add_causes()`]
     /// and [`add_effects()`].
     ///
-    /// [`add_causes()`]: CEStructure::add_causes()
-    /// [`add_effects()`]: CEStructure::add_effects()
+    /// [`add_causes()`]: FusetHolder::add_causes()
+    /// [`add_effects()`]: FusetHolder::add_effects()
     fn add_causes_or_effects<'a, I>(
         &mut self,
         polarity: Polarity,
         dot_id: DotId,
-        poly_ids: I,
+        pit_ids: I,
     ) -> Result<(), AcesError>
     where
         I: IntoIterator + 'a,
         I::Item: IntoIterator<Item = &'a DotId>,
     {
-        let poly = Polynomial::from_dots_in_context(&self.context, polarity, dot_id, poly_ids);
+        let frame = Frame::from_dots_in_context(&self.context, polarity, dot_id, pit_ids);
 
         let mut port = Port::new(polarity, dot_id);
         let port_id = self.context.lock().unwrap().share_port(&mut port);
 
-        for &lid in poly.get_atomics() {
+        for &lid in frame.get_atomics() {
             if let Some(what_missing) = self.links.get_mut(&lid) {
                 if *what_missing == LinkState::Thin(polarity) {
-                    // Fat link: occurs in causes and effects.
+                    // Strong link: occurs in causes and effects.
                     *what_missing = LinkState::Fat;
                     self.num_thin_links -= 1;
                 } else {
@@ -304,26 +445,26 @@ impl CEStructure {
                     // Tx: Link reoccurrence in effects.
                 }
             } else {
-                // Rx: Thin, cause-only link: occurs in causes, but not in effects.
-                // Tx: Thin, effect-only link: occurs in effects, but not in causes.
+                // Rx: Unipolar, cause-only link: occurs in causes, but not in effects.
+                // Tx: Unipolar, effect-only link: occurs in effects, but not in causes.
                 self.links.insert(lid, LinkState::Thin(!polarity));
                 self.num_thin_links += 1;
             }
         }
 
-        self.create_wedges(polarity, dot_id, &poly)?;
+        self.create_wedges(polarity, dot_id, &frame)?;
 
-        let poly_entry = match polarity {
+        let frame_entry = match polarity {
             Polarity::Rx => self.causes.entry(port_id),
             Polarity::Tx => self.effects.entry(port_id),
         };
 
-        match poly_entry {
+        match frame_entry {
             btree_map::Entry::Vacant(entry) => {
-                entry.insert(poly);
+                entry.insert(frame);
             }
             btree_map::Entry::Occupied(mut entry) => {
-                entry.get_mut().add_polynomial(&poly)?;
+                entry.get_mut().add_frame(&frame)?;
             }
         }
 
@@ -332,9 +473,9 @@ impl CEStructure {
         Ok(())
     }
 
-    /// Constructs new [`Polynomial`] from a sequence of sequences of
+    /// Constructs new [`Frame`] from a sequence of sequences of
     /// [`DotId`]s and adds it to causes of a dot of this
-    /// `CEStructure`.
+    /// `FusetHolder`.
     ///
     /// This method is incremental: new polynomial is added to old
     /// polynomial that is already attached to the `dot_id` as dot's
@@ -348,9 +489,9 @@ impl CEStructure {
         self.add_causes_or_effects(Polarity::Rx, dot_id, poly_ids)
     }
 
-    /// Constructs new [`Polynomial`] from a sequence of sequences of
+    /// Constructs new [`Frame`] from a sequence of sequences of
     /// [`DotId`]s and adds it to effects of a dot of this
-    /// `CEStructure`.
+    /// `FusetHolder`.
     ///
     /// This method is incremental: new polynomial is added to old
     /// polynomial that is already attached to the `dot_id` as dot's
@@ -364,9 +505,9 @@ impl CEStructure {
         self.add_causes_or_effects(Polarity::Tx, dot_id, poly_ids)
     }
 
-    /// Extends this c-e structure with another one, which is created
-    /// in the [`Context`] of the old c-e structure from a given
-    /// [`Content`] trait object.
+    /// Extends this fuset with another one, which is created in the
+    /// [`Context`] of the old fuset from a given [`Content`] trait
+    /// object.
     ///
     /// [`Context`]: crate::Context
     pub fn add_from_content(&mut self, mut content: Box<dyn Content>) -> Result<(), AcesError> {
@@ -401,9 +542,9 @@ impl CEStructure {
         Ok(())
     }
 
-    /// Extends this c-e structure with another one, which is created
-    /// in the [`Context`] of the old c-e structure from a given
-    /// [`Content`] trait object.
+    /// Extends this fuset with another one, which is created in the
+    /// [`Context`] of the old fuset from a given [`Content`] trait
+    /// object.
     ///
     /// [`Context`]: crate::Context
     pub fn with_content(mut self, content: Box<dyn Content>) -> Result<Self, AcesError> {
@@ -412,9 +553,8 @@ impl CEStructure {
         Ok(self)
     }
 
-    /// Extends this c-e structure with another one, which is created
-    /// in the [`Context`] of the old c-e structure from a given
-    /// textual description.
+    /// Extends this fuset with another one, which is created in the
+    /// [`Context`] of the old fuset from a given textual description.
     ///
     /// The `script` is interpreted according to an appropriate format
     /// of content description listed in the `formats` array.
@@ -441,9 +581,8 @@ impl CEStructure {
         Err(AcesErrorKind::UnknownScriptFormat.with_context(&self.context).into())
     }
 
-    /// Extends this c-e structure with another one, which is created
-    /// in the [`Context`] of the old c-e structure from a given
-    /// textual description.
+    /// Extends this fuset with another one, which is created in the
+    /// [`Context`] of the old fuset from a given textual description.
     ///
     /// The `script` is interpreted according to an appropriate format
     /// of content description listed in the `formats` array.
@@ -462,7 +601,7 @@ impl CEStructure {
         Ok(())
     }
 
-    /// Creates a new c-e structure from a textual description, in a
+    /// Creates a new fuset from a textual description, in a
     /// [`Context`] given by a [`ContextHandle`].
     ///
     /// [`Context`]: crate::Context
@@ -478,9 +617,9 @@ impl CEStructure {
         Ok(ces)
     }
 
-    /// Extends this c-e structure with another one, which is created
-    /// in the [`Context`] of the old c-e structure from a script file
-    /// to be found along the `path`.
+    /// Extends this fuset with another one, which is created in the
+    /// [`Context`] of the old fuset from a script file to be found
+    /// along the `path`.
     ///
     /// The script file is interpreted according to an appropriate
     /// format of content description listed in the `formats` array.
@@ -513,9 +652,9 @@ impl CEStructure {
         )
     }
 
-    /// Extends this c-e structure with another one, which is created
-    /// in the [`Context`] of the old c-e structure from a script file
-    /// to be found along the `path`.
+    /// Extends this fuset with another one, which is created in the
+    /// [`Context`] of the old fuset from a script file to be found
+    /// along the `path`.
     ///
     /// The script file is interpreted according to an appropriate
     /// format of content description listed in the `formats` array.
@@ -534,9 +673,8 @@ impl CEStructure {
         Ok(())
     }
 
-    /// Creates a new c-e structure from a script file to be found
-    /// along the `path`, in a [`Context`] given by a
-    /// [`ContextHandle`].
+    /// Creates a new fuset from a script file to be found along the
+    /// `path`, in a [`Context`] given by a [`ContextHandle`].
     ///
     /// [`Context`]: crate::Context
     pub fn from_file<P: AsRef<Path>>(
@@ -566,14 +704,14 @@ impl CEStructure {
         self.content.iter().all(|c| c.is_module())
     }
 
-    /// Returns link coherence status indicating whether this object
-    /// represents a proper c-e structure.
+    /// Returns link coherence status indicating whether this fuset
+    /// represents an actual c-e structure.
     ///
-    /// C-e structure is coherent iff it has no thin links, where a
-    /// link is thin iff it occurs either in causes or in effects, but
-    /// not in both.  Internally, there is a thin links counter
-    /// associated with each `CEStructure` object.  This counter is
-    /// updated whenever a polynomial is added to the structure.
+    /// FusetHolder is coherent iff it has no thin links, where a link
+    /// is thin iff it occurs either in causes or in effects, but not
+    /// in both.  Internally, there is a thin links counter associated
+    /// with each `FusetHolder` object.  This counter is updated
+    /// whenever a polynomial is added to the fuset.
     #[inline]
     pub fn is_coherent(&self) -> bool {
         self.num_thin_links == 0
@@ -726,7 +864,7 @@ impl CEStructure {
                 }
             }
 
-            Err(AcesErrorKind::IncoherentStructure(
+            Err(AcesErrorKind::IncoherentFuset(
                 self.get_name().unwrap_or("anonymous").to_owned(),
                 self.num_thin_links,
                 first_link_info.unwrap(),

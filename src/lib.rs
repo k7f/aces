@@ -13,11 +13,13 @@ extern crate lazy_static;
 
 mod error;
 mod name;
-mod domain;
 mod atom;
+mod domain;
+mod link;
+mod wedge;
 mod multiset;
-mod polynomial;
-mod ces;
+mod frame;
+mod fuset;
 mod context;
 mod content;
 mod yaml_script;
@@ -36,13 +38,13 @@ pub use content::{
     CompilableAsContent, CompilableAsDependency,
 };
 pub use yaml_script::YamlFormat;
-pub use domain::{DotId, Polarity};
-pub use atom::{
-    Port, Link, Wedge, Fork, Join, Fuset, AtomId, PortId, LinkId, ForkId, JoinId, FusetId, Atomic,
-};
-pub use polynomial::{Polynomial, Monomials};
+pub use atom::{AtomId, PortId, LinkId, ForkId, JoinId, FusetId, Atomic};
+pub use domain::{DotId, Polarity, Port};
+pub use link::Link;
+pub use wedge::{Wedge, Fork, Join};
+pub use frame::{Frame, FrameIter};
 pub use multiset::{Multiplicity, Capacity, Weight, WedgeWeights};
-pub use ces::CEStructure;
+pub use fuset::{Fuset, FusetHolder};
 pub use solver::{Solver, Solution};
 pub use firing::{FiringComponent, FiringSet, FiringSubset, FiringSequence};
 pub use state::{State, Goal, Semantics};

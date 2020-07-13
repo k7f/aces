@@ -16,13 +16,13 @@ use crate::{
 ///
 /// All [`Context`] handles used in _aces_ have type
 /// `Arc<Mutex<Context>>`.  They are stored permanently in the
-/// following structs: [`CEStructure`], [`sat::Formula`],
+/// following structs: [`FusetHolder`], [`sat::Formula`],
 /// [`solver::Solver`], and [`solver::Solution`].
 ///
 /// For another way of binding [`Context`] to data see [`Contextual`]
 /// trait and [`InContext`] struct.
 ///
-/// [`CEStructure`]: crate::CEStructure
+/// [`FusetHolder`]: crate::FusetHolder
 /// [`sat::Formula`]: crate::sat::Formula
 /// [`solver::Solver`]: crate::solver::Solver
 /// [`solver::Solution`]: crate::solver::Solution

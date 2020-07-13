@@ -11,7 +11,7 @@ use crate::{
 /// etc.
 ///
 /// Therefore, there is no type `Dot` in _aces_.  Instead, structural
-/// information is stored in [`CEStructure`] objects and accessed
+/// information is stored in [`FusetHolder`] objects and accessed
 /// through structural identifiers, [`PortId`], [`LinkId`], [`ForkId`]
 /// and [`JoinId`].  Remaining dot-related data is retrieved through
 /// `DotId`s from [`Context`] instances (many such instances may
@@ -21,7 +21,7 @@ use crate::{
 /// [`LinkId`]: crate::LinkId
 /// [`ForkId`]: crate::ForkId
 /// [`JoinId`]: crate::JoinId
-/// [`CEStructure`]: crate::CEStructure
+/// [`FusetHolder`]: crate::FusetHolder
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[repr(transparent)]
 pub struct DotId(pub(crate) AnyId);
@@ -228,5 +228,57 @@ impl ExclusivelyContextual for Dotset {
             .collect();
 
         Ok(format!("({:?})", dot_names?))
+    }
+}
+
+/// Representation of a port.
+///
+/// This is an oriented dot, i.e. a dot coupled with a specific
+/// [`Polarity`].
+#[derive(Clone, Eq, Debug)]
+pub struct Port {
+    pub(crate) atom_id:  Option<AtomId>,
+    pub(crate) polarity: Polarity,
+    pub(crate) dot_id:   DotId,
+}
+
+impl Port {
+    pub(crate) fn new(polarity: Polarity, dot_id: DotId) -> Self {
+        Self { atom_id: None, polarity, dot_id }
+    }
+
+    pub(crate) fn get_polarity(&self) -> Polarity {
+        self.polarity
+    }
+
+    pub fn get_atom_id(&self) -> AtomId {
+        self.atom_id.expect("Attempt to access an uninitialized port")
+    }
+
+    pub fn get_dot_id(&self) -> DotId {
+        self.dot_id
+    }
+}
+
+impl PartialEq for Port {
+    fn eq(&self, other: &Self) -> bool {
+        self.dot_id == other.dot_id
+    }
+}
+
+impl hash::Hash for Port {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.polarity.hash(state);
+        self.dot_id.hash(state);
+    }
+}
+
+impl ExclusivelyContextual for Port {
+    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
+        let dot_name = ctx.get_dot_name(self.get_dot_id()).ok_or_else(|| {
+            AcesError::from(AcesErrorKind::DotMissingForPort(self.get_polarity()))
+        })?;
+
+        Ok(format!("[{} {}]", dot_name, self.get_polarity()))
     }
 }

@@ -6,7 +6,7 @@ use std::{
 };
 use varisat::{Var, Lit, CnfFormula, ExtendFormula};
 use crate::{
-    Atomic, Context, ContextHandle, Contextual, ExclusivelyContextual, Polynomial, AtomId, PortId,
+    Atomic, Context, ContextHandle, Contextual, ExclusivelyContextual, Frame, AtomId, PortId,
     LinkId, atom::Atom, FiringSet, AcesError, AcesErrorKind,
 };
 
@@ -381,7 +381,7 @@ impl Formula {
     pub fn add_polynomial(
         &mut self,
         port_id: PortId,
-        poly: &Polynomial<LinkId>,
+        poly: &Frame<LinkId>,
     ) -> Result<(), AcesError> {
         if !poly.is_empty() {
             let port_lit = port_id.into_sat_literal(true);

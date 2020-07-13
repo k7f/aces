@@ -80,9 +80,9 @@ impl ContentFormat for InteractiveFormat {
 ///
 /// Note: types implementing `Content` trait shouldn't own
 /// [`ContextHandle`]s, because `Content` trait objects are owned by
-/// [`CEStructure`] structs, along with [`ContextHandle`]s themselves.
+/// [`FusetHolder`] structs, along with [`ContextHandle`]s themselves.
 ///
-/// [`CEStructure`]: crate::CEStructure
+/// [`FusetHolder`]: crate::Fuset
 /// [`YamlContent`]: crate::yaml_script::YamlContent
 pub trait Content: fmt::Debug {
     /// `Script` is a content description in text, for example,

@@ -7,7 +7,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub enum AcesErrorKind {
     ContextMismatch,
-    PolynomialPolarityMismatch,
+    FramePolarityMismatch,
     WedgeNotAForkMismatch(JoinId),
     WedgeNotAJoinMismatch(ForkId),
     DotMissingForId(DotId),
@@ -30,7 +30,7 @@ pub enum AcesErrorKind {
     FiringDotMissing(Polarity, DotId),
     FiringDotDuplicated(Polarity, DotId),
     FiringOverlap,
-    IncoherentStructure(String, u32, (Polarity, String, String)),
+    IncoherentFuset(String, u32, (Polarity, String, String)),
 
     LeakedInhibitor(DotId, Multiplicity),
     StateUnderflow(DotId, Multiplicity, Multiplicity),
@@ -62,8 +62,8 @@ impl fmt::Display for AcesErrorKind {
 
         match self {
             ContextMismatch => write!(f, "Context mismatch"),
-            PolynomialPolarityMismatch => {
-                write!(f, "Attempt to combine polynomials with opposite polarities")
+            FramePolarityMismatch => {
+                write!(f, "Attempt to combine frames with opposite polarities")
             }
             WedgeNotAForkMismatch(join_id) => {
                 write!(f, "Expected fork, but wedge is {:?}", join_id)
@@ -119,7 +119,7 @@ impl fmt::Display for AcesErrorKind {
                 dot_id
             ),
             FiringOverlap => write!(f, "Attempt to create a non-disjoint firing component"),
-            IncoherentStructure(ces_name, num_thin_links, (polarity, tx_name, rx_name)) => {
+            IncoherentFuset(ces_name, num_thin_links, (polarity, tx_name, rx_name)) => {
                 if *num_thin_links == 1 {
                     write!(
                         f,

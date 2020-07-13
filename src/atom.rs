@@ -1,15 +1,15 @@
 use std::{
-    fmt, hash,
-    collections::{BTreeMap, BTreeSet, HashMap},
+    hash,
+    collections::{BTreeMap, HashMap},
 };
 use crate::{
-    Polarity, AnyId, DotId, Context, ContextHandle, Contextual, ExclusivelyContextual, InContext,
-    AcesError, AcesErrorKind, sat,
+    Wedge, Fork, Join, Fuset, Port, Link, Polarity, AnyId, DotId, Context, Contextual,
+    ExclusivelyContextual, InContext, AcesError, AcesErrorKind, sat,
     domain::{Dotset, DotsetId},
 };
 
 /// An abstract structural identifier serving as the common base of
-/// [`PortId`], [`LinkId`], [`ForkId`] and [`JoinId`].
+/// [`PortId`], [`LinkId`], [`ForkId`], [`JoinId`], and [`FusetId`].
 ///
 /// Since this is a numeric identifier, which is serial and one-based,
 /// it trivially maps into numeric codes of variables in the DIMACS
@@ -468,6 +468,15 @@ impl AtomSpace {
     }
 
     #[inline]
+    #[allow(dead_code)]
+    pub(crate) fn is_fuset(&self, atom_id: AtomId) -> bool {
+        match self.get_atom(atom_id) {
+            Some(Atom::Fuset(_)) => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
     pub(crate) fn get_fuset(&self, fid: FusetId) -> Option<&Fuset> {
         match self.get_atom(fid.into()) {
             Some(Atom::Fuset(a)) => Some(a),
@@ -585,339 +594,6 @@ impl hash::Hash for Atom {
     }
 }
 
-/// Representation of a port.
-///
-/// This is an oriented dot, i.e. a dot coupled with a specific
-/// [`Polarity`].
-#[derive(Clone, Eq, Debug)]
-pub struct Port {
-    polarity: Polarity,
-    atom_id:  Option<AtomId>,
-    dot_id:   DotId,
-}
-
-impl Port {
-    pub(crate) fn new(polarity: Polarity, dot_id: DotId) -> Self {
-        Self { polarity, atom_id: None, dot_id }
-    }
-
-    pub(crate) fn get_polarity(&self) -> Polarity {
-        self.polarity
-    }
-
-    pub fn get_atom_id(&self) -> AtomId {
-        self.atom_id.expect("Attempt to access an uninitialized port")
-    }
-
-    pub fn get_dot_id(&self) -> DotId {
-        self.dot_id
-    }
-}
-
-impl PartialEq for Port {
-    fn eq(&self, other: &Self) -> bool {
-        self.dot_id == other.dot_id
-    }
-}
-
-impl hash::Hash for Port {
-    fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.polarity.hash(state);
-        self.dot_id.hash(state);
-    }
-}
-
-impl ExclusivelyContextual for Port {
-    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
-        let dot_name = ctx.get_dot_name(self.get_dot_id()).ok_or_else(|| {
-            AcesError::from(AcesErrorKind::DotMissingForPort(self.get_polarity()))
-        })?;
-
-        Ok(format!("[{} {}]", dot_name, self.get_polarity()))
-    }
-}
-
-/// Representation of a link.
-///
-/// This is a fat (bipolar) link, if used on its own, or a thin
-/// (unipolar) link, if paired with a [`Polarity`].  See [`CEStructure`]'s
-/// private field `links`, or the implementation of
-/// [`CEStructure::check_coherence()`].
-///
-/// [`CEStructure`]: crate::CEStructure
-/// [`CEStructure::check_coherence()`]: crate::CEStructure::check_coherence()
-#[derive(Clone, Eq, Debug)]
-pub struct Link {
-    atom_id:    Option<AtomId>,
-    tx_port_id: PortId,
-    tx_dot_id:  DotId,
-    rx_port_id: PortId,
-    rx_dot_id:  DotId,
-}
-
-impl Link {
-    pub fn new(tx_port_id: PortId, tx_dot_id: DotId, rx_port_id: PortId, rx_dot_id: DotId) -> Self {
-        Self { atom_id: None, tx_port_id, tx_dot_id, rx_port_id, rx_dot_id }
-    }
-
-    pub fn get_atom_id(&self) -> AtomId {
-        self.atom_id.expect("Attempt to access an uninitialized link")
-    }
-
-    pub fn get_link_id(&self) -> LinkId {
-        LinkId(self.get_atom_id())
-    }
-
-    pub fn get_port_id(&self, polarity: Polarity) -> PortId {
-        if polarity == Polarity::Rx {
-            self.rx_port_id
-        } else {
-            self.tx_port_id
-        }
-    }
-
-    pub fn get_dot_id(&self, polarity: Polarity) -> DotId {
-        if polarity == Polarity::Rx {
-            self.rx_dot_id
-        } else {
-            self.tx_dot_id
-        }
-    }
-
-    pub fn get_tx_port_id(&self) -> PortId {
-        self.tx_port_id
-    }
-
-    pub fn get_tx_dot_id(&self) -> DotId {
-        self.tx_dot_id
-    }
-
-    pub fn get_rx_port_id(&self) -> PortId {
-        self.rx_port_id
-    }
-
-    pub fn get_rx_dot_id(&self) -> DotId {
-        self.rx_dot_id
-    }
-}
-
-impl PartialEq for Link {
-    fn eq(&self, other: &Self) -> bool {
-        self.tx_port_id == other.tx_port_id && self.rx_dot_id == other.rx_dot_id
-    }
-}
-
-impl hash::Hash for Link {
-    fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.tx_port_id.hash(state);
-        self.tx_dot_id.hash(state);
-        self.rx_port_id.hash(state);
-        self.rx_dot_id.hash(state);
-    }
-}
-
-impl ExclusivelyContextual for Link {
-    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
-        let tx_dot_name = ctx
-            .get_dot_name(self.get_tx_dot_id())
-            .ok_or_else(|| AcesError::from(AcesErrorKind::DotMissingForLink(Polarity::Tx)))?;
-        let rx_dot_name = ctx
-            .get_dot_name(self.get_rx_dot_id())
-            .ok_or_else(|| AcesError::from(AcesErrorKind::DotMissingForLink(Polarity::Rx)))?;
-
-        Ok(format!("({} > {})", tx_dot_name, rx_dot_name))
-    }
-}
-
-/// A common type of one-to-many and many-to-one elements of the fuset
-/// representation of c-e structures.
-///
-/// A wide edge represents a monomial attached to a dot.  There are
-/// two variants of a `Wedge`: [`Join`] represents causes and [`Fork`]
-/// represents effects.
-#[derive(Clone, Eq)]
-pub struct Wedge {
-    atom_id:  Option<AtomId>,
-    polarity: Polarity,
-    tip_id:   DotId,
-    pit_id:   DotsetId,
-}
-
-impl Wedge {
-    pub(crate) fn new(polarity: Polarity, tip_id: DotId, pit_id: DotsetId) -> Self {
-        Wedge { atom_id: None, polarity, tip_id, pit_id }
-    }
-
-    /// [`Fork`]'s constructor.
-    ///
-    /// See also  [`Wedge::new_fork_unchecked()`].
-    pub fn new_fork<I>(ctx: &ContextHandle, tip_id: DotId, arm_ids: I) -> ForkId
-    where
-        I: IntoIterator<Item = DotId>,
-    {
-        let pit = Dotset::new(arm_ids);
-        trace!("New fork: {:?} -> {:?}", tip_id, pit);
-        ctx.lock().unwrap().share_fork_from_tip_and_pit(tip_id, pit)
-    }
-
-    /// [`Join`]'s constructor.
-    ///
-    /// See also  [`Wedge::new_join_unchecked()`].
-    pub fn new_join<I>(ctx: &ContextHandle, tip_id: DotId, arm_ids: I) -> JoinId
-    where
-        I: IntoIterator<Item = DotId>,
-    {
-        let pit = Dotset::new(arm_ids);
-        trace!("New join: {:?} <- {:?}", tip_id, pit);
-        ctx.lock().unwrap().share_join_from_tip_and_pit(tip_id, pit)
-    }
-
-    /// A more efficient variant of [`Wedge::new_fork()`].
-    ///
-    /// Note: new [`Fork`] is created under the assumption that
-    /// `arm_ids` are nonempty and listed in ascending order.  If the
-    /// caller fails to provide an ordered pit, the library may panic
-    /// in some other call (the constructor itself panics immediately
-    /// in debug mode).
-    #[inline]
-    pub fn new_fork_unchecked<I>(ctx: &ContextHandle, tip_id: DotId, arm_ids: I) -> ForkId
-    where
-        I: IntoIterator<Item = DotId>,
-    {
-        let pit = Dotset::new_unchecked(arm_ids);
-        trace!("New fork: {:?} -> {:?}", tip_id, pit);
-        ctx.lock().unwrap().share_fork_from_tip_and_pit(tip_id, pit)
-    }
-
-    /// A more efficient variant of [`Wedge::new_join()`].
-    ///
-    /// Note: new [`Join`] is created under the assumption that
-    /// `arm_ids` are nonempty and listed in ascending order.  If the
-    /// caller fails to provide an ordered pit, the library may panic
-    /// in some other call (the constructor itself panics immediately
-    /// in debug mode).
-    #[inline]
-    pub fn new_join_unchecked<I>(ctx: &ContextHandle, tip_id: DotId, arm_ids: I) -> JoinId
-    where
-        I: IntoIterator<Item = DotId>,
-    {
-        let pit = Dotset::new_unchecked(arm_ids);
-        trace!("New join: {:?} <- {:?}", tip_id, pit);
-        ctx.lock().unwrap().share_join_from_tip_and_pit(tip_id, pit)
-    }
-
-    #[inline]
-    pub fn get_atom_id(&self) -> AtomId {
-        match self.polarity {
-            Polarity::Tx => self.atom_id.expect("Attempt to access an uninitialized fork"),
-            Polarity::Rx => self.atom_id.expect("Attempt to access an uninitialized join"),
-        }
-    }
-
-    #[inline]
-    pub fn get_fork_id(&self) -> Option<ForkId> {
-        match self.polarity {
-            Polarity::Tx => Some(ForkId(self.get_atom_id())),
-            Polarity::Rx => None,
-        }
-    }
-
-    #[inline]
-    pub fn get_join_id(&self) -> Option<JoinId> {
-        match self.polarity {
-            Polarity::Tx => None,
-            Polarity::Rx => Some(JoinId(self.get_atom_id())),
-        }
-    }
-
-    #[inline]
-    pub fn get_polarity(&self) -> Polarity {
-        self.polarity
-    }
-
-    #[inline]
-    pub fn get_tip_id(&self) -> DotId {
-        self.tip_id
-    }
-
-    #[inline]
-    pub fn get_pit_id(&self) -> DotsetId {
-        self.pit_id
-    }
-}
-
-impl fmt::Debug for Wedge {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} {{ atom_id: ",
-            match self.polarity {
-                Polarity::Tx => "Fork",
-                Polarity::Rx => "Join",
-            }
-        )?;
-        self.atom_id.fmt(f)?;
-        write!(f, ", tip_id: ")?;
-        self.tip_id.fmt(f)?;
-        write!(f, ", pit_id: ")?;
-        self.pit_id.fmt(f)?;
-        write!(f, " }}")
-    }
-}
-
-impl PartialEq for Wedge {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.polarity == other.polarity
-            && self.tip_id == other.tip_id
-            && self.pit_id == other.pit_id
-    }
-}
-
-impl hash::Hash for Wedge {
-    #[inline]
-    fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.polarity.hash(state);
-        self.tip_id.hash(state);
-        self.pit_id.hash(state);
-    }
-}
-
-impl ExclusivelyContextual for Wedge {
-    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
-        let tip_name = ctx.get_dot_name(self.tip_id).ok_or(match self.polarity {
-            Polarity::Tx => AcesError::from(AcesErrorKind::DotMissingForFork(Polarity::Tx)),
-            Polarity::Rx => AcesError::from(AcesErrorKind::DotMissingForJoin(Polarity::Rx)),
-        })?;
-
-        let pit = ctx
-            .get_dotset(self.pit_id)
-            .ok_or_else(|| AcesError::from(AcesErrorKind::DotsetMissingForId(self.pit_id)))?;
-
-        let arm_names: Result<Vec<_>, AcesError> = pit
-            .get_dot_ids()
-            .iter()
-            .map(|&dot_id| {
-                ctx.get_dot_name(dot_id).ok_or(match self.polarity {
-                    Polarity::Tx => AcesError::from(AcesErrorKind::DotMissingForFork(Polarity::Rx)),
-                    Polarity::Rx => AcesError::from(AcesErrorKind::DotMissingForJoin(Polarity::Tx)),
-                })
-            })
-            .collect();
-
-        match self.polarity {
-            Polarity::Tx => Ok(format!("({} > {:?})", tip_name, arm_names?)),
-            Polarity::Rx => Ok(format!("({:?} > {})", arm_names?, tip_name)),
-        }
-    }
-}
-
-/// Forward wide edge: representation of effects.
-pub type Fork = Wedge;
-
-/// Backward wide edge: representation of causes.
-pub type Join = Wedge;
-
 /// A trait of an identifier convertible into [`DotId`] and into
 /// [`sat::Literal`].
 pub trait Atomic:
@@ -925,7 +601,7 @@ pub trait Atomic:
 {
     fn into_dot_id(this: InContext<Self>) -> Option<DotId>;
 
-    fn into_dot_id_docked(this: InContext<Self>, _dock: Polarity) -> Option<DotId> {
+    fn into_dot_id_oriented(this: InContext<Self>, _polarity: Polarity) -> Option<DotId> {
         Self::into_dot_id(this)
     }
 
@@ -948,8 +624,8 @@ impl Atomic for LinkId {
         None
     }
 
-    fn into_dot_id_docked(this: InContext<Self>, dock: Polarity) -> Option<DotId> {
-        this.using_context(|lid, ctx| ctx.get_link(*lid).map(|link| link.get_dot_id(dock)))
+    fn into_dot_id_oriented(this: InContext<Self>, polarity: Polarity) -> Option<DotId> {
+        this.using_context(|lid, ctx| ctx.get_link(*lid).map(|link| link.get_dot_id(polarity)))
     }
 
     #[inline]
@@ -977,145 +653,6 @@ impl Atomic for JoinId {
     #[inline]
     fn into_sat_literal(self, negated: bool) -> sat::Literal {
         sat::Literal::from_atom_id(self.get(), negated)
-    }
-}
-
-/// Fuset: a set of forks and joins.
-///
-/// Represented as two ordered and deduplicated `Vec`s, one of
-/// [`ForkId`]s, and another of [`JoinId`]s.
-#[derive(Clone, Eq, Debug)]
-pub struct Fuset {
-    pub(crate) atom_id:  Option<AtomId>,
-    pub(crate) fork_ids: Vec<ForkId>,
-    pub(crate) join_ids: Vec<JoinId>,
-}
-
-impl Fuset {
-    /// [`Fuset`] constructor.
-    ///
-    /// See also  [`Fuset::new_unchecked()`].
-    pub fn new<I, J>(fork_ids: I, join_ids: J) -> Self
-    where
-        I: IntoIterator<Item = ForkId>,
-        J: IntoIterator<Item = JoinId>,
-    {
-        let fork_ids: BTreeSet<_> = fork_ids.into_iter().collect();
-        let join_ids: BTreeSet<_> = join_ids.into_iter().collect();
-
-        if fork_ids.is_empty() {
-            // FIXME
-        }
-
-        if join_ids.is_empty() {
-            // FIXME
-        }
-
-        Self::new_unchecked(fork_ids, join_ids)
-    }
-
-    /// A more efficient variant of [`Fuset::new()`].
-    ///
-    /// Note: new [`Fuset`] is created under the assumption that
-    /// `fork_ids` and `join_ids` are nonempty and listed in ascending
-    /// order.  If the caller fails to provide ordered sets of forks
-    /// and joins, the library may panic in some other call (the
-    /// constructor itself panics immediately in debug mode).
-    pub fn new_unchecked<I, J>(fork_ids: I, join_ids: J) -> Self
-    where
-        I: IntoIterator<Item = ForkId>,
-        J: IntoIterator<Item = JoinId>,
-    {
-        let fork_ids: Vec<_> = fork_ids.into_iter().collect();
-        let join_ids: Vec<_> = join_ids.into_iter().collect();
-        trace!("New fuset: {:?}->{:?}", fork_ids, join_ids);
-
-        if cfg!(debug_assertions) {
-            let mut fiter = fork_ids.iter();
-
-            if let Some(fid) = fiter.next() {
-                let mut prev_fid = *fid;
-
-                for &fid in fiter {
-                    assert!(prev_fid < fid, "Unordered set of forks");
-                    prev_fid = fid;
-                }
-            } else {
-                panic!("Empty set of forks")
-            }
-
-            let mut jiter = join_ids.iter();
-
-            if let Some(jid) = jiter.next() {
-                let mut prev_jid = *jid;
-
-                for &jid in jiter {
-                    assert!(prev_jid < jid, "Unordered set of joins");
-                    prev_jid = jid;
-                }
-            } else {
-                panic!("Empty set of joins")
-            }
-        }
-
-        Fuset { atom_id: None, fork_ids, join_ids }
-    }
-
-    #[inline]
-    pub fn get_atom_id(&self) -> AtomId {
-        self.atom_id.expect("Attempt to access an uninitialized fuset")
-    }
-
-    #[inline]
-    pub fn get_id(&self) -> Option<FusetId> {
-        self.atom_id.map(FusetId)
-    }
-
-    #[inline]
-    pub fn get_fork_ids(&self) -> &[ForkId] {
-        self.fork_ids.as_slice()
-    }
-
-    #[inline]
-    pub fn get_join_ids(&self) -> &[JoinId] {
-        self.join_ids.as_slice()
-    }
-}
-
-impl PartialEq for Fuset {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.fork_ids == other.fork_ids && self.join_ids == other.join_ids
-    }
-}
-
-impl hash::Hash for Fuset {
-    #[inline]
-    fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.fork_ids.hash(state);
-        self.join_ids.hash(state);
-    }
-}
-
-impl ExclusivelyContextual for Fuset {
-    fn format_locked(&self, ctx: &Context) -> Result<String, AcesError> {
-        let forks: Result<Vec<_>, AcesError> = self
-            .fork_ids
-            .iter()
-            .map(|&fork_id| {
-                ctx.get_fork(fork_id).ok_or_else(|| AcesErrorKind::ForkMissingForId(fork_id).into())
-            })
-            .collect();
-
-        let joins: Result<Vec<_>, AcesError> = self
-            .join_ids
-            .iter()
-            .map(|&join_id| {
-                ctx.get_join(join_id).ok_or_else(|| AcesErrorKind::JoinMissingForId(join_id).into())
-            })
-            .collect();
-
-        Ok(format!("({:?}->{:?})", forks?, joins?))
     }
 }
 

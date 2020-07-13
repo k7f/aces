@@ -7,53 +7,56 @@ use crate::{
 
 // FIXME sort rows as a way to fix Eq and, perhaps, to open some
 // optimization opportunities.
-/// A formal polynomial.
+/// Fuset's frame: a family of dotsets.  This also represents a single
+/// equivalence class of formal polynomials.
 ///
-/// Internally a `Polynomial` is represented as a vector of _N_
+/// Internally a `Frame` is represented as a vector `atomics` of _N_
 /// [`Atomic`] identifiers and a boolean matrix with _N_ columns and
-/// _M_ rows.  Vector of [`Atomic`] identifiers is sorted in strictly
-/// increasing order.  It represents the set of dots occuring in the
-/// polynomial and _N_ is the number of such dots.
+/// _M_ rows.  The `atomics` vector, sorted in strictly increasing
+/// order, represents the fuset's range (or the set of dots occuring
+/// in the polynomial) and _N_ is the number of dots: the frame's
+/// width.
 ///
-/// _M_ is the number of monomials in the canonical representation of
-/// the polynomial.  The order in which monomials are listed is
-/// arbitrary.  An element in row _i_ and column _j_ of the matrix
-/// determines if a dot in _j_-th position in the vector of
-/// identifiers occurs in _i_-th monomial.
+/// _M_ is the frame size (number of pits or number of monomials in
+/// the canonical representation of a polynomial).  The order in which
+/// pits (monomials) are listed is arbitrary.  An element in row _i_
+/// and column _j_ of the matrix determines if a dot in _j_-th
+/// position in the `atomics` vector of identifiers occurs in _i_-th
+/// pit (monomial).
 ///
-/// `Polynomial`s may be compared and added using traits from
-/// [`std::cmp`] and [`std::ops`] standard modules, with the obvious
-/// exception of [`std::cmp::Ord`].  Note however that, in general,
-/// preventing [`Context`] or [`Port`] mismatch between polynomials is
-/// the responsibility of the caller of an operation.  Implementation
+/// `Frame`s may be compared and added using traits from [`std::cmp`]
+/// and [`std::ops`] standard modules, with the obvious exception of
+/// [`std::cmp::Ord`].  Note however that, in general, preventing
+/// [`Context`] or [`Port`] mismatch between frames is the
+/// responsibility of the caller of an operation.  Implementation
 /// detects some, but not all, cases of mismatch and panics if it does
 /// so.
 ///
 /// [`Context`]: crate::Context
 #[derive(Clone, Debug)]
-pub struct Polynomial<T: Atomic + fmt::Debug> {
-    atomics: Vec<T>,
+pub struct Frame<T: Atomic + fmt::Debug> {
+    atomics:  Vec<T>,
     // FIXME choose a better representation of a boolean matrix.
-    terms:   Vec<BitVec>,
-    dock:    Option<Polarity>,
+    terms:    Vec<BitVec>,
+    polarity: Option<Polarity>,
 }
 
-impl Polynomial<LinkId> {
-    /// Creates a polynomial from a sequence of sequences of
-    /// [`DotId`]s and in a [`Context`] given by a [`ContextHandle`].
+impl Frame<LinkId> {
+    /// Creates a frame from a sequence of sequences of [`DotId`]s and
+    /// in a [`Context`] given by a [`ContextHandle`].
     ///
     /// [`Context`]: crate::Context
     pub fn from_dots_in_context<'a, I>(
         ctx: &ContextHandle,
         polarity: Polarity,
         dot_id: DotId,
-        poly_ids: I,
+        pit_ids: I,
     ) -> Self
     where
         I: IntoIterator + 'a,
         I::Item: IntoIterator<Item = &'a DotId>,
     {
-        let mut result = Self::new_docked(polarity);
+        let mut result = Self::new_oriented(polarity);
         let mut port = Port::new(polarity, dot_id);
         let pid = ctx.lock().unwrap().share_port(&mut port);
         let tip = port.get_dot_id();
@@ -61,10 +64,10 @@ impl Polynomial<LinkId> {
 
         let mut ctx = ctx.lock().unwrap();
 
-        for mono_ids in poly_ids.into_iter() {
+        for dot_ids in pit_ids.into_iter() {
             let mut out_ids = BTreeSet::new();
 
-            for cotip in mono_ids.into_iter().copied() {
+            for cotip in dot_ids.into_iter().copied() {
                 let mut coport = Port::new(!polarity, cotip);
                 let copid = ctx.share_port(&mut coport);
 
@@ -83,28 +86,31 @@ impl Polynomial<LinkId> {
     }
 }
 
-impl<T: Atomic + fmt::Debug> Polynomial<T> {
-    /// Creates an empty polynomial, _&theta;_.
+impl<T: Atomic + fmt::Debug> Frame<T> {
+    /// Creates an empty frame, _&theta;_.
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self { atomics: Default::default(), terms: Default::default(), dock: None }
+        Self { atomics: Default::default(), terms: Default::default(), polarity: None }
     }
 
-    /// Creates an empty polynomial, _&theta;_, docked with a given
-    /// [`Polarity`].
+    /// Creates an empty frame, _&theta;_, oriented according to a
+    /// given [`Polarity`].
     #[allow(clippy::new_without_default)]
-    pub fn new_docked(dock: Polarity) -> Self {
-        Self { atomics: Default::default(), terms: Default::default(), dock: Some(dock) }
+    pub fn new_oriented(polarity: Polarity) -> Self {
+        Self {
+            atomics:  Default::default(),
+            terms:    Default::default(),
+            polarity: Some(polarity),
+        }
     }
 
-    /// Resets this polynomial into _&theta;_.
+    /// Resets this frame into _&theta;_, preserving polarity, if any.
     pub fn clear(&mut self) {
         self.atomics.clear();
         self.terms.clear();
     }
 
-    /// Multiplies this polynomial (all its monomials) by a
-    /// single-element monomial.
+    /// Multiplies this frame (all its pits) by a singleton pit.
     pub fn atomic_multiply(&mut self, atomic: T) {
         if self.is_empty() {
             self.atomics.push(atomic);
@@ -121,7 +127,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
         } else {
             match self.atomics.binary_search(&atomic) {
                 Ok(ndx) => {
-                    if !self.is_monomial() {
+                    if !self.is_singular() {
                         for row in self.terms.iter_mut() {
                             row.set(ndx, true);
                         }
@@ -147,11 +153,11 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
         }
     }
 
-    /// Adds a sequence of [`Atomic`] identifiers to this polynomial
-    /// as another monomial.
+    /// Adds a sequence of [`Atomic`] identifiers to this frame as
+    /// another pit (monomial).
     ///
-    /// On success, returns `true` if this polynomial changed or
-    /// `false` if it didn't, due to idempotency of addition.
+    /// On success, returns `true` if this frame changed or `false` if
+    /// it didn't, due to idempotency of addition.
     ///
     /// Returns error if `atomics` aren't given in strictly increasing
     /// order, or in case of port mismatch, or if context mismatch was
@@ -273,31 +279,31 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
         Ok(true)
     }
 
-    /// Adds another `Polynomial` to this polynomial.
+    /// Adds another `Frame` to this frame.
     ///
-    /// On success, returns `true` if this polynomial changed or
-    /// `false` if it didn't, due to idempotency of addition.
+    /// On success, returns `true` if this frame changed or `false` if
+    /// it didn't, due to idempotency of addition.
     ///
     /// Returns error in case of port mismatch, or if context mismatch
     /// was detected.
-    pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, AcesError> {
-        if self.dock == other.dock {
-            // FIXME optimize.  There are two special cases: when `self`
-            // is a superpolynomial, and when it is a subpolynomial of
-            // `other`.  First case is a nop; the second: clear followed
-            // by clone.
+    pub(crate) fn add_frame(&mut self, other: &Self) -> Result<bool, AcesError> {
+        if self.polarity == other.polarity {
+            // FIXME optimize.  There are two special cases: when
+            // `self` is a superframe, and when it is a subframe of
+            // `other`.  First case is a nop; the second: clear
+            // followed by clone.
 
             let mut changed = false;
 
-            for mono in other.get_monomials() {
-                if self.add_atomics_sorted(mono)? {
+            for pit in other.iter() {
+                if self.add_atomics_sorted(pit)? {
                     changed = true;
                 }
             }
 
             Ok(changed)
         } else {
-            Err(AcesErrorKind::PolynomialPolarityMismatch.into())
+            Err(AcesErrorKind::FramePolarityMismatch.into())
         }
     }
 
@@ -309,25 +315,31 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
         self.atomics.len() == 1
     }
 
-    pub fn is_monomial(&self) -> bool {
+    // FIXME is_primitive(): test for injection
+
+    pub fn is_singular(&self) -> bool {
         self.terms.len() == 1
     }
 
-    pub fn num_monomials(&self) -> usize {
+    pub fn width(&self) -> usize {
+        self.atomics.len()
+    }
+
+    pub fn size(&self) -> usize {
         self.terms.len()
     }
 
-    /// Creates a [`Monomials`] iterator.
-    pub fn get_monomials(&self) -> Monomials<T> {
-        Monomials { poly: self, ndx: 0 }
+    /// Creates a [`FrameIter`] iterator.
+    pub fn iter(&self) -> FrameIter<T> {
+        FrameIter { frame: self, ndx: 0 }
     }
 
     pub fn get_atomics(&self) -> slice::Iter<T> {
         self.atomics.iter()
     }
 
-    /// Constructs the firing rule of this polynomial, the logical
-    /// constraint imposed on firing components, if the polynomial is
+    /// Constructs the firing rule of this frame, the logical
+    /// constraint imposed on firing components, if the frame is
     /// attached to the oriented (with polarity) dot represented by
     /// `port_lit`.  The rule is transformed into a CNF formula, a
     /// conjunction of disjunctions of [`sat::Literal`]s (a sequence
@@ -345,14 +357,14 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
                 port_lit,
                 "atomic",
             )]
-        } else if self.is_monomial() {
+        } else if self.is_singular() {
             // Consequence is a conjunction of _N_ >= 2 positive link
             // literals.  The rule is a sequence of _N_ two-literal
             // port-link clauses.
 
             self.atomics
                 .iter()
-                .map(|id| sat::Clause::from_pair(id.into_sat_literal(false), port_lit, "monomial"))
+                .map(|id| sat::Clause::from_pair(id.into_sat_literal(false), port_lit, "singular"))
                 .collect()
         } else {
             // Consequence is a disjunction of _M_ >= 2 statements,
@@ -364,7 +376,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
 
             let mut clauses = Vec::new();
 
-            let num_monos = self.terms.len();
+            let num_pits = self.terms.len();
             let num_dots = self.atomics.len();
 
             let clause_table_row = self.atomics.iter().map(|id| id.into_sat_literal(false));
@@ -372,8 +384,8 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             let mut clause_table: Vec<_> = self
                 .terms
                 .iter()
-                .map(|mono| {
-                    mono.iter()
+                .map(|pit| {
+                    pit.iter()
                         .zip(clause_table_row.clone())
                         .map(|(bit, lit)| if bit { lit } else { !lit })
                         .collect()
@@ -382,8 +394,8 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
 
             clause_table.push(vec![port_lit]);
 
-            let mut cursors = vec![0; num_monos + 1];
-            let mut mono_ndx = 0;
+            let mut cursors = vec![0; num_pits + 1];
+            let mut pit_ndx = 0;
 
             let mut num_tautologies = 0;
             let mut num_repeated_literals = 0;
@@ -391,27 +403,26 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             'outer: loop {
                 let lits = cursors.iter().enumerate().map(|(row, &col)| clause_table[row][col]);
 
-                if let Some(clause) = sat::Clause::from_literals_checked(lits, "polynomial subterm")
-                {
-                    num_repeated_literals += num_monos + 1 - clause.len();
+                if let Some(clause) = sat::Clause::from_literals_checked(lits, "frame subterm") {
+                    num_repeated_literals += num_pits + 1 - clause.len();
                     clauses.push(clause);
                 } else {
                     num_tautologies += 1;
                 }
 
                 'inner: loop {
-                    if cursors[mono_ndx] < num_dots - 1 {
-                        cursors[mono_ndx] += 1;
+                    if cursors[pit_ndx] < num_dots - 1 {
+                        cursors[pit_ndx] += 1;
 
-                        for cursor in cursors.iter_mut().take(mono_ndx) {
+                        for cursor in cursors.iter_mut().take(pit_ndx) {
                             *cursor = 0;
                         }
-                        mono_ndx = 0;
+                        pit_ndx = 0;
 
                         break 'inner
-                    } else if mono_ndx < num_monos - 1 {
-                        cursors[mono_ndx] = 0;
-                        mono_ndx += 1;
+                    } else if pit_ndx < num_pits - 1 {
+                        cursors[pit_ndx] = 0;
+                        pit_ndx += 1;
                     } else {
                         break 'outer
                     }
@@ -419,7 +430,7 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
             }
 
             info!(
-                "Pushing {} polynomial subterm clauses (removed {} tautologies and {} repeated \
+                "Pushing {} frame subterm clauses (removed {} tautologies and {} repeated \
                  literals)",
                 clauses.len(),
                 num_tautologies,
@@ -431,27 +442,27 @@ impl<T: Atomic + fmt::Debug> Polynomial<T> {
     }
 }
 
-impl<T: Atomic + fmt::Debug> PartialEq for Polynomial<T> {
+impl<T: Atomic + fmt::Debug> PartialEq for Frame<T> {
     fn eq(&self, other: &Self) -> bool {
         self.atomics == other.atomics && self.terms == other.terms
     }
 }
 
-impl<T: Atomic + fmt::Debug> Eq for Polynomial<T> {}
+impl<T: Atomic + fmt::Debug> Eq for Frame<T> {}
 
-impl<T: Atomic + fmt::Debug> PartialOrd for Polynomial<T> {
+impl<T: Atomic + fmt::Debug> PartialOrd for Frame<T> {
     #[allow(clippy::collapsible_if)]
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         // FIXME optimize, handle errors
 
-        if self.clone().add_polynomial(other).unwrap() {
-            if other.clone().add_polynomial(self).unwrap() {
+        if self.clone().add_frame(other).unwrap() {
+            if other.clone().add_frame(self).unwrap() {
                 None
             } else {
                 Some(cmp::Ordering::Less)
             }
         } else {
-            if other.clone().add_polynomial(self).unwrap() {
+            if other.clone().add_frame(self).unwrap() {
                 Some(cmp::Ordering::Less)
             } else {
                 Some(cmp::Ordering::Equal)
@@ -460,29 +471,29 @@ impl<T: Atomic + fmt::Debug> PartialOrd for Polynomial<T> {
     }
 }
 
-impl Contextual for Polynomial<LinkId> {
+impl Contextual for Frame<LinkId> {
     fn format(&self, ctx: &ContextHandle) -> Result<String, AcesError> {
         let mut result = String::new();
 
-        let mut first_mono = true;
+        let mut first_pit = true;
 
-        for mono in self.get_monomials() {
-            if first_mono {
-                first_mono = false;
+        for pit in self.iter() {
+            if first_pit {
+                first_pit = false;
             } else {
                 result.push_str(" + ");
             }
 
             let mut first_id = true;
 
-            for id in mono {
+            for id in pit {
                 if first_id {
                     first_id = false;
                 } else {
                     result.push('·');
                 }
 
-                let s = if let Some(polarity) = self.dock {
+                let s = if let Some(polarity) = self.polarity {
                     let ctx = ctx.lock().unwrap();
                     let link = ctx
                         .get_link(id)
@@ -504,35 +515,35 @@ impl Contextual for Polynomial<LinkId> {
     }
 }
 
-impl<'a> InContextMut<'a, Polynomial<LinkId>> {
-    pub(crate) fn add_polynomial(&mut self, other: &Self) -> Result<bool, AcesError> {
+impl<'a> InContextMut<'a, Frame<LinkId>> {
+    pub(crate) fn add_frame(&mut self, other: &Self) -> Result<bool, AcesError> {
         if self.same_context(other) {
-            self.get_thing_mut().add_polynomial(other.get_thing())
+            self.get_thing_mut().add_frame(other.get_thing())
         } else {
             Err(AcesErrorKind::ContextMismatch.with_context(self.get_context()))
         }
     }
 }
 
-impl<'a> ops::AddAssign<&Self> for InContextMut<'a, Polynomial<LinkId>> {
+impl<'a> ops::AddAssign<&Self> for InContextMut<'a, Frame<LinkId>> {
     fn add_assign(&mut self, other: &Self) {
-        self.add_polynomial(other).unwrap();
+        self.add_frame(other).unwrap();
     }
 }
 
-/// An iterator yielding monomials of a [`Polynomial`] as ordered
+/// An iterator yielding pits (monomials) of a [`Frame`] as ordered
 /// sequences of [`Atomic`] identifiers.
 ///
 /// This is a two-level iterator: the yielded items are themselves
-/// iterators.  It borrows the [`Polynomial`] being iterated over and
+/// iterators.  It borrows the [`Frame`] being iterated over and
 /// traverses its data in place, without allocating extra space for
 /// inner iteration.
-pub struct Monomials<'a, T: Atomic + fmt::Debug> {
-    poly: &'a Polynomial<T>,
-    ndx:  usize,
+pub struct FrameIter<'a, T: Atomic + fmt::Debug> {
+    frame: &'a Frame<T>,
+    ndx:   usize,
 }
 
-impl<'a, T: Atomic + fmt::Debug> Iterator for Monomials<'a, T> {
+impl<'a, T: Atomic + fmt::Debug> Iterator for FrameIter<'a, T> {
     #[allow(clippy::type_complexity)]
     type Item = iter::FilterMap<
         iter::Zip<slice::Iter<'a, T>, bit_vec::Iter<'a>>,
@@ -540,7 +551,7 @@ impl<'a, T: Atomic + fmt::Debug> Iterator for Monomials<'a, T> {
     >;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(row) = self.poly.terms.get(self.ndx) {
+        if let Some(row) = self.frame.terms.get(self.ndx) {
             fn doit<T: Atomic>((l, b): (&T, bool)) -> Option<T> {
                 if b {
                     Some(*l)
@@ -549,8 +560,8 @@ impl<'a, T: Atomic + fmt::Debug> Iterator for Monomials<'a, T> {
                 }
             }
 
-            let mono = self
-                .poly
+            let pit = self
+                .frame
                 .atomics
                 .iter()
                 .zip(row.iter())
@@ -558,7 +569,7 @@ impl<'a, T: Atomic + fmt::Debug> Iterator for Monomials<'a, T> {
 
             self.ndx += 1;
 
-            Some(mono)
+            Some(pit)
         } else {
             None
         }
