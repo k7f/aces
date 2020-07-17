@@ -183,7 +183,25 @@ impl Cycles {
         self.size
     }
 
-    // FIXME type
+    /// Returns the cycle type (conjugacy class signature) of this
+    /// permutation.
+    ///
+    /// The size of the returned `Vec` is always equal to the size of
+    /// the permutation.  The element at index _i_ is the number of
+    /// cycles of length _i_ + 1.
+    pub fn cycle_type(&self) -> Vec<usize> {
+        let mut result = vec![0; self.size];
+        let mut sum = 0;
+
+        for len in self.factors.iter().map(|c| c.len()) {
+            result[len] += 1;
+            sum += len;
+        }
+
+        result[0] = self.size - sum;
+
+        result
+    }
 }
 
 impl From<Cycles> for Permutation {
@@ -265,6 +283,22 @@ mod tests {
     }
 
     #[test]
+    fn test_cycle_type() {
+        let mut perm = Permutation::new(0..9).unwrap();
+        let cycles = perm.as_cycles();
+        let ctype = cycles.cycle_type();
+        assert_eq!(ctype, vec![9, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+        let mut stack = vec![0; 9];
+        for _ in 0..123456 {
+            perm.heap_step(stack.as_mut_slice());
+        }
+        let cycles = perm.as_cycles();
+        let ctype = cycles.cycle_type();
+        assert_eq!(ctype, vec![0, 0, 0, 3, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
     fn test_heap() {
         let mut perm = Permutation::new(0..9).unwrap();
         let mut stack = Vec::from_iter(0..9);
@@ -279,5 +313,19 @@ mod tests {
         perm.heap_step(stack.as_mut_slice());
         perm.heap_step(stack.as_mut_slice());
         assert_eq!(perm, Permutation { word: vec![3, 1, 0, 4, 2] });
+    }
+
+    #[test]
+    fn test_heap_s9() {
+        let mut perm = Permutation::new(0..9).unwrap();
+        let mut stack = vec![0; 9];
+        let mut count = 1_u64;
+
+        while perm.heap_step(stack.as_mut_slice()) {
+            count += 1;
+        }
+
+        assert_eq!(count, 362880);
+        assert_eq!(perm, Permutation { word: vec![8, 1, 2, 3, 4, 5, 6, 7, 0] });
     }
 }
