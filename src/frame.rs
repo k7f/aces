@@ -10,19 +10,19 @@ use crate::{
 /// Fuset's frame: a family of dotsets.  This also represents a single
 /// equivalence class of formal polynomials.
 ///
-/// Internally a `Frame` is represented as a vector `atomics` of _N_
-/// [`Atomic`] identifiers and a boolean matrix with _N_ columns and
-/// _M_ rows.  The `atomics` vector, sorted in strictly increasing
-/// order, represents the fuset's range (or the set of dots occuring
-/// in the polynomial) and _N_ is the number of dots: the frame's
-/// width.
+/// Internally a `Frame` is represented as a `span` vector of _N_
+/// [`Atomic`] identifiers (dots, links, etc.) and a boolean matrix
+/// with _N_ columns and _M_ rows.  The `span` vector, sorted in
+/// strictly increasing order, represents the fuset's span (or the set
+/// of dots occuring in the polynomial) and _N_ is the number of dots:
+/// the frame's width.
 ///
 /// _M_ is the frame size (number of pits or number of monomials in
 /// the canonical representation of a polynomial).  The order in which
-/// pits (monomials) are listed is arbitrary.  An element in row _i_
-/// and column _j_ of the matrix determines if a dot in _j_-th
-/// position in the `atomics` vector of identifiers occurs in _i_-th
-/// pit (monomial).
+/// pits (monomial terms) are listed is arbitrary.  An element in row
+/// _i_ and column _j_ of the matrix determines if a dot in _j_-th
+/// position in the `span` vector of identifiers occurs in _i_-th pit
+/// (monomial).
 ///
 /// `Frame`s may be compared and added using traits from [`std::cmp`]
 /// and [`std::ops`] standard modules, with the obvious exception of
@@ -35,9 +35,9 @@ use crate::{
 /// [`Context`]: crate::Context
 #[derive(Clone, Debug)]
 pub struct Frame<T: Atomic + fmt::Debug> {
-    atomics:  Vec<T>,
+    span:     Vec<T>,
     // FIXME choose a better representation of a boolean matrix.
-    terms:    Vec<BitVec>,
+    pits:     Vec<BitVec>,
     polarity: Option<Polarity>,
 }
 
@@ -79,7 +79,7 @@ impl Frame<LinkId> {
 
                 out_ids.insert(id);
             }
-            result.add_atomics_sorted(out_ids.into_iter()).unwrap();
+            result.add_pit_sorted(out_ids.into_iter()).unwrap();
         }
 
         result
@@ -90,7 +90,7 @@ impl<T: Atomic + fmt::Debug> Frame<T> {
     /// Creates an empty frame, _&theta;_.
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self { atomics: Default::default(), terms: Default::default(), polarity: None }
+        Self { span: Default::default(), pits: Default::default(), polarity: None }
     }
 
     /// Creates an empty frame, _&theta;_, oriented according to a
@@ -98,47 +98,47 @@ impl<T: Atomic + fmt::Debug> Frame<T> {
     #[allow(clippy::new_without_default)]
     pub fn new_oriented(polarity: Polarity) -> Self {
         Self {
-            atomics:  Default::default(),
-            terms:    Default::default(),
+            span:     Default::default(),
+            pits:     Default::default(),
             polarity: Some(polarity),
         }
     }
 
     /// Resets this frame into _&theta;_, preserving polarity, if any.
     pub fn clear(&mut self) {
-        self.atomics.clear();
-        self.terms.clear();
+        self.span.clear();
+        self.pits.clear();
     }
 
     /// Multiplies this frame (all its pits) by a singleton pit.
     pub fn atomic_multiply(&mut self, atomic: T) {
         if self.is_empty() {
-            self.atomics.push(atomic);
+            self.span.push(atomic);
 
             let mut row = BitVec::new();
             row.push(true);
-            self.terms.push(row);
-        } else if atomic > *self.atomics.last().unwrap() {
-            self.atomics.push(atomic);
+            self.pits.push(row);
+        } else if atomic > *self.span.last().unwrap() {
+            self.span.push(atomic);
 
-            for row in self.terms.iter_mut() {
+            for row in self.pits.iter_mut() {
                 row.push(true);
             }
         } else {
-            match self.atomics.binary_search(&atomic) {
+            match self.span.binary_search(&atomic) {
                 Ok(ndx) => {
                     if !self.is_singular() {
-                        for row in self.terms.iter_mut() {
+                        for row in self.pits.iter_mut() {
                             row.set(ndx, true);
                         }
                     }
                 }
                 Err(ndx) => {
-                    let old_len = self.atomics.len();
+                    let old_len = self.span.len();
 
-                    self.atomics.insert(ndx, atomic);
+                    self.span.insert(ndx, atomic);
 
-                    for row in self.terms.iter_mut() {
+                    for row in self.pits.iter_mut() {
                         row.push(false);
 
                         for i in ndx..old_len {
@@ -159,73 +159,73 @@ impl<T: Atomic + fmt::Debug> Frame<T> {
     /// On success, returns `true` if this frame changed or `false` if
     /// it didn't, due to idempotency of addition.
     ///
-    /// Returns error if `atomics` aren't given in strictly increasing
+    /// Returns error if `span` isn't given in strictly increasing
     /// order, or in case of port mismatch, or if context mismatch was
     /// detected.
-    pub fn add_atomics_sorted<I>(&mut self, atomics: I) -> Result<bool, AcesError>
+    pub fn add_pit_sorted<I>(&mut self, span: I) -> Result<bool, AcesError>
     where
         I: IntoIterator<Item = T>,
     {
         if self.is_empty() {
             let mut prev_thing = None;
 
-            for thing in atomics.into_iter() {
+            for thing in span.into_iter() {
                 trace!("Start {:?} with {:?}", self, thing);
 
                 if let Some(prev) = prev_thing {
                     if thing <= prev {
-                        self.atomics.clear();
+                        self.span.clear();
 
-                        return Err(AcesErrorKind::AtomicsNotOrdered.into())
+                        return Err(AcesErrorKind::ArmsNotOrdered.into())
                     }
                 }
                 prev_thing = Some(thing);
 
-                self.atomics.push(thing);
+                self.span.push(thing);
             }
 
-            if self.atomics.is_empty() {
+            if self.span.is_empty() {
                 return Ok(false)
             } else {
-                let row = BitVec::from_elem(self.atomics.len(), true);
-                self.terms.push(row);
+                let row = BitVec::from_elem(self.span.len(), true);
+                self.pits.push(row);
 
                 return Ok(true)
             }
         }
 
-        let mut new_row = BitVec::with_capacity(2 * self.atomics.len());
+        let mut new_row = BitVec::with_capacity(2 * self.span.len());
 
         let mut prev_thing = None;
         let mut no_new_things = true;
 
         // These are used for error recovery.
-        let mut old_atomics = None;
-        let mut old_terms = None;
+        let mut old_span = None;
+        let mut old_pits = None;
 
         let mut ndx = 0;
 
-        for thing in atomics.into_iter() {
+        for thing in span.into_iter() {
             trace!("Grow {:?} with {:?}", self, thing);
 
             if let Some(prev) = prev_thing {
                 if thing <= prev {
                     // Error recovery.
 
-                    if let Some(old_atomics) = old_atomics {
-                        self.atomics = old_atomics;
+                    if let Some(old_span) = old_span {
+                        self.span = old_span;
                     }
 
-                    if let Some(old_terms) = old_terms {
-                        self.terms = old_terms;
+                    if let Some(old_pits) = old_pits {
+                        self.pits = old_pits;
                     }
 
-                    return Err(AcesErrorKind::AtomicsNotOrdered.into())
+                    return Err(AcesErrorKind::ArmsNotOrdered.into())
                 }
             }
             prev_thing = Some(thing);
 
-            match self.atomics[ndx..].binary_search(&thing) {
+            match self.span[ndx..].binary_search(&thing) {
                 Ok(i) => {
                     if i > 0 {
                         new_row.grow(i, false);
@@ -243,22 +243,22 @@ impl<T: Atomic + fmt::Debug> Frame<T> {
                     }
                     new_row.push(true);
 
-                    if old_atomics.is_none() {
-                        old_atomics = Some(self.atomics.clone());
+                    if old_span.is_none() {
+                        old_span = Some(self.span.clone());
                     }
 
-                    self.atomics.insert(ndx, thing);
+                    self.span.insert(ndx, thing);
 
-                    let old_rows = self.terms.clone();
+                    let old_rows = self.pits.clone();
 
-                    for (new_row, old_row) in self.terms.iter_mut().zip(old_rows.iter()) {
+                    for (new_row, old_row) in self.pits.iter_mut().zip(old_rows.iter()) {
                         new_row.truncate(ndx);
                         new_row.push(false);
                         new_row.extend(old_row.iter().skip(ndx));
                     }
 
-                    if old_terms.is_none() {
-                        old_terms = Some(old_rows);
+                    if old_pits.is_none() {
+                        old_pits = Some(old_rows);
                     }
 
                     ndx += 1;
@@ -267,14 +267,14 @@ impl<T: Atomic + fmt::Debug> Frame<T> {
         }
 
         if no_new_things {
-            for row in self.terms.iter() {
+            for row in self.pits.iter() {
                 if *row == new_row {
                     return Ok(false)
                 }
             }
         }
 
-        self.terms.push(new_row);
+        self.pits.push(new_row);
 
         Ok(true)
     }
@@ -296,7 +296,7 @@ impl<T: Atomic + fmt::Debug> Frame<T> {
             let mut changed = false;
 
             for pit in other.iter() {
-                if self.add_atomics_sorted(pit)? {
+                if self.add_pit_sorted(pit)? {
                     changed = true;
                 }
             }
@@ -308,25 +308,25 @@ impl<T: Atomic + fmt::Debug> Frame<T> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.terms.is_empty()
+        self.pits.is_empty()
     }
 
     pub fn is_atomic(&self) -> bool {
-        self.atomics.len() == 1
+        self.span.len() == 1
     }
 
     // FIXME is_primitive(): test for injection
 
     pub fn is_singular(&self) -> bool {
-        self.terms.len() == 1
+        self.pits.len() == 1
     }
 
     pub fn width(&self) -> usize {
-        self.atomics.len()
+        self.span.len()
     }
 
     pub fn size(&self) -> usize {
-        self.terms.len()
+        self.pits.len()
     }
 
     /// Creates a [`FrameIter`] iterator.
@@ -334,8 +334,8 @@ impl<T: Atomic + fmt::Debug> Frame<T> {
         FrameIter { frame: self, ndx: 0 }
     }
 
-    pub fn get_atomics(&self) -> slice::Iter<T> {
-        self.atomics.iter()
+    pub fn get_span(&self) -> slice::Iter<T> {
+        self.span.iter()
     }
 
     /// Constructs the firing rule of this frame, the logical
@@ -352,17 +352,13 @@ impl<T: Atomic + fmt::Debug> Frame<T> {
             // Consequence is a single positive link literal.  The
             // rule is a single two-literal port-link clause.
 
-            vec![sat::Clause::from_pair(
-                self.atomics[0].into_sat_literal(false),
-                port_lit,
-                "atomic",
-            )]
+            vec![sat::Clause::from_pair(self.span[0].into_sat_literal(false), port_lit, "atomic")]
         } else if self.is_singular() {
             // Consequence is a conjunction of _N_ >= 2 positive link
             // literals.  The rule is a sequence of _N_ two-literal
             // port-link clauses.
 
-            self.atomics
+            self.span
                 .iter()
                 .map(|id| sat::Clause::from_pair(id.into_sat_literal(false), port_lit, "singular"))
                 .collect()
@@ -376,13 +372,13 @@ impl<T: Atomic + fmt::Debug> Frame<T> {
 
             let mut clauses = Vec::new();
 
-            let num_pits = self.terms.len();
-            let num_dots = self.atomics.len();
+            let num_pits = self.pits.len();
+            let num_dots = self.span.len();
 
-            let clause_table_row = self.atomics.iter().map(|id| id.into_sat_literal(false));
+            let clause_table_row = self.span.iter().map(|id| id.into_sat_literal(false));
 
             let mut clause_table: Vec<_> = self
-                .terms
+                .pits
                 .iter()
                 .map(|pit| {
                     pit.iter()
@@ -403,7 +399,7 @@ impl<T: Atomic + fmt::Debug> Frame<T> {
             'outer: loop {
                 let lits = cursors.iter().enumerate().map(|(row, &col)| clause_table[row][col]);
 
-                if let Some(clause) = sat::Clause::from_literals_checked(lits, "frame subterm") {
+                if let Some(clause) = sat::Clause::from_literals_checked(lits, "frame pit") {
                     num_repeated_literals += num_pits + 1 - clause.len();
                     clauses.push(clause);
                 } else {
@@ -444,7 +440,7 @@ impl<T: Atomic + fmt::Debug> Frame<T> {
 
 impl<T: Atomic + fmt::Debug> PartialEq for Frame<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.atomics == other.atomics && self.terms == other.terms
+        self.span == other.span && self.pits == other.pits
     }
 }
 
@@ -551,7 +547,7 @@ impl<'a, T: Atomic + fmt::Debug> Iterator for FrameIter<'a, T> {
     >;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(row) = self.frame.terms.get(self.ndx) {
+        if let Some(row) = self.frame.pits.get(self.ndx) {
             fn doit<T: Atomic>((l, b): (&T, bool)) -> Option<T> {
                 if b {
                     Some(*l)
@@ -562,7 +558,7 @@ impl<'a, T: Atomic + fmt::Debug> Iterator for FrameIter<'a, T> {
 
             let pit = self
                 .frame
-                .atomics
+                .span
                 .iter()
                 .zip(row.iter())
                 .filter_map(doit as fn((&T, bool)) -> Option<T>);

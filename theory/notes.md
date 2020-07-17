@@ -93,7 +93,7 @@ and <tt><b>t</b></tt>.  Empty components are omitted, unless all
 four components are empty, in which case the pattern is
 represented by the symbol <tt>&empty;</tt>.
 
-| <p align="right">_arm_</p>_tip_ | <center>not an arm<br>(not in range)</center> | <center>join's arm<br>(in over-set)</center> | <center>fork's arm<br>(in under-set)</center> | <center>both<br>(in co-interior)</center> |
+| <p align="right">_arm_</p>_tip_ | <center>not an arm<br>(not in span)</center> | <center>join's arm<br>(in over-set)</center> | <center>fork's arm<br>(in under-set)</center> | <center>both<br>(in co-interior)</center> |
 |-----------------------------------------|:----:|:----------------------:|:----------------------:|:----------------------:|
 | **not a tip**<br>**(not in carrier)**  | <tt>&empty;</tt> | <tt><b>t</b></tt> | <tt><b>T</b></tt> | <tt><b>Tt</b></tt> |
 | **fork's tip**<br>**(in pre-set)**  | <tt><b>a</b></tt> | <tt><b>ae</b></tt>, <tt><b>a</b></tt>, <tt><b>t</b></tt>, <tt>&empty;</tt> | <tt><b>aT</b></tt> | <tt><b>aTt</b></tt>, <tt><b>aT</b></tt>, <tt><b>Tt</b></tt>, <tt><b>T</b></tt> |
@@ -217,15 +217,15 @@ The set <tt>Flow</tt>(***X***) of all florets over some domain
 set <tt>Flow</tt>(_&phi;_) of all florets included in a fuset
 _&phi;_ will be called the _flower_ of _&phi;_.
 
-The _core net_ of a domain ***X*** is the bipartite digraph
-linking an element _x_ of ***X*** to a floret _&gamma;_ in
-<tt>Flow</tt>(***X***) iff _x_ is in the pre-set of _&gamma;_, and
-linking a floret _&delta;_ in <tt>Flow</tt>(***X***) to an element
-_y_ of ***X*** iff _y_ is in the post-set of _&delta;_.  The
-_carrier_ of the core net of ***X*** is the union of carriers of
-all florets in <tt>Flow</tt>(***X***) &mdash; the set of all
-elements of ***X*** which aren't isolated in the graph.  The
-_range_ of a core net is the neighborhood of its carrier.
+The _core net_ of a domain ***X*** is the bipartite digraph linking an
+element _x_ of ***X*** to a floret _&gamma;_ in <tt>Flow</tt>(***X***)
+iff _x_ is in the pre-set of _&gamma;_, and linking a floret _&delta;_
+in <tt>Flow</tt>(***X***) to an element _y_ of ***X*** iff _y_ is in
+the post-set of _&delta;_.  The _carrier_ of the core net of ***X***
+is the union of carriers of all florets in <tt>Flow</tt>(***X***)
+&mdash; the set of all elements of ***X*** which aren't isolated in
+the graph.  The _span_ of a core net is the neighborhood of its
+carrier.
 
 The core net of a fuset _&phi;_ over ***X*** is the restriction
 of the core net of ***X*** to the flower of _&phi;_, i.e. the

@@ -434,7 +434,7 @@ impl FusetHolder {
         let mut port = Port::new(polarity, dot_id);
         let port_id = self.context.lock().unwrap().share_port(&mut port);
 
-        for &lid in frame.get_atomics() {
+        for &lid in frame.get_span() {
             if let Some(what_missing) = self.links.get_mut(&lid) {
                 if *what_missing == LinkState::Thin(polarity) {
                     // Strong link: occurs in causes and effects.

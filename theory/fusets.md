@@ -98,13 +98,13 @@ all tips, i.e. the union of its pre-set and post-set, and the
 _interior_ is the intersection.
 
 The _under-set_ (_over-set_) of a fuset _&phi;_ is the union of pits
-of all forks (joins) in _&phi;_.  The _range_ of a fuset is the set of
+of all forks (joins) in _&phi;_.  The _span_ of a fuset is the set of
 all its arms, i.e. the union of all pits (the union of under-set and
 over-set), and the _frame_ &mdash; the set of all pits.  The
 _co-interior_ (or _pre-interior_, or _post-interior_ ) is the
 intersection of under-set and over-set (or pre-set and under-set, or
 post-set and over-set).  Finally, the _residue_ contains all
-non-carrier elements of the range.
+non-carrier elements of the span.
 
 ### An alternative: fork-join hypergraphs
 
@@ -120,7 +120,7 @@ equipped with a labeling function partitioning hyperedges into forks
 and joins, such that all forks are singleton-tail hyperedges (F-edges)
 and all joins are singleton-head hyperedges (B-edges).  In this
 setting, for example, under-set is the neighborhood of the pre-set,
-over-set is the neighborhood of the post-set, and range is the
+over-set is the neighborhood of the post-set, and span is the
 neighborhood of the carrier.
 
 The two concepts are compared in the table below.
@@ -178,9 +178,9 @@ and over-set, may be defined symbolically,
 > <tt>Under</tt>(_&phi;_)&nbsp;=&nbsp;{_x_ &in; ***X*** | &exist;<sub>_y_</sub>&nbsp;_y_ &rarr;<sub>_&phi;_</sub> _x_},<br>
 > <tt>Over</tt>(_&phi;_)<tt>&nbsp;</tt>&nbsp;=&nbsp;{_x_ &in; ***X*** | &exist;<sub>_y_</sub>&nbsp;_y_ &larr;<sub>_&phi;_</sub> _x_},
 
-and similarly for range and frame,
+and similarly for span and frame,
 
-> <tt>Range</tt>(_&phi;_)<tt>&nbsp;</tt>&nbsp;=&nbsp;<tt>Over</tt>(_&phi;_) &cup; <tt>Under</tt>(_&phi;_)&nbsp;=&nbsp;{_x_ &in; ***X*** | &exist;<sub>_y_</sub>&nbsp;_y_ &larr;<sub>_&phi;_</sub> _x_ &or; _y_ &rarr;<sub>_&phi;_</sub> _x_}, and<br>
+> <tt>Span</tt>(_&phi;_)<tt>&nbsp;</tt>&nbsp;=&nbsp;<tt>Over</tt>(_&phi;_) &cup; <tt>Under</tt>(_&phi;_)&nbsp;=&nbsp;{_x_ &in; ***X*** | &exist;<sub>_y_</sub>&nbsp;_y_ &larr;<sub>_&phi;_</sub> _x_ &or; _y_ &rarr;<sub>_&phi;_</sub> _x_}, and<br>
 > <tt>Frame</tt>(_&phi;_)&nbsp;=&nbsp;{_u_ &subset; ***X*** | &exist;<sub>_x_</sub>&nbsp;(_x_, _u_) &in; _&phi;_ &or; (_u_, _x_) &in; _&phi;_}.
 
 Given a fuset _&phi;_, the _frame intersection_ is the set
@@ -192,7 +192,7 @@ Altogether, any fuset generates a partition of the domain into some
 number (up to 23) of disjoint classes listed in the following _domain
 partition table_.
 
-| <p align="right">_arm_</p>_tip_ | <center>not an arm<br>(not in range)</center> | <center>join's arm<br>(in over-set)</center> | <center>fork's arm<br>(in under-set)</center> | <center>both<br>(in co-interior)</center> |
+| <p align="right">_arm_</p>_tip_ | <center>not an arm<br>(not in span)</center> | <center>join's arm<br>(in over-set)</center> | <center>fork's arm<br>(in under-set)</center> | <center>both<br>(in co-interior)</center> |
 |-----------------------------------------|:------------:|:--------------:|:--------------:|:-------------:|
 | **not a tip**<br>**(not in carrier)**  | **isolated** | upper residual | lower residual | full residual |
 | **fork's tip**<br>**(in pre-set)**  | weak<br>source | broken or **strong**<br>**source** | weak<br>pseudo-source | broken or strong<br>pseudo-source |
@@ -202,7 +202,7 @@ partition table_.
 In particular, a _source_ of a fuset is a pre-set dot that is neither
 in the post-set nor in the under-set, and a _sink_ &mdash; a post-set
 dot that is neither in the pre-set nor in the over-set.  A source, a
-sink, or an internal dot is _weak_, if it is not in the range.  A
+sink, or an internal dot is _weak_, if it is not in the span.  A
 pre-set element that is in the under-set, but not in the interior, is
 a _pseudo-source_, and a post-set element that is in the over-set, but
 not in the interior &mdash; a _pseudo-sink_.  A pseudo-source or
@@ -305,8 +305,8 @@ thick and has empty co-interior, pre-interior and post-interior.
 A _dipole_ is a minimal bipolar non-thick fuset, not necessarily
 proper (it may contain loops).  Note, that any dipole contains exactly
 one fork, exactly one join, and its carrier has exactly two elements.
-A dipole that is proper and has intersecting carrier and range is
-called a _semifusor_.  Moreover, if carrier is a subset of range, then
+A dipole that is proper and has intersecting carrier and span is
+called a _semifusor_.  Moreover, if carrier is a subset of span, then
 a semifusor is called a _fusor_.
 
 Given a fuset _&phi;_, two wedges _w<sub>1</sub>_ and _w<sub>2</sub>_

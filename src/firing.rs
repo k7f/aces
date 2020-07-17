@@ -241,18 +241,26 @@ pub struct FiringSet {
 
 impl FiringSet {
     #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.fcs.is_empty()
+    }
+
+    #[inline]
     pub fn len(&self) -> usize {
         self.fcs.len()
     }
 
+    #[inline]
     pub fn as_slice(&self) -> &[FiringComponent] {
         self.fcs.as_slice()
     }
 
+    #[inline]
     pub fn get(&self, fc_id: usize) -> Option<&FiringComponent> {
         self.fcs.get(fc_id)
     }
 
+    #[inline]
     pub fn get_adjacent(&self, fc_id: usize) -> Option<&HashSet<usize>> {
         self.deps.get(fc_id)
     }
@@ -439,8 +447,9 @@ impl FiringSubset {
 }
 
 impl From<FiringSubset> for Vec<usize> {
+    #[inline]
     fn from(fs: FiringSubset) -> Self {
-        fs.fcs.clone()
+        fs.fcs
     }
 }
 

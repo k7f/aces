@@ -21,7 +21,7 @@ pub enum AcesErrorKind {
     FusetMissingForId(FusetId),
     FiringSetOverflow(usize, usize),
     BottomAtomAccess,
-    AtomicsNotOrdered,
+    ArmsNotOrdered,
 
     DotMissingForPort(Polarity),
     DotMissingForLink(Polarity),
@@ -39,6 +39,9 @@ pub enum AcesErrorKind {
     MultiplicityOverflow(String),
     ParseIntError(num::ParseIntError),
     ParseFloatError(num::ParseFloatError),
+
+    NotAPermutationDueToRepetition(usize),
+    NotAPermutationDueToOverflow(usize, usize),
 
     ModuleSolving,
     EmptySolving,
@@ -84,7 +87,7 @@ impl fmt::Display for AcesErrorKind {
                 write!(f, "Index {} overflow of a {}-element firing set", fc_id, fset_len)
             }
             BottomAtomAccess => write!(f, "Attempt to access the bottom atom"),
-            AtomicsNotOrdered => write!(f, "Atomics have to be given in strictly increasing order"),
+            ArmsNotOrdered => write!(f, "Arms have to be given in strictly increasing order"),
 
             DotMissingForPort(polarity) => write!(
                 f,
@@ -161,6 +164,13 @@ impl fmt::Display for AcesErrorKind {
             }
             ParseIntError(err) => err.fmt(f),
             ParseFloatError(err) => err.fmt(f),
+
+            NotAPermutationDueToRepetition(value) => {
+                write!(f, "Not a permutation due to repetition of {}", value)
+            }
+            NotAPermutationDueToOverflow(value, size) => {
+                write!(f, "Not a permutation due to overflow of {} for size {}", value, size)
+            }
 
             ModuleSolving => write!(f, "Attempt to solve a module"),
             EmptySolving => write!(f, "Attempt to solve an empty structure"),

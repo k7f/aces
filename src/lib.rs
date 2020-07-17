@@ -29,6 +29,7 @@ mod state;
 mod firing;
 mod runner;
 mod vis;
+mod symmetry;
 mod logging;
 
 pub use error::{AcesError, AcesErrorKind};
@@ -49,6 +50,7 @@ pub use solver::{Solver, Solution};
 pub use firing::{FiringComponent, FiringSet, FiringSubset, FiringSequence};
 pub use state::{State, Goal, Semantics};
 pub use runner::{Runner, StopCondition};
+pub use symmetry::Permutation;
 pub use logging::Logger;
 
 use std::num::NonZeroUsize;
