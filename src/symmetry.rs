@@ -2,6 +2,7 @@ use std::{
     collections::{HashSet, BTreeSet},
     cmp::Ordering,
 };
+use rand::{Rng, seq::SliceRandom};
 use crate::{AcesError, AcesErrorKind};
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Debug)]
@@ -55,6 +56,10 @@ impl Permutation {
     #[inline]
     pub fn size(&self) -> usize {
         self.word.len()
+    }
+
+    pub fn shuffle<R: Rng + ?Sized>(&mut self, rng: &mut R) {
+        self.word.shuffle(rng);
     }
 
     pub fn is_identity(&self) -> bool {
@@ -170,6 +175,92 @@ impl Permutation {
 
         false
     }
+
+    /// Computes the lexicographic rank of this permutation.
+    ///
+    /// Note, that the result is correct only if `self.size()` &leq;
+    /// 20 (due to integer overflow).
+    pub fn rank(&self) -> u64 {
+        debug_assert!(self.word.len() <= 20);
+
+        let mut result = 0_u64;
+        let mut table = vec![0; self.word.len() + 1];
+        let size = self.word.len() as i32;
+        let mut pos = size as u64;
+
+        for &image in self.word.iter() {
+            let mut ctr = image;
+
+            let mut node = image as i32;
+            while node > 0 {
+                ctr -= table[node as usize];
+                node &= node - 1;
+            }
+
+            result = pos * result + ctr as u64;
+            pos -= 1;
+
+            node = image as i32 + 1;
+            while node < size {
+                table[node as usize] += 1;
+                node += node & -node;
+            }
+        }
+
+        result
+    }
+
+    /// Creates a new permutation based on `size` and (lexicographic)
+    /// `rank`.
+    ///
+    /// Note, that the result is correct only for `size` &leq; 20 (due
+    /// to integer overflow).
+    pub fn from_rank(mut rank: u64, size: usize) -> Self {
+        debug_assert!(size <= 20);
+
+        let mut word = Vec::with_capacity(size);
+        let mut digits = vec![0; size];
+
+        for i in 2..=size {
+            digits[size - i] = rank % i as u64;
+            rank /= i as u64;
+        }
+
+        let mut table: Vec<_> = (0..=size as i32).map(|node| node & -node).collect();
+
+        for mut digit in digits {
+            let mut image = size;
+
+            for shift in &[1, 2, 4, 8, 16] {
+                image |= image >> shift;
+            }
+            image += 1;
+
+            let mut node = image;
+            while node > 0 {
+                if image <= size && table[image] as u64 <= digit {
+                    digit -= table[image] as u64;
+                } else {
+                    image ^= node;
+                }
+
+                node >>= 1;
+                image |= node;
+            }
+
+            node = image + 1;
+            while node < size {
+                table[node] -= 1;
+                node += (node as i32 & -(node as i32)) as usize;
+            }
+
+            word.push(image);
+        }
+
+        Permutation { word }
+    }
+
+    // pub fn lehmer(&self)
 }
 
 impl Cycles {
@@ -183,7 +274,7 @@ impl Cycles {
         self.size
     }
 
-    /// Returns the cycle type (conjugacy class signature) of this
+    /// Computes the cycle type (conjugacy class signature) of this
     /// permutation.
     ///
     /// The size of the returned `Vec` is always equal to the size of
@@ -257,6 +348,20 @@ mod tests {
         perm2.invert();
         perm1.compose_with(&perm2);
         assert!(perm1.is_identity());
+    }
+
+    #[test]
+    fn test_rank() {
+        let mut rng = rand::thread_rng();
+        for size in 0..20 {
+            let mut perm = Permutation::new(0..size).unwrap();
+            assert_eq!(perm.rank(), 0);
+            assert_eq!(perm, Permutation::from_rank(0, size));
+            for _ in 0..10 {
+                perm.shuffle(&mut rng);
+                assert_eq!(perm, Permutation::from_rank(perm.rank(), perm.size()));
+            }
+        }
     }
 
     #[test]
