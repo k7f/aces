@@ -28,7 +28,6 @@ pub enum StopCondition {
 #[derive(Debug)]
 pub struct Runner {
     context:         ContextHandle,
-    rng:             Option<rand::rngs::ThreadRng>,
     initial_state:   State,
     current_state:   State,
     goal:            Option<Goal>,
@@ -59,7 +58,6 @@ impl Runner {
         I: IntoIterator<Item = (S, Multiplicity)>,
     {
         let context = ctx.clone();
-        let rng = None;
         let initial_state = State::from_triggers_saturated(&context, triggers);
         let current_state = initial_state.clone();
         let goal = None;
@@ -70,7 +68,6 @@ impl Runner {
 
         let mut runner = Runner {
             context,
-            rng,
             initial_state,
             current_state,
             goal,
@@ -100,19 +97,19 @@ impl Runner {
     }
 
     pub fn go(&mut self, fset: &FiringSet) -> Result<StopCondition, AcesError> {
-        self.rng = Some(rand::thread_rng());
         self.update_props();
         self.resume(fset)
     }
 
     pub fn resume(&mut self, fset: &FiringSet) -> Result<StopCondition, AcesError> {
+        let goal = self.goal.as_ref();
+
         match self.semantics {
             Semantics::Sequential => {
-                let mut rng = self.rng.unwrap_or_else(rand::thread_rng);
-                self.rng = Some(rng);
+                let mut rng = rand::thread_rng();
 
                 for num_steps in 0..self.max_steps {
-                    if let Some(dot_id) = self.goal_is_reached() {
+                    if let Some(dot_id) = goal.and_then(|goal| goal.is_reached(&self.current_state)) {
                         debug!("Goal reached at {:?} after {} steps", dot_id, num_steps);
 
                         return Ok(StopCondition::GoalReached(dot_id, num_steps))
@@ -140,8 +137,7 @@ impl Runner {
             }
 
             Semantics::Parallel => {
-                let mut rng = self.rng.unwrap_or_else(rand::thread_rng);
-                self.rng = Some(rng);
+                let mut rng = rand::thread_rng();
 
                 for num_steps in 0..self.max_steps {
                     if let Some(dot_id) = self.goal_is_reached() {

@@ -173,16 +173,17 @@ impl FromStr for Multiplicity {
 /// capacities.
 pub type Capacity = Multiplicity;
 
-/// Multiplicity of a dot's monomial cause or effect in a firing
-/// component.
+/// Multiplicity of a dot in a firing component.
 ///
-/// This type is used in the representation of two modes of weight
-/// labeling &mdash; generic or fuset-dependent.  The implementation
-/// stores the generic wedge weight labeling in the variable
-/// [`Context::wedge_weights`] which maps wedges to [`Weight`]s.  The
-/// explicit labeling of core nets is stored in the variable
-/// [`Context::core_weights`] which maps fusets to wedge weight
-/// labelings.
+/// Since dots in firing components are uniquely represented by
+/// wedges, their numerical labels are called _wedge weights_.  The
+/// type `Weight` is used for the two ways of wedge weight labeling
+/// specification &mdash; generic or fuset-dependent.  The
+/// implementation stores the generic wedge weight labeling in the
+/// variable [`Context::wedge_weights`] which maps wedges to
+/// [`Weight`]s.  The explicit labeling of core nets is stored in the
+/// variable [`Context::core_weights`] which maps fusets to wedge
+/// weight labelings.
 ///
 /// [`Context::wedge_weights`]: crate::Context::wedge_weights
 /// [`Context::core_weights`]: crate::Context::core_weights

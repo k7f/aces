@@ -11,8 +11,8 @@ use std::{
 use log::Level::{Debug, Trace};
 use crate::{
     Context, ContextHandle, Contextual, ExclusivelyContextual, ContentFormat, InteractiveFormat,
-    Port, Wedge, Polarity, AtomId, DotId, PortId, LinkId, ForkId, JoinId, FusetId, Frame,
-    FiringSet, Content, sat, sat::Resolution, Solver, AcesError, AcesErrorKind,
+    YamlFormat, Port, Wedge, Polarity, AtomId, DotId, PortId, LinkId, ForkId, JoinId, FusetId,
+    Frame, FiringSet, Content, sat, sat::Resolution, Solver, AcesError, AcesErrorKind,
 };
 
 /// Fuset: a set of forks and joins.
@@ -617,6 +617,17 @@ impl FusetHolder {
         Ok(ces)
     }
 
+    /// Creates a new fuset from a YAML textual description, in a
+    /// [`Context`] given by a [`ContextHandle`].
+    ///
+    /// [`Context`]: crate::Context
+    pub fn from_yaml_str<S: AsRef<str>>(
+        ctx: &ContextHandle,
+        script: S,
+    ) -> Result<Self, Box<dyn Error>> {
+        Self::from_str(ctx, script, &[Rc::new(YamlFormat::new())])
+    }
+
     /// Extends this fuset with another one, which is created in the
     /// [`Context`] of the old fuset from a script file to be found
     /// along the `path`.
@@ -742,10 +753,14 @@ impl FusetHolder {
     ///
     /// The result, if interpreted in terms of SAT encoding, is a
     /// conjunction of exclusive choices of co-wedges.
-    fn group_cowedges(&self, cowedge_ids: &[AtomId]) -> Result<Vec<Vec<AtomId>>, AcesError> {
+    // FIXME define `struct Cowedges`, grouped on demand
+    fn group_cowedges(
+        ctx: &ContextHandle,
+        cowedge_ids: &[AtomId],
+    ) -> Result<Vec<Vec<AtomId>>, AcesError> {
         if cowedge_ids.len() < 2 {
             if cowedge_ids.is_empty() {
-                Err(AcesErrorKind::IncoherencyLeak.with_context(&self.context))
+                Err(AcesErrorKind::IncoherencyLeak.with_context(ctx))
             } else {
                 Ok(vec![cowedge_ids.to_vec()])
             }
@@ -753,9 +768,9 @@ impl FusetHolder {
             let mut cotip_map: BTreeMap<DotId, Vec<AtomId>> = BTreeMap::new();
 
             for &cowedge_id in cowedge_ids.iter() {
-                let ctx = self.context.lock().unwrap();
-                let cowedge = ctx.get_wedge(cowedge_id).ok_or_else(|| {
-                    AcesErrorKind::WedgeMissingForId(cowedge_id).with_context(&self.context)
+                let context = ctx.lock().unwrap();
+                let cowedge = context.get_wedge(cowedge_id).ok_or_else(|| {
+                    AcesErrorKind::WedgeMissingForId(cowedge_id).with_context(ctx)
                 })?;
                 let cotip_id = cowedge.get_tip_id();
 
@@ -771,7 +786,7 @@ impl FusetHolder {
                         } else {
                             warn!(
                                 "Multiple occurrences of {} in cowedge array",
-                                cowedge.format_locked(&ctx)?
+                                cowedge.format_locked(&context)?
                             );
                         }
                     }
@@ -798,12 +813,12 @@ impl FusetHolder {
         }
 
         for (&join_id, cofork_ids) in self.co_forks.iter() {
-            let cowedges = self.group_cowedges(cofork_ids.as_slice())?;
+            let cowedges = FusetHolder::group_cowedges(&self.context, cofork_ids.as_slice())?;
             formula.add_cowedges(join_id, cowedges)?;
         }
 
         for (&fork_id, cojoin_ids) in self.co_joins.iter() {
-            let cowedges = self.group_cowedges(cojoin_ids.as_slice())?;
+            let cowedges = FusetHolder::group_cowedges(&self.context, cojoin_ids.as_slice())?;
             formula.add_cowedges(fork_id, cowedges)?;
         }
 
@@ -938,5 +953,58 @@ impl FusetHolder {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::domain::Dotset;
+    use super::*;
+
+    fn get_dot_id(ctx: &ContextHandle, name: &str) -> DotId {
+        ctx.lock().unwrap().get_dot_id(name).unwrap()
+    }
+
+    fn get_fork_id(ctx: &ContextHandle, tip: DotId, pit: &[DotId]) -> ForkId {
+        ctx.lock()
+            .unwrap()
+            .share_fork_from_tip_and_pit(tip, Dotset::new_unchecked(pit.iter().cloned()))
+    }
+
+    fn get_join_id(ctx: &ContextHandle, tip: DotId, pit: &[DotId]) -> JoinId {
+        ctx.lock()
+            .unwrap()
+            .share_join_from_tip_and_pit(tip, Dotset::new_unchecked(pit.iter().cloned()))
+    }
+
+    #[test]
+    fn test_empty() {
+        let ref ctx = Context::new_toplevel("fuset::test_empty");
+        let holder = FusetHolder::new_interactive(ctx);
+        let formula = holder.get_formula().unwrap();
+        assert!(formula.get_variables().is_empty());
+    }
+
+    #[test]
+    fn test_arrow() {
+        let ref ctx = Context::new_toplevel("fuset::test_arrow");
+        let holder = FusetHolder::from_yaml_str(ctx, "a >: z <").unwrap();
+
+        let a = get_dot_id(ctx, "a");
+        let z = get_dot_id(ctx, "z");
+        let az = get_fork_id(ctx, a, &[z]);
+        let za = get_join_id(ctx, z, &[a]);
+
+        let (&join_id, cofork_ids) = holder.co_forks.iter().next().unwrap();
+        assert_eq!(JoinId(join_id), za);
+
+        let coforks = FusetHolder::group_cowedges(ctx, cofork_ids.as_slice()).unwrap();
+        assert_eq!(coforks, vec![vec![az.0]]);
+
+        let (&fork_id, cojoin_ids) = holder.co_joins.iter().next().unwrap();
+        assert_eq!(ForkId(fork_id), az);
+
+        let cojoins = FusetHolder::group_cowedges(ctx, cojoin_ids.as_slice()).unwrap();
+        assert_eq!(cojoins, vec![vec![za.0]]);
     }
 }

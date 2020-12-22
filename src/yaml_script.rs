@@ -409,3 +409,37 @@ impl ContentFormat for YamlFormat {
         YamlContent::from_str(ctx, script).map(Into::into).map_err(Into::into)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::Context;
+    use super::*;
+
+    fn get_dot_id(ctx: &ContextHandle, name: &str) -> DotId {
+        ctx.lock().unwrap().get_dot_id(name).unwrap()
+    }
+
+    #[test]
+    fn test_empty() {
+        let ref ctx = Context::new_toplevel("yaml_script::test_empty");
+        let mut script = YamlContent::new(ctx);
+        let carrier = script.get_carrier_ids();
+        assert_eq!(carrier, vec![]);
+    }
+
+    #[test]
+    fn test_arrow() {
+        let ref ctx = Context::new_toplevel("yaml_script::test_arrow");
+        let mut script = YamlContent::from_str(ctx, "a >: z <").unwrap();
+
+        let carrier = script.get_carrier_ids();
+        let a = get_dot_id(ctx, "a");
+        let z = get_dot_id(ctx, "z");
+        assert_eq!(carrier, vec![a, z]);
+
+        let causes = script.get_causes_by_id(z).unwrap();
+        let effects = script.get_effects_by_id(a).unwrap();
+        assert_eq!(causes, &vec![vec![a]]);
+        assert_eq!(effects, &vec![vec![z]]);
+    }
+}

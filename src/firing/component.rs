@@ -356,7 +356,7 @@ impl FiringSubset {
         match self.fcs.len() {
             0 => None,
             1 => Some(self.fcs[0]),
-            n => Some(self.fcs[rng.gen_range(0, n)]),
+            n => Some(self.fcs[rng.gen_range(0..n)]),
         }
     }
 
@@ -401,7 +401,7 @@ impl FiringSubset {
                 result.push(fc_id);
             }
             n => {
-                let amount = rng.gen_range(0, n) + 1;
+                let amount = rng.gen_range(0..n) + 1;
                 let (chosen, _) = self.fcs.partial_shuffle(rng, amount);
                 let mut neigh: HashSet<usize> = HashSet::new();
 
@@ -522,7 +522,7 @@ impl FiringSequence {
         match self.fcs.len() {
             0 => None,
             1 => Some(self.fcs[0].0),
-            n => Some(self.fcs[rng.gen_range(0, n)].0),
+            n => Some(self.fcs[rng.gen_range(0..n)].0),
         }
     }
 

@@ -1,9 +1,8 @@
-# Three types of weight labeling
+# Two types of weight labeling
 
-The implementation supports three different ways of weight-labeling of
-c-e structures.  The purpose of all three is to attach weights to arcs
-of a core net, i.e. to monomial causes and effects of nodes in firing
-components.
+The implementation supports two different ways of weight-labeling of
+c-e structures.  The purpose of both is to attach weights to arcs of a
+core net, or equivalently &mdash; to nodes in firing components.
 
 * Core-weight: individual weight label explicitly attached to an arc
   of a specific core net.
